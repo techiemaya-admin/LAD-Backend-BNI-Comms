@@ -15,10 +15,6 @@ router.get('/student/:studentId', bookingController.listByStudent);
 router.get('/range', bookingController.listInRange);
 
 // GET availability slots
-router.get(
-  '/availability',
-  jwtAuth,
-  bookingController.getAvailability
-);
+router.get('/availability', bookingController.getAvailability);
 
 module.exports = router;

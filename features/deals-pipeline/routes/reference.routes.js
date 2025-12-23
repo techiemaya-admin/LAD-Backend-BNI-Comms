@@ -8,7 +8,7 @@ const router = express.Router();
 const referenceController = require('../controllers/reference.controller');
 
 // GET /api/deals-pipeline/reference/statuses
-router.get('/statuses', referenceController.statuses);
+router.get('/statuses', referenceController.getStatuses);
 
 // GET /api/deals-pipeline/reference/sources
 router.get('/sources', referenceController.getSources);
