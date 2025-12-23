@@ -12,11 +12,11 @@ SELECT DISTINCT ON (key)
   key,
   label,
   display_order
-FROM lead_stages
-WHERE organization_id = $1 OR organization_id IS NULL
+FROM lad_dev.lead_stages
+WHERE tenant_id = $1 OR tenant_id IS NULL
 ORDER BY
   key,
-  organization_id DESC NULLS LAST,
+  tenant_id DESC NULLS LAST,
   display_order;
 
     `,
@@ -28,7 +28,7 @@ ORDER BY
 
 async function createStage(key, label, displayOrder, organizationId) {
   const result = await poolQuery(
-    'INSERT INTO lead_stages (key, label, display_order, organization_id) VALUES ($1, $2, $3, $4) RETURNING *',
+    'INSERT INTO lad_dev.lead_stages (key, label, display_order, tenant_id) VALUES ($1, $2, $3, $4) RETURNING *',
     [key, label, displayOrder, organizationId]
   );
   return result.rows[0];
@@ -36,14 +36,14 @@ async function createStage(key, label, displayOrder, organizationId) {
 
 async function updateStage(key, label, displayOrder) {
   const result = await poolQuery(
-    'UPDATE lead_stages SET label = $1, display_order = $2 WHERE key = $3 RETURNING *',
+    'UPDATE lad_dev.lead_stages SET label = $1, display_order = $2 WHERE key = $3 RETURNING *',
     [label, displayOrder, key]
   );
   return result.rows[0];
 }
 
 async function deleteStage(key) {
-  await poolQuery('DELETE FROM lead_stages WHERE key = $1', [key]);
+  await poolQuery('DELETE FROM lad_dev.lead_stages WHERE key = $1', [key]);
   return true;
 }
 
@@ -61,13 +61,13 @@ async function getLeadsForPipeline(organizationId) {
       COUNT(DISTINCT la.id) as attachments_count,
       ls.linkedin, ls.whatsapp, ls.instagram, ls.facebook,
       COALESCE(MAX(ln.created_at), MAX(lc.created_at), l.last_activity, l.created_at) as latest_activity
-    FROM leads l
+    FROM lad_dev.leads l
     LEFT JOIN lead_tags lt ON l.id = lt.lead_id
     LEFT JOIN lead_notes ln ON l.id = ln.lead_id
     LEFT JOIN lead_comments lc ON l.id = lc.lead_id
     LEFT JOIN lead_attachments la ON l.id = la.lead_id
     LEFT JOIN lead_social ls ON l.id = ls.lead_id
-    WHERE l.organization_id = $1 AND l.is_deleted = FALSE
+    WHERE l.tenant_id = $1 AND l.is_deleted = FALSE
     GROUP BY l.id, ls.linkedin, ls.whatsapp, ls.instagram, ls.facebook
     ORDER BY l.stage, l.created_at DESC
   `;
@@ -100,7 +100,7 @@ async function updateLeadStage(studentId, newStage) {
   if (newStage === 'won') status = 'won';
   if (newStage === 'abandoned') status = 'abandoned';
 
-  const { rowCount, rows result = await poolQuery(
+  const { rowCount, rows, result } = await poolQuery(
     `
     UPDATE voice_agent.students_voiceagent
     SET
@@ -136,7 +136,7 @@ async function updateLeadStage(studentId, newStage) {
 
 async function updateLeadStatus(studentId, newStatus) {
   const check = await poolQuery(
-    `SELECT 1 FROM lead_statuses WHERE key = $1`,
+    `SELECT 1 FROM lad_dev.lead_statuses WHERE key = $1`,
     [newStatus]
   );
 
@@ -144,7 +144,7 @@ async function updateLeadStatus(studentId, newStatus) {
     throw new Error('Invalid status');
   }
 
-  const { rowCount, rows result = await poolQuery(
+  const { rowCount, rows, result} = await poolQuery(
     `
     UPDATE voice_agent.students_voiceagent
     SET status = $1
@@ -171,9 +171,9 @@ async function getPipelineOverview(organizationId) {
       COUNT(l.id) as lead_count,
       COALESCE(SUM(l.amount), 0) as total_value,
       COALESCE(AVG(l.amount), 0) as avg_value
-    FROM lead_stages ls
-    LEFT JOIN leads l ON ls.key = l.stage AND l.organization_id = $1 AND l.is_deleted = FALSE
-    WHERE ls.organization_id = $1 OR ls.organization_id IS NULL
+    FROM lad_dev.lead_stages ls
+    LEFT JOIN lad_dev.leads l ON ls.key = l.stage AND l.tenant_id = $1 AND l.is_deleted = FALSE
+    WHERE ls.tenant_id = $1 OR ls.tenant_id IS NULL
     GROUP BY ls.key, ls.label, ls.display_order
     ORDER BY ls.display_order
   `;
@@ -225,7 +225,7 @@ async function getAllStatuses() {
   const result = await poolQuery(
     `
     SELECT key, label
-    FROM lead_statuses
+    FROM lad_dev.lead_statuses
     ORDER BY label
     `
   );
@@ -234,12 +234,12 @@ async function getAllStatuses() {
 
 
 async function getAllSources() {
-  const result = await poolQuery('SELECT key, label FROM lead_sources ORDER BY label');
+  const result = await poolQuery('SELECT key, label FROM lad_dev.lead_sources ORDER BY label');
   return result.rows;
 }
 
 async function getAllPriorities() {
-  const result = await poolQuery('SELECT key, label FROM lead_priorities ORDER BY key');
+  const result = await poolQuery('SELECT key, label FROM lad_dev.lead_priorities ORDER BY key');
   return result.rows;
 }
 

@@ -1,86 +1,128 @@
 // PostgreSQL Lead Stages Model
 const { query: poolQuery } = require('../../../shared/database/connection');
 
-async function getAllLeadStages(organizationId) {
-  // If org-specific, filter by organizationId
-  let query = 'SELECT key, label, display_order FROM lead_stages';
-  let params = [];
-  if (organizationId) {
-    query += ' WHERE organization_id = $1';
-    params.push(organizationId);
+
+async function getAllLeadStages(tenantId) {
+  let query = `
+    SELECT key, label, display_order
+    FROM lad_dev.lead_stages
+  `;
+  const params = [];
+
+  if (tenantId) {
+    query += `
+      WHERE tenant_id = $1
+         OR tenant_id IS NULL
+    `;
+    params.push(tenantId);
   }
+
   query += ' ORDER BY display_order ASC, key ASC';
-  
+
   const result = await poolQuery(query, params);
-  
-  // Add consistent properties for frontend compatibility
+
   return result.rows.map(row => ({
-    ...row,
-    id: row.key, // Add id property for consistency
-    name: row.label, // Add name property for consistency
-    order: row.display_order || 0 // Add order property
+    key: row.key,
+    label: row.label,
+    display_order: row.display_order,
+    id: row.key,
+    name: row.label,
+    order: row.display_order ?? 0
   }));
 }
 
-async function createLeadStage(key, label, organizationId, displayOrder = null) {
-  console.log('[createLeadStage] Input:', { key, label, organizationId, displayOrder });
-  
-  // If no display order provided, get the next available order
-  if (displayOrder === null || displayOrder === undefined) {
+async function createLeadStage(stageData) {
+  const {
+    key,
+    label,
+    description = null,
+    color = null,
+    tenant_id = null,
+    displayOrder = null
+  } = stageData;
+
+  console.log('[createLeadStage] Input:', { key, label, tenant_id, displayOrder });
+
+  let effectiveOrder = displayOrder;
+
+  // If no display order provided, get the next available order for this tenant
+  if (effectiveOrder === null || effectiveOrder === undefined) {
     const maxOrderResult = await poolQuery(
-      'SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM lead_stages'
+      `SELECT COALESCE(MAX(display_order), 0) + 1 as next_order
+       FROM lad_dev.lead_stages
+       WHERE tenant_id = $1 OR tenant_id IS NULL`,
+      [tenant_id]
     );
-    displayOrder = maxOrderResult.rows[0].next_order;
-    console.log('[createLeadStage] Auto-calculated order:', displayOrder);
+    effectiveOrder = maxOrderResult.rows[0].next_order;
+    console.log('[createLeadStage] Auto-calculated order:', effectiveOrder);
   } else {
-    console.log('[createLeadStage] Shifting existing stages >= order:', displayOrder);
-    
+    console.log('[createLeadStage] Shifting existing stages >= order:', effectiveOrder);
+
     // First, show current state before shifting
     const beforeShift = await poolQuery(
-      'SELECT key, label, display_order FROM lead_stages ORDER BY display_order ASC'
+      `SELECT key, label, display_order
+       FROM lad_dev.lead_stages
+       WHERE tenant_id = $1 OR tenant_id IS NULL
+       ORDER BY display_order ASC`,
+      [tenant_id]
     );
     console.log('[createLeadStage] BEFORE shifting - Current stages:', beforeShift.rows);
-    
+
     // Shift existing stages if inserting at specific position
     const updateResult = await poolQuery(
-      'UPDATE lead_stages SET display_order = display_order + 1 WHERE display_order >= $1',
-      [displayOrder]
+      `UPDATE lad_dev.lead_stages
+       SET display_order = display_order + 1
+       WHERE (tenant_id = $1 OR tenant_id IS NULL)
+         AND display_order >= $2`,
+      [tenant_id, effectiveOrder]
     );
     console.log('[createLeadStage] Shifted', updateResult.rowCount, 'stages');
-    
+
     // Show state after shifting
     const afterShift = await poolQuery(
-      'SELECT key, label, display_order FROM lead_stages ORDER BY display_order ASC'
+      `SELECT key, label, display_order
+       FROM lad_dev.lead_stages
+       WHERE tenant_id = $1 OR tenant_id IS NULL
+       ORDER BY display_order ASC`,
+      [tenant_id]
     );
     console.log('[createLeadStage] AFTER shifting - Updated stages:', afterShift.rows);
   }
 
-  let query = 'INSERT INTO lead_stages (key, label, display_order';
-  let values = [key, label, displayOrder];
-  let params = '$1, $2, $3';
-  
-  if (organizationId) {
-    query += ', organization_id) VALUES (' + params + ', $4) RETURNING *';
-    values.push(organizationId);
-  } else {
-    query += ') VALUES (' + params + ') RETURNING *';
-  }
-  
-  console.log('[createLeadStage] About to execute INSERT query:', query);
+  const query = `
+    INSERT INTO lad_dev.lead_stages (tenant_id, key, label, description, color, display_order)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING *
+  `;
+
+  const values = [
+    tenant_id,
+    key,
+    label,
+    description,
+    color,
+    effectiveOrder
+  ];
+
+  console.log('[createLeadStage] About to execute INSERT query:', query.trim());
   console.log('[createLeadStage] With values:', values);
-  
+
   try {
     const result = await poolQuery(query, values);
-    const newStage = rows[0];
-    
+    const newStage = result.rows[0];
+
     console.log('[createLeadStage] New stage created:', newStage);
-    
+
     // Show final state after insertion
     const finalState = await poolQuery(
-      'SELECT key, label, display_order FROM lead_stages ORDER BY display_order ASC'
+      `SELECT key, label, display_order
+       FROM lad_dev.lead_stages
+       WHERE tenant_id = $1 OR tenant_id IS NULL
+       ORDER BY display_order ASC`,
+      [tenant_id]
     );
     console.log('[createLeadStage] FINAL state - All stages ordered:', finalState.rows);
-    
+
     // Return with consistent properties
     return {
       ...newStage,
@@ -103,7 +145,7 @@ async function updateLeadStage(key, updates) {
   if (displayOrder !== undefined) {
     // Get current stage info
     const currentStage = await poolQuery(
-      'SELECT display_order FROM lead_stages WHERE key = $1',
+      'SELECT display_order FROM lad_dev.lead_stages WHERE key = $1',
       [key]
     );
     
@@ -118,13 +160,13 @@ async function updateLeadStage(key, updates) {
       if (displayOrder > currentOrder) {
         // Moving down - shift stages up
         await poolQuery(
-          'UPDATE lead_stages SET display_order = display_order - 1 WHERE display_order > $1 AND display_order <= $2 AND key != $3',
+          'UPDATE lad_dev.lead_stages SET display_order = display_order - 1 WHERE display_order > $1 AND display_order <= $2 AND key != $3',
           [currentOrder, displayOrder, key]
         );
       } else {
         // Moving up - shift stages down
         await poolQuery(
-          'UPDATE lead_stages SET display_order = display_order + 1 WHERE display_order >= $1 AND display_order < $2 AND key != $3',
+          'UPDATE lad_dev.lead_stages SET display_order = display_order + 1 WHERE display_order >= $1 AND display_order < $2 AND key != $3',
           [displayOrder, currentOrder, key]
         );
       }
@@ -153,7 +195,7 @@ async function updateLeadStage(key, updates) {
   updateValues.push(key); // for WHERE clause
   
   const result = await poolQuery(
-    `UPDATE lead_stages SET ${updateFields.join(', ')} WHERE key = $${paramCount} RETURNING *`,
+    `UPDATE lad_dev.lead_stages SET ${updateFields.join(', ')} WHERE key = $${paramCount} RETURNING *`,
     updateValues
   );
   
@@ -173,7 +215,7 @@ async function updateLeadStage(key, updates) {
 async function deleteLeadStage(key) {
   // Get the stage being deleted
   const stageResult = await poolQuery(
-    'SELECT display_order FROM lead_stages WHERE key = $1',
+    'SELECT display_order FROM lad_dev.lead_stages WHERE key = $1',
     [key]
   );
   
@@ -184,11 +226,11 @@ async function deleteLeadStage(key) {
   const deletedOrder = stageResult.rows[0].display_order;
   
   // Delete the stage
-  await poolQuery('DELETE FROM lead_stages WHERE key = $1', [key]);
+  await poolQuery('DELETE FROM lad_dev.lead_stages WHERE key = $1', [key]);
   
   // Shift remaining stages up
   await poolQuery(
-    'UPDATE lead_stages SET display_order = display_order - 1 WHERE display_order > $1',
+    'UPDATE lad_dev.lead_stages SET display_order = display_order - 1 WHERE display_order > $1',
     [deletedOrder]
   );
   
@@ -205,7 +247,7 @@ async function reorderStages(stageOrders) {
     
     for (const { key, order } of stageOrders) {
       await client.query(
-        'UPDATE lead_stages SET display_order = $1 WHERE key = $2',
+        'UPDATE lad_dev.lead_stages SET display_order = $1 WHERE key = $2',
         [order, key]
       );
     }

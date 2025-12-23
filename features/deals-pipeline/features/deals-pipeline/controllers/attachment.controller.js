@@ -47,3 +47,58 @@ exports.deleteNote = async (req, res) => {
     res.status(500).json({ error: 'Failed to delete note', details: error.message });
   }
 };
+
+exports.uploadAttachment = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const leadId = req.params.id;
+    const file = req.file;
+
+    // Build link that your app will use to access the file
+    const relativePath = file.path; // full path on disk (currently unused)
+    // URL that can be used by the frontend to access the file
+    const link = `/uploads/attachments/${file.filename}`;
+
+    // Try multiple shapes for tenant info (mock vs production)
+    const tenantId =
+      (req.user &&
+        (req.user.tenantId ||
+          req.user.tenant_id ||
+          (req.user.tenant && req.user.tenant.id))) ||
+      (req.tenant && (req.tenant.id || req.tenant.tenant_id));
+
+    if (!tenantId) {
+      return res.status(400).json({
+        error: 'Missing tenant id on authenticated user',
+        details: 'Cannot create attachment without tenant context'
+      });
+    }
+
+    const attachmentRecord = await attachmentService.createAttachment({
+      tenantId,
+      leadId,
+      link
+    });
+
+    res.status(201).json({
+      success: true,
+      attachment: {
+        db: attachmentRecord,
+        file: {
+          leadId,
+          filename: file.filename,
+          originalName: file.originalname,
+          path: file.path,
+          size: file.size,
+          mimeType: file.mimetype
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[Attachment Controller] Error uploading attachment:', error);
+    res.status(500).json({ error: 'Failed to upload attachment', details: error.message });
+  }
+};

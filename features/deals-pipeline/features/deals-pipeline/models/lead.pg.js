@@ -5,7 +5,7 @@ const { query } = require('../../../shared/database/connection');
 async function getAllLeads(organizationId, filters = {}) {
   let sql = `
     SELECT l.*
-    FROM leads l
+    FROM lad_dev.leads l
     WHERE l.is_deleted = FALSE
   `;
   let params = [];
@@ -41,7 +41,7 @@ async function getAllLeads(organizationId, filters = {}) {
 
 // Get lead by ID
 async function getLeadById(id) {
-  const sql = 'SELECT * FROM leads WHERE id = $1 AND is_deleted = FALSE';
+  const sql = 'SELECT * FROM lad_dev.leads WHERE id = $1 AND is_deleted = FALSE';
   const result = await query(sql, [id]);
   return result.rows[0] || null;
 }
@@ -49,7 +49,7 @@ async function getLeadById(id) {
 // Create new lead
 async function createLead(leadData) {
   const sql = `
-    INSERT INTO leads (name, email, phone, company, stage, status, source, priority, value)
+    INSERT INTO lad_dev.leads (name, email, phone, company, stage, status, source, priority, value)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `;
@@ -88,7 +88,7 @@ async function updateLead(id, leadData) {
   params.push(id);
 
   const sql = `
-    UPDATE leads 
+    UPDATE lad_dev.leads 
     SET ${fields.join(', ')}
     WHERE id = $${paramIndex} AND is_deleted = FALSE
     RETURNING *
@@ -100,7 +100,7 @@ async function updateLead(id, leadData) {
 
 // Delete lead (soft delete)
 async function deleteLead(id) {
-  const sql = 'UPDATE leads SET is_deleted = TRUE WHERE id = $1 RETURNING *';
+  const sql = 'UPDATE lad_dev.leads SET is_deleted = TRUE WHERE id = $1 RETURNING *';
   const result = await query(sql, [id]);
   return result.rows[0];
 }
@@ -112,7 +112,7 @@ async function getLeadConversionStats() {
       stage,
       COUNT(*) as count,
       SUM(value) as total_value
-    FROM leads
+    FROM lad_dev.leads
     WHERE is_deleted = FALSE
     GROUP BY stage
   `;

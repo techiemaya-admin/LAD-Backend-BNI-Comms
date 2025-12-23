@@ -43,3 +43,19 @@ exports.deleteNote = async (leadId, noteId) => {
   `;
   await db.query(query, [noteId, leadId]);
 };
+
+
+/**
+ * Create a new attachment record for a lead
+ */
+exports.createAttachment = async ({ tenantId, leadId, link }) => {
+  const query = `
+    INSERT INTO lead_attachments (tenant_id, lead_id, link, created_at)
+    VALUES ($1, $2, $3, NOW())
+    RETURNING *
+  `;
+  const values = [tenantId, leadId, link];
+
+  const result = await db.query(query, values);
+  return result.rows[0];
+};

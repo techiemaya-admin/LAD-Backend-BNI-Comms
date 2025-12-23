@@ -9,8 +9,8 @@ const LeadStage = require('../models/leadStage.pg');
 /**
  * List all pipeline stages
  */
-exports.list = async () => {
-  return await LeadStage.getAllLeadStages();
+exports.list = async (organizationId) => {
+  return await LeadStage.getAllLeadStages(organizationId);
 };
 
 /**

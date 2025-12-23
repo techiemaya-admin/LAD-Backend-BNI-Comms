@@ -12,13 +12,22 @@ const stageService = require('../services/stage.service');
  */
 exports.list = async (req, res) => {
   try {
-    const stages = await stageService.list();
+    const organizationId =
+      (req.tenant && req.tenant.id) ||
+      (req.user && req.user.tenant_id) ||
+      null;
+
+    const stages = await stageService.list(organizationId);
     res.json(stages);
   } catch (error) {
     console.error('[Stage Controller] Error listing stages:', error);
-    res.status(500).json({ error: 'Failed to fetch stages', details: error.message });
+    res.status(500).json({
+      error: 'Failed to fetch stages',
+      details: error.message
+    });
   }
 };
+
 
 /**
  * Create a new stage
@@ -26,7 +35,17 @@ exports.list = async (req, res) => {
  */
 exports.create = async (req, res) => {
   try {
-    const stage = await stageService.create(req.body);
+    const tenantId =
+      (req.tenant && req.tenant.id) ||
+      (req.user && req.user.tenant_id) ||
+      null;
+
+    const stagePayload = {
+      ...req.body,
+      tenant_id: tenantId
+    };
+
+    const stage = await stageService.create(stagePayload);
     res.status(201).json(stage);
   } catch (error) {
     console.error('[Stage Controller] Error creating stage:', error);

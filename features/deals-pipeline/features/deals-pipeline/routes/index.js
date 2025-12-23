@@ -14,6 +14,7 @@ const stagesRoutes = require('./stages.routes');
 const pipelineRoutes = require('./pipeline.routes');
 const referenceRoutes = require('./reference.routes');
 const attachmentsRoutes = require('./attachments.routes');
+const bookingRoutes = require('./booking.routes');
 
 // Mount route modules
 router.use('/leads', leadsRoutes);
@@ -21,5 +22,6 @@ router.use('/stages', stagesRoutes);
 router.use('/pipeline', pipelineRoutes);
 router.use('/reference', referenceRoutes);
 router.use('/leads/:id', attachmentsRoutes);
+router.use('/bookings', bookingRoutes);
 
 module.exports = router;

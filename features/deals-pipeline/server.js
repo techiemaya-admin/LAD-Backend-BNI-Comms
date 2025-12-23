@@ -6,6 +6,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+console.log("ENV:", process.env.NODE_ENV);
 
 // Mock auth if not already loaded
 if (!global.jwtAuthMock) {
@@ -33,6 +35,8 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Request logging
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -48,8 +52,13 @@ app.post('/api/auth/dev-login', (req, res) => {
     token,
     user: {
       userId: 'mock-user-123',
-      email: 'developer@example.com',
-      role: 'admin'
+      email: 'suhas@example.com',
+      role: 'admin',
+      tenant_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+    },
+    tenant: {
+      id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      name: 'LAD'
     },
     message: 'Development login successful'
   });

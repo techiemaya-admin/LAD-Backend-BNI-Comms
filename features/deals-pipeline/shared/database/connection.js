@@ -8,9 +8,17 @@ const { Pool } = require('pg');
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'lad_dev_mock',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres'
+  database: process.env.DB_NAME || 'lad_feature',
+  user: process.env.DB_USER || 'lad',
+  password: process.env.DB_PASSWORD || 'lad'
+});
+
+console.log('[DB CONFIG]', {
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || 'lad_feature',
+  user: process.env.DB_USER || 'lad',
+  password: process.env.DB_PASSWORD || 'lad'
 });
 
 pool.on('error', (err) => {
