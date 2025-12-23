@@ -8,7 +8,7 @@ const router = express.Router();
 const pipelineController = require('../controllers/pipeline.controller');
 
 // GET /api/deals-pipeline/pipeline/board
-router.get('/board', pipelineController.board);
+router.get('/board', pipelineController.getBoard);
 
 // PUT /api/deals-pipeline/pipeline/leads/:id/stage
 router.put('/leads/:id/stage', pipelineController.moveLeadToStage);
