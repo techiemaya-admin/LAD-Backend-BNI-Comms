@@ -23,16 +23,7 @@ module.exports = {
   },
   
   // API routes provided by this feature
-  routes: [
-    '/chat',
-    '/history',
-    '/conversations/:id',
-    '/conversations/:id/reset',
-    '/keywords/expand',
-    '/profiles',
-    '/profiles/:id',
-    '/profiles/:id/use'
-  ],
+  routes: require('./routes/index.js'),
   
   // Database tables
   tables: [
