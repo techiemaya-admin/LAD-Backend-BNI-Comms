@@ -5,7 +5,6 @@
 
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const { jwtAuth } = require('../middleware/auth');
 const attachmentController = require('../controllers/attachment.controller');
 const multer = require('multer');
 const path = require('path');
@@ -28,16 +27,16 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // GET /api/deals-pipeline/leads/:id/notes
-router.get('/notes', jwtAuth, attachmentController.listNotes);
+router.get('/notes', attachmentController.listNotes);
 
 // POST /api/deals-pipeline/leads/:id/notes
-router.post('/notes', jwtAuth, attachmentController.createNote);
+router.post('/notes', attachmentController.createNote);
 
 // DELETE /api/deals-pipeline/leads/:id/notes/:noteId
-router.delete('/notes/:noteId', jwtAuth, attachmentController.deleteNote);
+router.delete('/notes/:noteId', attachmentController.deleteNote);
 
 // POST /api/deals-pipeline/leads/:id/attachments
 // Form field name should be `file`
-router.post('/attachments', jwtAuth, upload.single('file'), attachmentController.uploadAttachment);
+router.post('/attachments', upload.single('file'), attachmentController.uploadAttachment);
 
 module.exports = router;

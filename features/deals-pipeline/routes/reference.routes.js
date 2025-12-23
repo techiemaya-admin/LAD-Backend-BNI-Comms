@@ -5,16 +5,15 @@
 
 const express = require('express');
 const router = express.Router();
-const { jwtAuth } = require('../middleware/auth');
 const referenceController = require('../controllers/reference.controller');
 
 // GET /api/deals-pipeline/reference/statuses
-router.get('/statuses', jwtAuth, referenceController.getStatuses);
+router.get('/statuses', referenceController.statuses);
 
 // GET /api/deals-pipeline/reference/sources
-router.get('/sources', jwtAuth, referenceController.getSources);
+router.get('/sources', referenceController.getSources);
 
 // GET /api/deals-pipeline/reference/priorities
-router.get('/priorities', jwtAuth, referenceController.getPriorities);
+router.get('/priorities', referenceController.getPriorities);
 
 module.exports = router;

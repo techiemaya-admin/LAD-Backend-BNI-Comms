@@ -1,19 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { jwtAuth } = require('../middleware/auth');
 const bookingController = require('../controllers/booking.controller');
 
 // POST /api/deals-pipeline/bookings
-router.post('/', jwtAuth, bookingController.create);
+router.post('/', bookingController.create);
 
 // GET /api/deals-pipeline/bookings/counsellor/:counsellorId
-router.get('/counsellor/:counsellorId', jwtAuth, bookingController.listByCounsellor);
+router.get('/counsellor/:counsellorId', bookingController.listByCounsellor);
 
 // GET /api/deals-pipeline/bookings/student/:studentId
-router.get('/student/:studentId', jwtAuth, bookingController.listByStudent);
+router.get('/student/:studentId', bookingController.listByStudent);
 
 // GET /api/deals-pipeline/bookings/range?dayStart=...&dayEnd=...
-router.get('/range', jwtAuth, bookingController.listInRange);
+router.get('/range', bookingController.listInRange);
 
 // GET availability slots
 router.get(
