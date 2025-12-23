@@ -1,0 +1,625 @@
+const express = require('express');
+const router = express.Router();
+const { jwtAuth } = require('./auth');
+const Lead = require('./models/lead.pg');
+// const LeadTags = require('./models/leadTags.pg'); // TODO: Create this model
+const LeadStage = require('./models/leadStage.pg');
+const LeadStatus = require('./models/leadStatus.pg');
+const db = require('../../shared/database/connection');
+
+// ========================
+// SPECIFIC ROUTES (must come before generic /:id route)
+// ========================
+
+// Get all lead stages (pipeline columns)
+router.get('/stages', jwtAuth, async (req, res) => {
+  try {
+    console.log('[LEADS API] Getting stages for user:', req.user?.userId);
+    const stages = await LeadStage.getAllLeadStages();
+    console.log('[LEADS API] Stages retrieved successfully:', stages.length, 'stages');
+    res.json(stages);
+  } catch (err) {
+    console.error('[LEADS API] Error getting stages:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
+
+// Get all lead statuses
+router.get('/statuses', jwtAuth, async (req, res) => {
+  try {
+    const statuses = await LeadStatus.getAllLeadStatuses();
+    res.json(statuses);
+  } catch (err) {
+    console.error('[LEADS API] Error getting statuses:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
+
+// GET /api/leads/sources - All lead sources for dropdowns
+router.get('/sources', jwtAuth, async (req, res) => {
+  try {
+    const sources = [
+      { key: 'website', label: 'Website' },
+      { key: 'referral', label: 'Referral' },
+      { key: 'event', label: 'Event' },
+      { key: 'social', label: 'Social Media' }
+    ];
+    res.json(sources);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error', details: error.message });
+  }
+});
+
+// GET /api/leads/priorities - All lead priorities for dropdowns
+router.get('/priorities', jwtAuth, async (req, res) => {
+  try {
+    const priorities = [
+      { key: 'low', label: 'Low' },
+      { key: 'medium', label: 'Medium' },
+      { key: 'high', label: 'High' }
+    ];
+    res.json(priorities);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error', details: error.message });
+  }
+});
+
+// Get lead stats
+router.get('/stats', jwtAuth, async (req, res) => {
+  try {
+    const stats = await Lead.getLeadConversionStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch lead stats', details: err.message });
+  }
+});
+
+// GET /api/leads/pipeline/board - Complete pipeline board data
+router.get('/pipeline/board', jwtAuth, async (req, res) => {
+  try {
+    const [stages, leads] = await Promise.all([
+      LeadStage.getAllLeadStages(),
+      Lead.listLeads()
+    ]);
+
+    // Group leads by stage
+    const leadsByStage = leads.reduce((acc, lead) => {
+      const stageKey = lead.stage || 'unassigned';
+      if (!acc[stageKey]) acc[stageKey] = [];
+      acc[stageKey].push(lead);
+      return acc;
+    }, {});
+
+    res.json({
+      stages: stages || [],
+      leads: leads || [],
+      leadsByStage
+    });
+  } catch (err) {
+    console.error('[LEADS API] Error getting pipeline board:', err);
+    res.status(500).json({ error: 'Failed to fetch pipeline board', details: err.message });
+  }
+});
+
+// Get all leads with optional filtering
+router.get('/', jwtAuth, async (req, res) => {
+  try {
+    // For now, pass null to get all leads regardless of organization
+    let leads = await Lead.getAllLeads(null, req.query);
+    // Convert stage to lowercase if present
+    leads = leads.map(lead => {
+      if (lead.stage && typeof lead.stage === 'string') {
+        return { ...lead, stage: lead.stage.toLowerCase() };
+      }
+      return lead;
+    });
+    res.json(leads);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch leads', details: err.message });
+  }
+});
+
+// Specific /leads route to handle /api/deals-pipeline/leads
+router.get('/leads', jwtAuth, async (req, res) => {
+  try {
+    // For now, pass null to get all leads regardless of organization
+    let leads = await Lead.getAllLeads(null, req.query);
+    // Convert stage to lowercase if present
+    leads = leads.map(lead => {
+      if (lead.stage && typeof lead.stage === 'string') {
+        return { ...lead, stage: lead.stage.toLowerCase() };
+      }
+      return lead;
+    });
+    res.json(leads);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch leads', details: err.message });
+  }
+});
+
+// Get specific lead by ID
+// router.get('/:id', jwtAuth, async (req, res) => {
+//   try {
+//     const lead = await Lead.getLeadById(req.params.id);
+//     if (!lead) {
+//       return res.status(404).json({ error: 'Lead not found' });
+//     }
+//     res.json(lead);
+//   } catch (err) {
+//     res.status(500).json({ error: 'Failed to fetch lead', details: err.message });
+//   }
+// });
+
+router.get('/:id', jwtAuth, async (req, res) => {
+  try {
+    const lead = await Lead.getLeadById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    // Rename `channel` → `source`
+    const transformedLead = {
+      ...lead,
+      source: lead.channel,   // add new key
+    };
+    delete transformedLead.channel; // remove old key
+
+    res.json(transformedLead);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch lead', details: err.message });
+  }
+});
+
+
+// Create new lead
+router.post('/', jwtAuth, async (req, res) => {
+  try {
+    // Extract tags from the request body (same as update route)
+    const { tags, ...frontendData } = req.body;
+    
+    // Map frontend field names to database column names
+    const fieldMapping = {
+      dueDate: 'due_date',
+      closeDate: 'close_date',
+      lastActivity: 'last_activity',
+      jobTitle: 'job_title',
+      leadType: 'lead_type',
+      assignedTo: 'assigned_to_id',
+      createdBy: 'created_by_id',
+      ownerId: 'owner_id',
+      isArchived: 'is_archived',
+      isDeleted: 'is_deleted',
+      dealRecommendation: 'deal_recommendation',
+      engagementLabel: 'engagement_label',
+      engagementComparison: 'engagement_comparison',
+      lastMessage: 'last_message'
+    };
+    
+    // Convert frontend field names to database column names
+    const leadData = {};
+    Object.entries(frontendData).forEach(([key, value]) => {
+      const dbColumn = fieldMapping[key] || key;
+      leadData[dbColumn] = value;
+    });
+    
+    // Add organization_id to lead data
+    leadData.organization_id = req.user?.organization_id;
+    
+    // Create the lead (excluding tags)
+    const lead = await Lead.createLead(leadData);
+    
+    // Handle tags separately if provided
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      // TODO: Add tags when LeadTags model is created
+      // for (const tag of tags) {
+      //   await LeadTags.addTagToLead(lead.id, tag);
+      // }
+      console.warn('[Deals-Pipeline] Tag support not yet implemented');
+    }
+    
+    res.status(201).json(lead);
+  } catch (err) {
+    console.error('[LEADS API] Error creating lead:', err);
+    res.status(500).json({ error: 'Failed to create lead', details: err.message });
+  }
+});
+
+// Update lead
+router.put('/:id', jwtAuth, async (req, res) => {
+  try {
+    console.log('[LEADS API] Updating lead:', req.params.id, 'with data:', req.body);
+    
+    // Extract tags from the request body
+    const { tags, ...leadUpdates } = req.body;
+    
+    // Update the lead (excluding tags)
+    const lead = await Lead.updateLead(req.params.id, leadUpdates);
+    
+    // Handle tags separately if provided
+    if (tags !== undefined) {
+      // Get current tags
+      const currentTags = await Lead.getLeadTags(req.params.id);
+      
+      // Remove tags that are no longer in the new tags array
+      for (const currentTag of currentTags) {
+        if (!tags.includes(currentTag)) {
+          await Lead.removeLeadTag(req.params.id, currentTag);
+        }
+      }
+      
+      // Add new tags that weren't previously present
+      for (const newTag of tags) {
+        if (!currentTags.includes(newTag) && newTag.trim() !== '') {
+          await Lead.addLeadTag(req.params.id, newTag);
+        }
+      }
+    }
+    
+    console.log('[LEADS API] Lead updated successfully:', lead);
+    res.json(lead);
+  } catch (err) {
+    console.error('[LEADS API] Error updating lead:', err);
+    res.status(500).json({ error: 'Failed to update lead', details: err.message });
+  }
+});
+
+// Delete lead
+router.delete('/:id', jwtAuth, async (req, res) => {
+  try {
+    await Lead.deleteLead(req.params.id);
+    res.json({ message: 'Lead deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete lead', details: err.message });
+  }
+});
+
+// Update lead stage
+router.put('/:id/stage', jwtAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { stage } = req.body;
+    // const pool = require('../config/postgres');
+
+    // Validate stage against DB
+    const { rows: stageRows } = await pool.query('SELECT key FROM lead_stages WHERE key = $1', [stage]);
+    if (!stageRows.length) {
+      return res.status(400).json({ error: 'Invalid stage', details: `Stage '${stage}' does not exist.` });
+    }
+
+    // Status mapping for pipeline stages
+    const STAGE_STATUS_MAP = {
+      'new': 'active',
+      'contact made': 'active',
+      'trial session booked': 'active',
+      'trial completed': 'active',
+      'won': 'won',
+      'abandoned': 'lost'
+    };
+    const status = STAGE_STATUS_MAP[stage] || 'active';
+
+    const updatedLead = await Lead.updateLead(id, {
+      stage,
+      status,
+      last_activity: new Date()
+    });
+    res.json(updatedLead);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update lead stage', details: err.message });
+  }
+});
+
+// ========================
+// STAGE MANAGEMENT
+// ========================
+
+// Create new stage
+router.post('/stages', jwtAuth, async (req, res) => {
+  try {
+    const { key, label, displayOrder } = req.body;
+    console.log('[CREATE STAGE] Received data:', { key, label, displayOrder });
+    const organizationId = req.user?.organization_id;
+    
+    const existingStages = await LeadStage.getAllLeadStages(organizationId);
+    console.log('[CREATE STAGE] Existing stages:', existingStages.map(s => ({ key: s.key, label: s.label, order: s.display_order })));
+    
+    const stageExists = existingStages.some(stage => stage.key === key);
+    
+    if (stageExists) {
+      return res.status(400).json({ error: 'Stage with this key already exists' });
+    }
+
+    const newStage = await LeadStage.createLeadStage(key, label, organizationId, displayOrder);
+    res.status(201).json(newStage);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create stage', details: err.message });
+  }
+});
+
+// Update stage
+router.put('/stages/:key', jwtAuth, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const updates = req.body;
+    const organizationId = req.user?.organization_id;
+
+    const updatedStage = await LeadStage.updateLeadStage(key, updates, organizationId);
+    if (!updatedStage) {
+      return res.status(404).json({ error: 'Stage not found' });
+    }
+
+    res.json(updatedStage);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update stage', details: err.message });
+  }
+});
+
+// Delete stage
+router.delete('/stages/:key', jwtAuth, async (req, res) => {
+  try {
+    const { key } = req.params;
+    console.log('[DELETE /stages/:key] Request to delete stage:', key);
+    console.log('[DELETE /stages/:key] User:', req.user?.userId);
+
+    // Check if any leads are using this stage
+    const leadsInStage = await Lead.getLeadsInStage(key);
+    console.log('[DELETE /stages/:key] Leads in stage:', leadsInStage?.length || 0);
+    
+    if (leadsInStage && leadsInStage.length > 0) {
+      console.log('[DELETE /stages/:key] Cannot delete - stage has leads');
+      return res.status(400).json({ 
+        error: 'Cannot delete stage with existing leads',
+        leadsCount: leadsInStage.length
+      });
+    }
+
+    console.log('[DELETE /stages/:key] Calling deleteLeadStage...');
+    const deleted = await LeadStage.deleteLeadStage(key);
+    console.log('[DELETE /stages/:key] deleteLeadStage result:', deleted);
+    
+    if (!deleted) {
+      console.log('[DELETE /stages/:key] Stage not found');
+      return res.status(404).json({ error: 'Stage not found' });
+    }
+
+    console.log('[DELETE /stages/:key] Stage deleted successfully');
+    res.json({ message: 'Stage deleted successfully' });
+  } catch (err) {
+    console.error('[DELETE /stages/:key] Error:', err);
+    res.status(500).json({ error: 'Failed to delete stage', details: err.message });
+  }
+});
+
+// Reorder stages
+router.put('/stages/reorder', jwtAuth, async (req, res) => {
+  try {
+    const { stageOrders } = req.body;
+    
+    if (!Array.isArray(stageOrders)) {
+      return res.status(400).json({ error: 'stageOrders must be an array' });
+    }
+
+    await LeadStage.reorderStages(stageOrders);
+    res.json({ message: 'Stages reordered successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reorder stages', details: err.message });
+  }
+});
+
+// ========================
+// LEAD NOTES MANAGEMENT
+// ========================
+
+// Get notes for a lead
+router.get('/:id/notes', jwtAuth, async (req, res) => {
+  try {
+    const notes = await Lead.getLeadNotes(req.params.id);
+    res.json(notes);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch notes', details: err.message });
+  }
+});
+
+// Add note to lead
+router.post('/:id/notes', jwtAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+    
+    console.log('Adding note with user info:', {
+      userId: req.user?.userId,
+      email: req.user?.email,
+      name: req.user?.name,
+      userObject: req.user
+    });
+    
+    const note = await Lead.addLeadNote(
+      req.params.id, 
+      content.trim(),
+      req.user?.userId,
+      req.user?.name || req.user?.email, // Use email as fallback for name
+      req.user?.avatar
+    );
+    res.status(201).json(note);
+  } catch (err) {
+    console.error('Failed to add note:', err);
+    res.status(500).json({ error: 'Failed to add note', details: err.message });
+  }
+});
+
+// Delete note
+router.delete('/:id/notes/:noteId', jwtAuth, async (req, res) => {
+  try {
+    await Lead.deleteLeadNote(req.params.noteId);
+    res.json({ message: 'Note deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete note', details: err.message });
+  }
+});
+
+// Update note
+router.put('/:id/notes/:noteId', jwtAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+    
+    const updatedNote = await Lead.updateLeadNote(req.params.noteId, content.trim());
+    res.json(updatedNote);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update note', details: err.message });
+  }
+});
+
+// ========================
+// LEAD COMMENTS MANAGEMENT
+// ========================
+
+// Get comments for a lead
+router.get('/:id/comments', jwtAuth, async (req, res) => {
+  try {
+    const comments = await Lead.getLeadComments(req.params.id);
+    res.json(comments);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch comments', details: err.message });
+  }
+});
+
+// Add comment to lead
+router.post('/:id/comments', jwtAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+    
+    console.log('Adding comment with user info:', {
+      userId: req.user?.userId,
+      email: req.user?.email,
+      name: req.user?.name,
+      userObject: req.user
+    });
+    
+    const comment = await Lead.addLeadComment(
+      req.params.id, 
+      content.trim(), 
+      req.user.userId, 
+      req.user.name || req.user.email, // Use email as fallback for name
+      req.user.avatar
+    );
+    res.status(201).json(comment);
+  } catch (err) {
+    console.error('Failed to add comment:', err);
+    res.status(500).json({ error: 'Failed to add comment', details: err.message });
+  }
+});
+
+// Delete comment
+router.delete('/:id/comments/:commentId', jwtAuth, async (req, res) => {
+  try {
+    await Lead.deleteLeadComment(req.params.commentId);
+    res.json({ message: 'Comment deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete comment', details: err.message });
+  }
+});
+
+// Update comment
+router.put('/:id/comments/:commentId', jwtAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+    
+    const updatedComment = await Lead.updateLeadComment(req.params.commentId, content.trim());
+    res.json(updatedComment);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update comment', details: err.message });
+  }
+});
+
+// ========================
+// LEAD ATTACHMENTS MANAGEMENT
+// ========================
+
+// Get attachments for a lead
+router.get('/:id/attachments', jwtAuth, async (req, res) => {
+  try {
+    const attachments = await Lead.getLeadAttachments(req.params.id);
+    res.json(attachments);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch attachments', details: err.message });
+  }
+});
+
+// Upload attachment to lead (using same pattern as messages)
+const multer = require('multer');
+const { Storage } = require('@google-cloud/storage');
+const fs = require('fs');
+const upload = multer({ dest: 'uploads/' });
+const storage = new Storage({ keyFilename: process.env.GCP_KEY_PATH });
+const bucketName = process.env.GCP_BUCKET_NAME;
+
+router.post('/:id/attachments', jwtAuth, upload.single('file'), async (req, res) => {
+  try {
+    const leadId = req.params.id;
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Upload file to GCP
+    const gcsFileName = `lead-attachments/${leadId}/${Date.now()}_${file.originalname}`;
+    const bucket = storage.bucket(bucketName);
+    await bucket.upload(file.path, {
+      destination: gcsFileName,
+      resumable: false,
+      public: false
+    });
+    
+    // Remove temp file
+    fs.unlinkSync(file.path);
+
+    // Get signed URL (valid 7 days)
+    const [url] = await bucket.file(gcsFileName).getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000
+    });
+
+    // Store attachment with complete metadata
+    const attachmentData = {
+      url,
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      gcs_path: gcsFileName
+    };
+
+    // Get user ID from JWT token
+    const userId = req.user?.userId;
+
+    const attachment = await Lead.addLeadAttachment(leadId, attachmentData, userId);
+    res.status(201).json(attachment);
+  } catch (err) {
+    console.error('[LEADS API] Error uploading attachment:', err);
+    res.status(500).json({ error: 'Failed to upload attachment', details: err.message });
+  }
+});
+
+// Delete attachment
+router.delete('/:id/attachments/:attachmentId', jwtAuth, async (req, res) => {
+  try {
+    await Lead.deleteLeadAttachment(req.params.attachmentId);
+    res.json({ message: 'Attachment deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete attachment', details: err.message });
+  }
+});
+
+
+
+module.exports = router;

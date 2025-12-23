@@ -1,0 +1,82 @@
+[dotenv@17.2.3] injecting env (16) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+🚀 Starting LAD Backend Server...
+📊 Environment: development
+🗄️  Database: 165.22.221.77
+📁 Schema: lad_w2wts
+✅ Registered feature: ai-icp-assistant
+✅ Registered feature: apollo-leads
+✅ Registered feature: lead-enrichment
+✅ Server successfully started on port 3004
+🌐 Backend URL: http://localhost:3004
+
+Available endpoints:
+  - POST   /api/auth/login
+  - POST   /api/auth/register
+  - GET    /api/features
+  - GET    /api/users/:id
+  - GET    /api/billing/plans
+  - GET    /api/apollo-leads/* (with feature flag)
+
+🚀 Core Platform running on port 3004
+📦 Registered features: [ 'ai-icp-assistant', 'apollo-leads', 'lead-enrichment' ]
+✅ Database connection established
+📊 Feature usage: {
+  clientId: undefined,
+  feature: 'lead-enrichment',
+  endpoint: '/api/lead-enrichment/filter-companies',
+  method: 'POST',
+  timestamp: 2025-12-19T06:10:42.045Z
+}
+💰 Deducted 2 credits for 00000000-0000-0000-0000-000000000001 (company_filtering)
+🔍 Filtering 5 companies by topic: "oil and gas, petroleum, energy sector, drilling"
+🚀 Using parallel processing (max 3 concurrent)
+
+🔍 Filtering 5 companies by topic: 'oil and gas, petroleum, energy sector, drilling'
+🚀 Using parallel processing with max 3 concurrent operations
+
+Scraping website: https://shell.com
+Scraping website: https://stripe.com
+Scraping website: https://bp.com
+Error scraping https://bp.com: maxContentLength size of 50000 exceeded
+[3/5] ⚠️ BP: Could not scrape website
+[1/5] ✅ Shell: Matches topic!
+Error scraping https://stripe.com: maxContentLength size of 50000 exceeded
+[2/5] ⚠️ Stripe: Could not scrape website
+Scraping website: https://netflix.com
+Scraping website: https://exxonmobil.com
+Error scraping https://exxonmobil.com: maxContentLength size of 50000 exceeded
+[5/5] ⚠️ ExxonMobil: Could not scrape website
+Error scraping https://netflix.com: maxContentLength size of 50000 exceeded
+[4/5] ⚠️ Netflix: Could not scrape website
+
+✅ Filtered to 1 companies matching topic 'oil and gas, petroleum, energy sector, drilling'
+
+✅ Filtered to 1 matching companies
+📊 Feature usage: {
+  clientId: undefined,
+  feature: 'lead-enrichment',
+  endpoint: '/api/lead-enrichment/filter-companies',
+  method: 'POST',
+  timestamp: 2025-12-19T06:10:50.245Z
+}
+💰 Deducted 2 credits for 00000000-0000-0000-0000-000000000001 (company_filtering)
+🔍 Filtering 3 companies by topic: "SaaS, cloud software, enterprise software"
+🚀 Using parallel processing (max 3 concurrent)
+
+🔍 Filtering 3 companies by topic: 'SaaS, cloud software, enterprise software'
+🚀 Using parallel processing with max 3 concurrent operations
+
+Scraping website: https://salesforce.com
+Scraping website: https://ford.com
+Scraping website: https://slack.com
+Error scraping https://slack.com: maxContentLength size of 50000 exceeded
+[3/3] ⚠️ Slack: Could not scrape website
+Error scraping https://salesforce.com: maxContentLength size of 50000 exceeded
+[1/3] ⚠️ Salesforce: Could not scrape website
+Error scraping https://ford.com: timeout of 10000ms exceeded
+[2/3] ⚠️ Ford: Could not scrape website
+
+✅ Filtered to 0 companies matching topic 'SaaS, cloud software, enterprise software'
+
+✅ Filtered to 0 matching companies
+❌ Auth failed - No token for GET /api/stripe/config

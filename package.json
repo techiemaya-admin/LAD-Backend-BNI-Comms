@@ -1,0 +1,32 @@
+{
+  "name": "lad-backend",
+  "version": "1.0.0",
+  "description": "LAD Production Backend - Feature-based SaaS Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "db:setup": "node scripts/setup_database.js",
+    "db:migrate": "node scripts/migrate_schema.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.18.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.5.0",
+    "bcryptjs": "^3.0.2",
+    "cheerio": "^1.1.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

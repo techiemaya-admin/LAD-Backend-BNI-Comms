@@ -1,0 +1,39 @@
+# Ignore files not needed in production
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env.local
+.env.development
+.env.test
+.env.test.local
+
+# Development files
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Testing
+coverage/
+*.coverage
+
+# Build artifacts (keep .git for build info)
+.nyc_output
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Development scripts
+scripts/inspect_database.js
+scripts/setup_schema.sql
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+tmp/
+temp/

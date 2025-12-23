@@ -1,0 +1,622 @@
+// Core Lead Model - Used across all dashboards (Pipeline, Analytics, Reports)
+const { query } = require('../../../shared/database/connection');
+
+// BASIC LEAD OPERATIONS
+// ========================
+async function getAllLeads(organizationId, filters = {}) {
+  let sql = `
+    SELECT l.*
+    FROM leads l
+    WHERE l.is_deleted = FALSE
+  `;
+  let params = [];
+  let paramIndex = 1; 
+
+  // Add organization filter only if organizationId is provided
+  if (organizationId) {
+    sql += ` AND l.organization_id = $${paramIndex}`;
+    params.push(organizationId);
+    paramIndex++;
+  }
+
+  // Add filters
+  if (filters.stage) {
+    sql += ` AND l.stage = $${paramIndex}`;
+    params.push(filters.stage);
+    paramIndex++;
+  }
+  if (filters.status) {
+    sql += ` AND l.status = $${paramIndex}`;
+    params.push(filters.status);
+    paramIndex++;
+  }
+
+  sql += ' ORDER BY l.created_at DESC';
+  
+  const result = await query(sql, params);
+  return result.rows;
+
+async function getLeadById(id) {
+  const leadQuery = `
+    SELECT l.*, 
+           ls.linkedin, ls.whatsapp, ls.instagram, ls.facebook,
+           lst.label as status_label,
+           lsg.label as stage_label
+    FROM leads l
+    LEFT JOIN lead_social ls ON l.id = ls.lead_id
+    LEFT JOIN lead_statuses lst ON l.status = lst.key
+    LEFT JOIN lead_stages lsg ON l.stage = lsg.key
+    WHERE l.id = $1
+  `;
+  
+  const queryResult = await poolQuery(leadQuery, [id]);
+  if (!queryResult.rows.length) return null;
+
+  const lead = queryResult.rows[0];
+
+  // Get all related data
+  const [tags, notes, comments, attachments, outreach, metrics] = await Promise.all([
+    getLeadTags(id),
+    getLeadNotes(id),
+    getLeadComments(id),
+    getLeadAttachments(id),
+    getLeadOutreach(id),
+    getLeadMetrics(id)
+  ]);
+
+  return {
+    ...lead,
+    tags,
+    notes,
+    comments,
+    attachments,
+    outreach_data: outreach,
+    metrics
+  };
+}
+
+async function createLead(leadData) {
+  const fields = Object.keys(leadData);
+  const values = Object.values(leadData);
+  const placeholders = fields.map((_, i) => `$${i + 1}`);
+  
+  const queryResult = await poolQuery(
+    `INSERT INTO leads (${fields.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
+    values
+  );
+  return queryResult.rows[0];
+}
+
+async function updateLead(id, updates) {
+  const fields = Object.keys(updates);
+  const values = Object.values(updates);
+  const setClause = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+  
+  const queryResult = await poolQuery(
+    `UPDATE leads SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${fields.length + 1} RETURNING *`,
+    [...values, id]
+  );
+  return queryResult.rows[0];
+}
+
+async function deleteLead(id) {
+  await poolQuery('UPDATE leads SET is_deleted = TRUE WHERE id = $1', [id]);
+  return true;
+}
+
+// ========================
+// LEAD SUB-RESOURCES
+// ========================
+async function getLeadTags(leadId) {
+  const queryResult = await poolQuery('SELECT tag FROM lead_tags WHERE lead_id = $1', [leadId]);
+  return queryResult.rows.map(r => r.tag);
+}
+
+async function addLeadTag(leadId, tag) {
+  await poolQuery(
+    'INSERT INTO lead_tags (lead_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [leadId, tag]
+  );
+  return true;
+}
+
+async function removeLeadTag(leadId, tag) {
+  await poolQuery('DELETE FROM lead_tags WHERE lead_id = $1 AND tag = $2', [leadId, tag]);
+  return true;
+}
+
+async function getLeadNotes(leadId) {
+  try {
+    // Try to get notes with user information - fallback to basic query if fails
+    const queryResult = await poolQuery(`
+      SELECT 
+        ln.*,
+        COALESCE(u.name, 'Former User') as user_name,
+        u.avatar as user_avatar
+      FROM lead_notes ln
+      LEFT JOIN users u ON ln.user_id = u.id
+      WHERE ln.lead_id = $1 
+      ORDER BY ln.created_at DESC
+    `, [leadId]);
+    
+    console.log('Notes query result:', queryResult.rows.length > 0 ? {
+      sample: rows[0],
+      user_id: rows[0]?.user_id,
+      user_name: rows[0]?.user_name,
+      hasUserTable: 'checked via LEFT JOIN'
+    } : 'No notes found');
+    
+    // If we got results but no user names, it means users aren't properly linked
+    // Let's add debug info and provide fallback names
+    const processedRows = queryResult.rows.map(row => ({
+      ...row,
+      user_name: row.user_name === 'Former User' ? `User ${row.user_id || 'Unknown'}` : row.user_name,
+      user_avatar: row.user_avatar || null
+    }));
+    
+    return processedRows;
+  } catch (err) {
+    // Fallback if user_id column doesn't exist or users table missing
+    console.log('Fallback to basic notes query:', err.message);
+    const queryResult = await poolQuery(
+      `SELECT 
+        *,
+        'Former User' as user_name,
+        NULL as user_avatar
+      FROM lead_notes 
+      WHERE lead_id = $1 
+      ORDER BY created_at DESC`,
+      [leadId]
+    );
+    return queryResult.rows;
+  }
+}
+
+async function addLeadNote(leadId, content, userId, userName, userAvatar) {
+  try {
+    // Try with user_id column first
+    const queryResult = await poolQuery(
+      'INSERT INTO lead_notes (lead_id, content, user_id) VALUES ($1, $2, $3) RETURNING *',
+      [leadId, content, userId]
+    );
+    
+    console.log('Inserted note with user_id:', userId, 'Note ID:', rows[0].id);
+    
+    // Get the inserted note with user information
+    const noteWithUser = await poolQuery(`
+      SELECT 
+        ln.*,
+        COALESCE(u.name, 'Former User') as user_name,
+        u.avatar as user_avatar
+      FROM lead_notes ln
+      LEFT JOIN users u ON ln.user_id = u.id
+      WHERE ln.id = $1
+    `, [rows[0].id]);
+    
+    console.log('Note with user lookup:', noteWithUser.rows[0]);
+    
+    // If user lookup failed, use fallback name but keep trying to use actual user data when possible
+    const queryResult = noteWithUser.rows[0] || rows[0];
+    if (result.user_name === 'Former User' && userId) {
+      // Try to get user name from a direct user query
+      try {
+        const userResult = await poolQuery('SELECT name, avatar FROM users WHERE id = $1', [userId]);
+        if (userResult.rows.length > 0) {
+          const user = userResult.rows[0];
+          result.user_name = user.name || `User ${userId}`;
+          console.log('Found user via direct query:', result.user_name);
+        } else {
+          result.user_name = `User ${userId}`;
+          console.log('No user found with ID:', userId);
+        }
+      } catch (userErr) {
+        console.log('Direct user query failed:', userErr.message);
+        result.user_name = `User ${userId}`;
+      }
+    }
+    
+    return result;
+  } catch (err) {
+    // Fallback if user_id column doesn't exist
+    console.log('Fallback to basic note insert:', err.message);
+    const queryResult = await poolQuery(
+      'INSERT INTO lead_notes (lead_id, content) VALUES ($1, $2) RETURNING *',
+      [leadId, content]
+    );
+    return { ...rows[0], user_name: userName || 'Former User', user_avatar: null };
+  }
+}
+
+async function deleteLeadNote(noteId) {
+  await poolQuery('DELETE FROM lead_notes WHERE id = $1', [noteId]);
+  return true;
+}
+
+async function updateLeadNote(noteId, content) {
+  const queryResult = await poolQuery(
+    'UPDATE lead_notes SET content = $1 WHERE id = $2 RETURNING *',
+    [content, noteId]
+  );
+  return queryResult.rows[0];
+}
+
+async function getLeadComments(leadId) {
+  try {
+    // Try to get comments with user information - fallback to basic query if fails
+    const queryResult = await poolQuery(`
+      SELECT 
+        lc.*,
+        COALESCE(u.name, 'Former User') as user_name,
+        u.avatar as user_avatar
+      FROM lead_comments lc
+      LEFT JOIN users u ON lc.user_id = u.id
+      WHERE lc.lead_id = $1 
+      ORDER BY lc.created_at DESC
+    `, [leadId]);
+    
+    console.log('Comments query result:', queryResult.rows.length > 0 ? {
+      sample: rows[0],
+      user_id: rows[0]?.user_id,
+      user_name: rows[0]?.user_name,
+      hasUserTable: 'checked via LEFT JOIN'
+    } : 'No comments found');
+    
+    // If we got results but no user names, it means users aren't properly linked
+    // Let's add debug info and provide fallback names
+    const processedRows = queryResult.rows.map(row => ({
+      ...row,
+      user_name: row.user_name === 'Former User' ? `User ${row.user_id || 'Unknown'}` : row.user_name,
+      user_avatar: row.user_avatar || null
+    }));
+    
+    return processedRows;
+  } catch (err) {
+    // Fallback if user_id column doesn't exist or users table missing
+    console.log('Fallback to basic comments query:', err.message);
+    const queryResult = await poolQuery(
+      `SELECT 
+        *,
+        'Former User' as user_name,
+        NULL as user_avatar
+      FROM lead_comments 
+      WHERE lead_id = $1 
+      ORDER BY created_at DESC`,
+      [leadId]
+    );
+    return queryResult.rows;
+  }
+}
+
+async function addLeadComment(leadId, content, userId, userName, userAvatar) {
+  try {
+    // Try with user_id column first
+    const queryResult = await poolQuery(
+      'INSERT INTO lead_comments (lead_id, content, user_id) VALUES ($1, $2, $3) RETURNING *',
+      [leadId, content, userId]
+    );
+    
+    console.log('Inserted comment with user_id:', userId, 'Comment ID:', rows[0].id);
+    
+    // Get the inserted comment with user information
+    const commentWithUser = await poolQuery(`
+      SELECT 
+        lc.*,
+        COALESCE(u.name, 'Former User') as user_name,
+        u.avatar as user_avatar
+      FROM lead_comments lc
+      LEFT JOIN users u ON lc.user_id = u.id
+      WHERE lc.id = $1
+    `, [rows[0].id]);
+    
+    console.log('Comment with user lookup:', commentWithUser.rows[0]);
+    
+    // If user lookup failed, use fallback name but keep trying to use actual user data when possible
+    const queryResult = commentWithUser.rows[0] || rows[0];
+    if (result.user_name === 'Former User' && userId) {
+      // Try to get user name from a direct user query
+      try {
+        const userResult = await poolQuery('SELECT name, avatar FROM users WHERE id = $1', [userId]);
+        if (userResult.rows.length > 0) {
+          const user = userResult.rows[0];
+          result.user_name = user.name || `User ${userId}`;
+          console.log('Found user via direct query:', result.user_name);
+        } else {
+          result.user_name = userName || `User ${userId}`;
+          console.log('No user found with ID:', userId, 'Using fallback:', result.user_name);
+        }
+      } catch (userErr) {
+        console.log('Direct user query failed:', userErr.message);
+        result.user_name = userName || `User ${userId}`;
+      }
+    }
+    
+    return result;
+  } catch (err) {
+    // Fallback if user_id column doesn't exist
+    console.log('Fallback to basic comment insert:', err.message);
+    const queryResult = await poolQuery(
+      'INSERT INTO lead_comments (lead_id, content) VALUES ($1, $2) RETURNING *',
+      [leadId, content]
+    );
+    return { ...rows[0], user_name: userName || 'Former User', user_avatar: null };
+  }
+}
+
+async function deleteLeadComment(commentId) {
+  await poolQuery('DELETE FROM lead_comments WHERE id = $1', [commentId]);
+  return true;
+}
+
+async function updateLeadComment(commentId, content) {
+  const queryResult = await poolQuery(
+    'UPDATE lead_comments SET content = $1 WHERE id = $2 RETURNING *',
+    [content, commentId]
+  );
+  return queryResult.rows[0];
+}
+
+async function getLeadAttachments(leadId) {
+  try {
+    // Try to get attachments with user information - fallback to basic query if fails
+    const queryResult = await poolQuery(`
+      SELECT 
+        la.*,
+        COALESCE(u.name, 'Former User') as uploaded_by_name,
+        u.avatar as uploaded_by_avatar
+      FROM lead_attachments la
+      LEFT JOIN users u ON la.user_id = u.id
+      WHERE la.lead_id = $1 
+      ORDER BY la.uploaded_at DESC
+    `, [leadId]);
+    
+    // If we got results but no user names, it means users aren't properly linked
+    // Let's add debug info and provide fallback names
+    const processedRows = queryResult.rows.map(row => ({
+      ...row,
+      uploaded_by_name: row.uploaded_by_name || `User ${row.user_id || 'Unknown'}`,
+      uploaded_by_avatar: row.uploaded_by_avatar || null
+    }));
+    
+    return processedRows;
+  } catch (err) {
+    // Fallback if user_id column doesn't exist or users table missing
+    console.log('Fallback to basic attachments query:', err.message);
+    const queryResult = await poolQuery(
+      `SELECT 
+        *,
+        'Former User' as uploaded_by_name,
+        NULL as uploaded_by_avatar
+      FROM lead_attachments 
+      WHERE lead_id = $1 
+      ORDER BY uploaded_at DESC`,
+      [leadId]
+    );
+    return queryResult.rows;
+  }
+}
+
+async function addLeadAttachment(leadId, attachmentData, userId) {
+  // Handle both old format (url string) and new format (object with filename)
+  if (typeof attachmentData === 'string') {
+    // Legacy format - just URL
+    const queryResult = await poolQuery(
+      'INSERT INTO lead_attachments (lead_id, url) VALUES ($1, $2) RETURNING *',
+      [leadId, attachmentData]
+    );
+    return queryResult.rows[0];
+  } else {
+    // New format - with file_name and user_id (if columns exist)
+    const { url, filename } = attachmentData;
+    
+    try {
+      // Try with user_id column first
+      const queryResult = await poolQuery(
+        'INSERT INTO lead_attachments (lead_id, url, file_name, user_id) VALUES ($1, $2, $3, $4) RETURNING *',
+        [leadId, url, filename, userId]
+      );
+      return queryResult.rows[0];
+    } catch (err) {
+      // If user_id column doesn't exist, try without it
+      if (err.message.includes('column "user_id" of relation "lead_attachments" does not exist')) {
+        const queryResult = await poolQuery(
+          'INSERT INTO lead_attachments (lead_id, url, file_name) VALUES ($1, $2, $3) RETURNING *',
+          [leadId, url, filename]
+        );
+        return queryResult.rows[0];
+      }
+      throw err;
+    }
+  }
+}
+
+async function deleteLeadAttachment(attachmentId) {
+  await poolQuery('DELETE FROM lead_attachments WHERE id = $1', [attachmentId]);
+  return true;
+}
+
+async function updateLeadSocial(leadId, socialData) {
+  const queryResult = await poolQuery(
+    `INSERT INTO lead_social (lead_id, linkedin, whatsapp, instagram, facebook) 
+     VALUES ($1, $2, $3, $4, $5) 
+     ON CONFLICT (lead_id) 
+     DO UPDATE SET linkedin = $2, whatsapp = $3, instagram = $4, facebook = $5 
+     RETURNING *`,
+    [leadId, socialData.linkedin, socialData.whatsapp, socialData.instagram, socialData.facebook]
+  );
+  return queryResult.rows[0];
+}
+
+async function getLeadOutreach(leadId) {
+  const queryResult = await poolQuery(
+    'SELECT * FROM lead_outreach_data WHERE lead_id = $1 ORDER BY date DESC',
+    [leadId]
+  );
+  return queryResult.rows;
+}
+
+async function getLeadMetrics(leadId) {
+  const queryResult = await poolQuery(
+    'SELECT * FROM lead_metrics WHERE lead_id = $1 ORDER BY recorded_at DESC',
+    [leadId]
+  );
+  return queryResult.rows;
+}
+
+async function getLeadsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+
+  // Build parameter placeholders for SQL
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+
+  // Main lead + social + status + stage in one query
+  const leadQuery = `
+    SELECT 
+      l.*, 
+      ls.linkedin, ls.whatsapp, ls.instagram, ls.facebook,
+      lst.label as status_label,
+      lsg.label as stage_label
+    FROM leads l
+    LEFT JOIN lead_social ls ON l.id = ls.lead_id
+    LEFT JOIN lead_statuses lst ON l.status = lst.key
+    LEFT JOIN lead_stages lsg ON l.stage = lsg.key
+    WHERE l.id IN (${placeholders}) AND l.is_deleted = FALSE
+  `;
+
+  const queryResult = await poolQuery(leadQuery, ids);
+
+  if (leadRows.length === 0) return [];
+
+  // Fetch all tags in one query instead of per-lead
+  const tagQuery = `
+    SELECT lead_id, tag 
+    FROM lead_tags 
+    WHERE lead_id IN (${placeholders})
+  `;
+  const queryResult = await poolQuery(tagQuery, ids);
+
+  // Group tags by lead_id
+  const tagsByLead = tagRows.reduce((acc, row) => {
+    if (!acc[row.lead_id]) acc[row.lead_id] = [];
+    acc[row.lead_id].push(row.tag);
+    return acc;
+  }, {});
+
+  // Merge tags into lead objects
+  const leads = leadRows.map(lead => ({
+    ...lead,
+    tags: tagsByLead[lead.id] || []
+  }));
+
+  return leads;
+}
+
+
+// ========================
+// ANALYTICS QUERIES (For Dashboard Use)
+// ========================
+async function getLeadAnalytics(organizationId, dateRange = {}) {
+  let query = `
+    SELECT 
+      COUNT(*) as total_leads,
+      COUNT(CASE WHEN stage = 'won' THEN 1 END) as won_deals,
+      COUNT(CASE WHEN stage = 'lost' THEN 1 END) as lost_deals,
+      SUM(CASE WHEN stage = 'won' THEN amount ELSE 0 END) as won_revenue,
+      AVG(amount) as avg_deal_size,
+      COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as leads_last_30_days
+    FROM leads 
+    WHERE organization_id = $1 AND is_deleted = FALSE
+  `;
+  
+  let params = [organizationId];
+  
+  if (dateRange.start && dateRange.end) {
+    query += ' AND created_at BETWEEN $2 AND $3';
+    params.push(dateRange.start, dateRange.end);
+  }
+  
+  const queryResult = await poolQuery(query, params);
+  return queryResult.rows[0];
+}
+
+// Check if any leads exist in a specific stage
+async function getLeadsInStage(stageKey) {
+  const queryResult = await poolQuery(
+    `SELECT id FROM leads WHERE stage = $1 AND is_deleted = FALSE LIMIT 1`,
+    [stageKey]
+  );
+  return queryResult.rows;
+}
+
+async function getLeadsByStage(organizationId) {
+  const queryResult = await poolQuery(
+    `SELECT stage, COUNT(*) as count, SUM(amount) as total_value 
+     FROM leads 
+     WHERE organization_id = $1 AND is_deleted = FALSE 
+     GROUP BY stage 
+     ORDER BY count DESC`,
+    [organizationId]
+  );
+  return queryResult.rows;
+}
+
+// Legacy function for backwards compatibility
+async function listLeads() {
+  const queryResult = await poolQuery('SELECT * FROM leads WHERE is_deleted = FALSE');
+  return queryResult.rows;
+}
+
+// Legacy function for backwards compatibility  
+async function getLeadConversionStats() {
+  const queryResult = await poolQuery(`
+    SELECT 
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE status IN ('active', 'won')) as contacted,
+      COUNT(*) FILTER (WHERE stage IN ('qualified', 'proposal', 'negotiation', 'won')) as qualified,
+      COUNT(*) FILTER (WHERE status = 'won') as won
+    FROM leads WHERE is_deleted = FALSE
+  `);
+  const stats = rows[0];
+  return {
+    totalLeads: parseInt(stats.total_leads),
+    contactedLeads: parseInt(stats.contacted),
+    qualifiedLeads: parseInt(stats.qualified),
+    wonLeads: parseInt(stats.won),
+  };
+}
+
+module.exports = {
+  // Basic CRUD
+  getAllLeads,
+  getLeadById,
+  createLead,
+  updateLead,
+  deleteLead,
+  
+  // Sub-resources
+  getLeadTags,
+  addLeadTag,
+  removeLeadTag,
+  getLeadNotes,
+  addLeadNote,
+  deleteLeadNote,
+  updateLeadNote,
+  getLeadComments,
+  addLeadComment,
+  deleteLeadComment,
+  updateLeadComment,
+  getLeadAttachments,
+  addLeadAttachment,
+  deleteLeadAttachment,
+  updateLeadSocial,
+  getLeadOutreach,
+  getLeadMetrics,
+  
+  // Analytics (for dashboards)
+  getLeadAnalytics,
+  getLeadsByStage,
+  getLeadsInStage,
+  getLeadsByIds,
+  // Legacy compatibility
+  listLeads,
+  getLeadConversionStats
+};

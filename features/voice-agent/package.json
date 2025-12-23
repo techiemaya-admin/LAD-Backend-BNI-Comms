@@ -1,0 +1,27 @@
+{
+  "name": "@backend/voice-agent",
+  "version": "1.0.0",
+  "description": "Voice Agent feature module with VAPI integration for AI-powered voice calls",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "voice",
+    "agent",
+    "vapi",
+    "ai",
+    "calls",
+    "telephony"
+  ],
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.0"
+  },
+  "peerDependencies": {
+    "pg": "^8.11.0"
+  },
+  "author": "",
+  "license": "UNLICENSED"
+}
