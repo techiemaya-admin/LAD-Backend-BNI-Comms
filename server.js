@@ -2,6 +2,7 @@
 /**
  * LAD Backend Server
  * Production-grade SaaS platform with feature-based architecture
+ * Version: 1.0.1
  */
 
 require('dotenv').config();

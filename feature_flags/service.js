@@ -92,7 +92,7 @@ class FeatureFlagService {
           config,
           is_enabled
         FROM feature_flags
-        WHERE (organization_id = $1::uuid OR user_id = $2::uuid)
+        WHERE (tenant_id = $1::uuid OR user_id = $2::uuid)
         AND is_enabled = true
         ORDER BY feature_key
       `;
@@ -111,7 +111,7 @@ class FeatureFlagService {
 
   /**
    * Query feature access with plan and override logic
-   * Works with our new lad_LAD schema (organizations table instead of clients)
+   * Works with lad_dev schema using tenant_id column
    */
   async queryFeatureAccess(organizationId, featureKey, userId) {
     const queryText = `
@@ -119,7 +119,7 @@ class FeatureFlagService {
       FROM feature_flags
       WHERE feature_key = $2
       AND (
-        organization_id = $1::uuid
+        tenant_id = $1::uuid
         OR (user_id = $3::uuid AND user_id IS NOT NULL)
       )
       ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 ELSE 2 END

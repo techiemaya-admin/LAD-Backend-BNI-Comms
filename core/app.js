@@ -88,6 +88,41 @@ class CoreApplication {
     this.app.use(trackClientFeatures);
   }
 
+  /**
+   * Create feature flag middleware for a specific feature
+   */
+  createFeatureMiddleware(featureKey) {
+    return async (req, res, next) => {
+      // Skip feature check for non-authenticated requests (will be caught by auth middleware)
+      if (!req.user) {
+        return next();
+      }
+
+      const organizationId = req.user?.tenantId || req.user?.organizationId;
+      const userId = req.user?.userId;
+      
+      try {
+        const isEnabled = await this.featureFlagService.isEnabled(organizationId, featureKey, userId);
+        
+        if (!isEnabled) {
+          return res.status(403).json({
+            success: false,
+            error: 'Feature not available',
+            feature: featureKey
+          });
+        }
+        
+        next();
+      } catch (error) {
+        console.error(`Error checking feature flag for ${featureKey}:`, error);
+        return res.status(500).json({
+          success: false,
+          error: 'Error checking feature access'
+        });
+      }
+    };
+  }
+
   setupCoreRoutes() {
     // Health check endpoint for Docker/Cloud Run
     this.app.get('/health', (req, res) => {
@@ -104,14 +139,10 @@ class CoreApplication {
     this.app.use('/api/billing', billingRoutes);
     this.app.use('/api/users', userRoutes);
     
-    // Campaigns routes (always available for existing customers)
-    try {
-      const campaignsRoutes = require('../features/campaigns/campaigns');
-      this.app.use('/api/campaigns', campaignsRoutes);
-      console.log('✅ Campaigns routes mounted (always available)');
-    } catch (error) {
-      console.warn('⚠️  Failed to mount campaigns routes:', error.message);
-    }
+    // Campaigns routes with feature flag check
+    const campaignsRoutes = require('../features/campaigns/routes/index');
+    this.app.use('/api/campaigns', this.createFeatureMiddleware('campaigns'), campaignsRoutes);
+    console.log('✅ Campaigns routes mounted with feature flag check');
     
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
