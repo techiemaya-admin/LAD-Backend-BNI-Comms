@@ -79,4 +79,3 @@ substitutions:
   _SERVICE_NAME: 'lad-backend-develop'
   _ENV: 'develop'
   _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
-
