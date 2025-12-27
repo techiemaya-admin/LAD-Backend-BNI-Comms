@@ -1,5 +1,5 @@
 /**
- * Voice Agent Feature Manifest
+ * Voice Agent Feature Manifest 2.0.2
  * 
  * AI-powered voice calling system with VAPI integration
  * Supports single calls, batch calling, recording management, and multi-agent support
@@ -26,6 +26,9 @@ module.exports = {
     '/calls/:id/recording-signed-url',
     '/calls/recent',
     '/calls/stats',
+    '/calllogs',
+    '/calllogs/:call_log_id',
+    '/calllogs/batch/:batch_id',
     '/resolve-phones',
     '/update-summary',
     '/settings',
@@ -296,6 +299,65 @@ module.exports = {
         'Generates GCS signed URL via BASE_URL/recordings/calls/:id/signed-url',
         'Returns publicly accessible URL valid for specified hours'
       ]
+    },
+    {
+      method: 'GET',
+      path: '/calllogs',
+      description: 'Get list of call logs',
+      auth: true,
+      params: {
+        query: {
+          page: 'number (optional, default: 1)',
+          limit: 'number (optional, default: 20)',
+          status: 'string (optional, filter by status)',
+          date_from: 'string (optional, ISO date)',
+          date_to: 'string (optional, ISO date)'
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/calllogs/:call_log_id',
+      description: 'Get specific call log by ID',
+      auth: true,
+      params: {
+        path: {
+          call_log_id: 'string (required, call log ID)'
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/calllogs/batch/:batch_id',
+      description: 'Get batch call logs for a specific batch_id',
+      auth: true,
+      params: {
+        path: {
+          batch_id: 'string (required, batch identifier)'
+        }
+      },
+      response: {
+        success: 'boolean',
+        batch_id: 'string',
+        count: 'number',
+        results: [
+          {
+            call_log_id: 'string | null',
+            batch_id: 'string',
+            batch_entry_id: 'string | null',
+            to_number: 'string | null',
+            status: 'string',
+            index: 'number',
+            lead_id: 'string | null',
+            added_context: 'string | null',
+            room_name: 'string | null',
+            dispatch_id: 'string | null',
+            error: 'string | null',
+            started_at: 'string | null',
+            ended_at: 'string | null'
+          }
+        ]
+      }
     },
     {
       method: 'POST',

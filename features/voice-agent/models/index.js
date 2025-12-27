@@ -1,5 +1,5 @@
 /**
- * Voice Agent Models Index
+ * Voice Agent Models Index1.0
  * 
  * Exports all voice agent models for easy import
  * Also re-exports core models for convenience
@@ -12,7 +12,7 @@ const PhoneNumberModel = require('./PhoneNumberModel');
 const PhoneResolverModel = require('./PhoneResolverModel');
 
 // Core models (from backend/core/models)
-const { TenantModel, UserModel, MembershipModel } = require('../../../core/models');
+// const { TenantModel, UserModel, MembershipModel } = require('../../../core/models');
 
 module.exports = {
   // Voice agent models
@@ -23,7 +23,7 @@ module.exports = {
   PhoneResolverModel,
   
   // Core models (re-exported for convenience)
-  TenantModel,
-  UserModel,
-  MembershipModel
+  // TenantModel,
+  // UserModel,
+  // MembershipModel
 };

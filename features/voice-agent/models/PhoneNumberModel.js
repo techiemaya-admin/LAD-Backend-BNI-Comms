@@ -1,6 +1,6 @@
 /**
  * Phone Number Model
- * 
+ * 1.0
  * Business entity for phone numbers used in voice calls
  * Uses tenant_id for multi-tenancy isolation
  * 
@@ -10,7 +10,8 @@
 
 class PhoneNumberModel {
   constructor(db) {
-    this.pool = db;
+    // Prefer injected db pool; fall back to shared db module
+    this.db = db;
   }
 
   /**
@@ -19,24 +20,14 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Phone numbers
    */
-  async getAllPhoneNumbers(tenantId) {
+  async getAllPhoneNumbers(schema, tenantId) {
     const query = `
-      SELECT 
-        id,
-        tenant_id,
-        phone_number,
-        provider,
-        number_type,
-        capabilities,
-        is_active,
-        created_at,
-        updated_at
-      FROM phone_numbers
-      WHERE tenant_id = $1 AND is_active = true
-      ORDER BY phone_number ASC
+      SELECT *
+      FROM ${schema}.voice_agent_numbers
+      WHERE tenant_id = $1 ORDER BY created_at DESC
     `;
 
-    const result = await this.pool.query(query, [tenantId]);
+    const result = await this.db.query(query, [tenantId]);
     return result.rows;
   }
 
@@ -47,7 +38,7 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Phone number or null
    */
-  async getPhoneNumberById(numberId, tenantId) {
+  async getPhoneNumberById(schema, numberId, tenantId) {
     const query = `
       SELECT 
         id,
@@ -60,11 +51,11 @@ class PhoneNumberModel {
         metadata,
         created_at,
         updated_at
-      FROM phone_numbers
+      FROM ${schema}.voice_agent_numbers
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(query, [numberId, tenantId]);
+    const result = await this.db.query(query, [numberId, tenantId]);
     return result.rows[0] || null;
   }
 
@@ -75,21 +66,22 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Phone number record or null
    */
-  async getByPhoneNumber(phoneNumber, tenantId) {
+  async getByPhoneNumber(schema, { countryCode, baseNumber }, tenantId) {
     const query = `
       SELECT 
         id,
         tenant_id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         number_type,
         capabilities,
         is_active
-      FROM phone_numbers
-      WHERE phone_number = $1 AND tenant_id = $2
+      FROM ${schema}.voice_agent_numbers
+      WHERE country_code = $1 AND base_number = $2 AND tenant_id = $3
     `;
 
-    const result = await this.pool.query(query, [phoneNumber, tenantId]);
+    const result = await this.db.query(query, [countryCode, baseNumber, tenantId]);
     return result.rows[0] || null;
   }
 
@@ -100,24 +92,30 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Available phone numbers
    */
-  async getAvailableNumbersForUser(userId, tenantId) {
+  async getAvailableNumbersForUser(schema, userId, tenantId) {
     const query = `
       SELECT 
         id,
-        phone_number,
+        tenant_id,
+        country_code,
+        base_number,
         provider,
         number_type,
-        capabilities
-      FROM phone_numbers
+        capabilities,
+        is_active,
+        metadata,
+        created_at,
+        updated_at
+      FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
         AND is_active = true
-      ORDER BY phone_number ASC
+      ORDER BY created_at DESC
     `;
 
     // Note: If you have user-specific number permissions, add a JOIN to user_number_permissions table
     // For now, all active numbers are available to all users in the tenant
 
-    const result = await this.pool.query(query, [tenantId]);
+    const result = await this.db.query(query, [tenantId]);
     return result.rows;
   }
 
@@ -134,6 +132,7 @@ class PhoneNumberModel {
    * @returns {Promise<Object>} Created phone number
    */
   async createPhoneNumber({
+    schema,
     tenantId,
     phoneNumber,
     provider = 'custom',
@@ -142,9 +141,10 @@ class PhoneNumberModel {
     metadata = {}
   }) {
     const query = `
-      INSERT INTO phone_numbers (
+      INSERT INTO ${schema}.voice_agent_numbers (
         tenant_id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         number_type,
         capabilities,
@@ -152,11 +152,12 @@ class PhoneNumberModel {
         metadata,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, true, $6, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, NOW(), NOW())
       RETURNING 
         id,
         tenant_id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         number_type,
         capabilities,
@@ -165,14 +166,15 @@ class PhoneNumberModel {
 
     const values = [
       tenantId,
-      phoneNumber,
+      phoneNumber.countryCode,
+      phoneNumber.baseNumber,
       provider,
       numberType,
       JSON.stringify(capabilities),
       JSON.stringify(metadata)
     ];
 
-    const result = await this.pool.query(query, values);
+    const result = await this.db.query(query, values);
     return result.rows[0];
   }
 
@@ -184,13 +186,13 @@ class PhoneNumberModel {
    * @param {Object} updates - Fields to update
    * @returns {Promise<Object>} Updated phone number
    */
-  async updatePhoneNumber(numberId, tenantId, updates) {
+  async updatePhoneNumber(schema, numberId, tenantId, updates) {
     const setClauses = ['updated_at = NOW()'];
     const values = [numberId, tenantId];
     let paramIndex = 3;
 
     if (updates.phoneNumber !== undefined) {
-      setClauses.push(`phone_number = $${paramIndex}`);
+      setClauses.push(`country_code = $${paramIndex}`);
       values.push(updates.phoneNumber);
       paramIndex++;
     }
@@ -221,13 +223,14 @@ class PhoneNumberModel {
     }
 
     const query = `
-      UPDATE phone_numbers
+      UPDATE ${schema}.voice_agent_numbers
       SET ${setClauses.join(', ')}
       WHERE id = $1 AND tenant_id = $2
       RETURNING 
         id,
         tenant_id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         number_type,
         capabilities,
@@ -246,9 +249,9 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<boolean>} Success
    */
-  async deletePhoneNumber(numberId, tenantId) {
+  async deletePhoneNumber(schema, numberId, tenantId) {
     const query = `
-      UPDATE phone_numbers
+      UPDATE ${schema}.voice_agent_numbers
       SET is_active = false, updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2
     `;
@@ -264,22 +267,23 @@ class PhoneNumberModel {
    * @param {string} capability - Capability to filter by (e.g., 'voice', 'sms')
    * @returns {Promise<Array>} Matching phone numbers
    */
-  async getPhoneNumbersByCapability(tenantId, capability) {
+  async getPhoneNumbersByCapability(schema, tenantId, capability) {
     const query = `
       SELECT 
         id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         number_type,
         capabilities
-      FROM phone_numbers
+      FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
         AND is_active = true
         AND capabilities ? $2
-      ORDER BY phone_number ASC
+      ORDER BY country_code, base_number ASC
     `;
 
-    const result = await this.pool.query(query, [tenantId, capability]);
+    const result = await this.db.query(query, [tenantId, capability]);
     return result.rows;
   }
 
@@ -289,14 +293,15 @@ class PhoneNumberModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Default phone number or null
    */
-  async getDefaultOutboundNumber(tenantId) {
+  async getDefaultOutboundNumber(schema, tenantId) {
     const query = `
       SELECT 
         id,
-        phone_number,
+        country_code,
+        base_number,
         provider,
         capabilities
-      FROM phone_numbers
+      FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
         AND is_active = true
         AND capabilities ? 'voice'

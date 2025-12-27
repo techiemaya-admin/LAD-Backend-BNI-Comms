@@ -1,5 +1,5 @@
 /**
- * Call Logging Service
+ * Call Logging Service1.0
  * 
  * Handles call log creation and management
  * Works with VoiceCallModel to track all voice call activity
@@ -161,6 +161,10 @@ class CallLoggingService {
    */
   async getRecentCalls(tenantId, filters = {}) {
     return this.callModel.getRecentCalls(tenantId, 50, filters);
+  }
+
+  async getCallLogs(tenantId, filters = {}, limit = 50) {
+    return this.callModel.getCallLogs(tenantId, filters, limit);
   }
 
   /**

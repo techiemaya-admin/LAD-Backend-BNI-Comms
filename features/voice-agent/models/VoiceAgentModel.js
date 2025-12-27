@@ -1,6 +1,6 @@
 /**
  * Voice Agent Model
- * 
+ * 1.0
  * Business entity for voice agents (AI voice assistants)
  * Uses tenant_id for multi-tenancy isolation
  * 
@@ -10,7 +10,8 @@
 
 class VoiceAgentModel {
   constructor(db) {
-    this.pool = db;
+    // Use injected pool when provided (from controllers), fallback to shared db module
+    this.db = db;
   }
 
   /**
@@ -19,23 +20,18 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Voice agents
    */
-  async getAllAgents(tenantId) {
+  async getAllAgents(schema, tenantId) {
     const query = `
-      SELECT 
-        id,
-        tenant_id,
-        agent_name,
-        agent_language,
-        voice_id,
-        is_active,
-        created_at,
-        updated_at
-      FROM voice_agents
-      WHERE tenant_id = $1 AND is_active = true
-      ORDER BY agent_name ASC
+      SELECT
+        vac.*,
+        vav.*
+      FROM ${schema}.voice_agent_config_view vac
+      JOIN ${schema}.voice_agent_voices vav
+        ON vav.id = vac.voice_id
+      WHERE vac.tenant_id = $1
     `;
 
-    const result = await this.pool.query(query, [tenantId]);
+    const result = await this.db.query(query, [tenantId]);
     return result.rows;
   }
 
@@ -46,23 +42,21 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Voice agent or null
    */
-  async getAgentById(agentId, tenantId) {
+  async getAgentById(schema, agentId, tenantId) {
     const query = `
       SELECT 
         id,
         tenant_id,
-        agent_name,
-        agent_language,
+        name,
+        language,
         voice_id,
-        is_active,
-        metadata,
         created_at,
         updated_at
-      FROM voice_agents
+      FROM ${schema}.voice_agents
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(query, [agentId, tenantId]);
+    const result = await this.db.query(query, [agentId, tenantId]);
     return result.rows[0] || null;
   }
 
@@ -73,23 +67,21 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Voice agent or null
    */
-  async getAgentByName(agentName, tenantId) {
+  async getAgentByName(schema, agentName, tenantId) {
     const query = `
       SELECT 
         id,
         tenant_id,
-        agent_name,
-        agent_language,
+        name,
+        language,
         voice_id,
-        is_active,
-        metadata,
         created_at,
         updated_at
-      FROM voice_agents
-      WHERE agent_name = $1 AND tenant_id = $2
+      FROM ${schema}.voice_agents
+      WHERE name = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(query, [agentName, tenantId]);
+    const result = await this.db.query(query, [agentName, tenantId]);
     return result.rows[0] || null;
   }
 
@@ -100,14 +92,14 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<string|null>} Voice ID or null
    */
-  async getVoiceIdByAgentId(agentId, tenantId) {
+  async getVoiceIdByAgentId(schema, agentId, tenantId) {
     const query = `
       SELECT voice_id
-      FROM voice_agents
+      FROM ${schema}.voice_agents
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(query, [agentId, tenantId]);
+    const result = await this.db.query(query, [agentId, tenantId]);
     return result.rows[0]?.voice_id || null;
   }
 
@@ -119,28 +111,27 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Available agents with voice details
    */
-  async getAvailableAgentsForUser(userId, tenantId) {
-    const query = `
-      SELECT 
-        va.id as agent_id,
-        va.agent_name,
-        va.agent_language,
-        va.voice_id,
-        v.description as voice_description,
-        v.voice_sample_url
-      FROM voice_agents va
-      LEFT JOIN voices v ON va.voice_id = v.id AND v.tenant_id = va.tenant_id
-      WHERE va.tenant_id = $1 
-        AND va.is_active = true
-      ORDER BY va.agent_name ASC
-    `;
+  // async getAvailableAgentsForUser(userId, tenantId) {
+  //   const query = `
+  //     SELECT 
+  //       va.id as agent_id,
+  //       va.name as agent_name,
+  //       va.language as agent_language,
+  //       va.voice_id,
+  //       v.description as voice_description,
+  //       v.voice_sample_url
+  //     FROM lad_dev.voice_agents va
+  //     LEFT JOIN voices v ON va.voice_id = v.id AND v.tenant_id = va.tenant_id
+  //     WHERE va.tenant_id = $1 
+  //     ORDER BY va.name ASC
+  //   `;
 
-    // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
-    // For now, all active agents are available to all users in the tenant
+  //   // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
+  //   // For now, all active agents are available to all users in the tenant
 
-    const result = await this.pool.query(query, [tenantId]);
-    return result.rows;
-  }
+  //   const result = await this.pool.query(query, [tenantId]);
+  //   return result.rows;
+  // }
 
   /**
    * Create a new agent (tenant-isolated)
@@ -154,30 +145,33 @@ class VoiceAgentModel {
    * @returns {Promise<Object>} Created agent
    */
   async createAgent({
+    schema,
     tenantId,
     agentName,
     agentLanguage = 'en',
     voiceId,
-    metadata = {}
+    metadata = {},
   }) {
     const query = `
-      INSERT INTO voice_agents (
+      INSERT INTO ${schema}.voice_agents (
         tenant_id,
-        agent_name,
-        agent_language,
+        name,
+        language,
         voice_id,
-        is_active,
-        metadata,
+        gender,
+        agent_instructions,
+        system_instructions,
+        outbound_starter_prompt,
+        inbound_starter_prompt,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, true, $5, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NOW(), NOW())
       RETURNING 
         id,
         tenant_id,
-        agent_name,
-        agent_language,
+        name,
+        language,
         voice_id,
-        is_active,
         created_at
     `;
 
@@ -185,11 +179,10 @@ class VoiceAgentModel {
       tenantId,
       agentName,
       agentLanguage,
-      voiceId,
-      JSON.stringify(metadata)
+      voiceId
     ];
 
-    const result = await this.pool.query(query, values);
+    const result = await this.db.query(query, values);
     return result.rows[0];
   }
 
@@ -201,18 +194,18 @@ class VoiceAgentModel {
    * @param {Object} updates - Fields to update
    * @returns {Promise<Object>} Updated agent
    */
-  async updateAgent(agentId, tenantId, updates) {
+  async updateAgent(schema, agentId, tenantId, updates) {
     const setClauses = ['updated_at = NOW()'];
     const values = [agentId, tenantId];
     let paramIndex = 3;
 
     if (updates.agentName !== undefined) {
-      setClauses.push(`agent_name = $${paramIndex}`);
+      setClauses.push(`name = $${paramIndex}`);
       values.push(updates.agentName);
       paramIndex++;
     }
     if (updates.agentLanguage !== undefined) {
-      setClauses.push(`agent_language = $${paramIndex}`);
+      setClauses.push(`language = $${paramIndex}`);
       values.push(updates.agentLanguage);
       paramIndex++;
     }
@@ -221,33 +214,20 @@ class VoiceAgentModel {
       values.push(updates.voiceId);
       paramIndex++;
     }
-    if (updates.isActive !== undefined) {
-      setClauses.push(`is_active = $${paramIndex}`);
-      values.push(updates.isActive);
-      paramIndex++;
-    }
-    if (updates.metadata !== undefined) {
-      setClauses.push(`metadata = $${paramIndex}`);
-      values.push(JSON.stringify(updates.metadata));
-      paramIndex++;
-    }
-
     const query = `
-      UPDATE voice_agents
+      UPDATE ${schema}.voice_agents
       SET ${setClauses.join(', ')}
       WHERE id = $1 AND tenant_id = $2
       RETURNING 
         id,
         tenant_id,
-        agent_name,
-        agent_language,
+        name,
+        language,
         voice_id,
-        is_active,
-        metadata,
         updated_at
     `;
 
-    const result = await this.pool.query(query, values);
+    const result = await this.db.query(query, values);
     return result.rows[0];
   }
 
@@ -258,14 +238,13 @@ class VoiceAgentModel {
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<boolean>} Success
    */
-  async deleteAgent(agentId, tenantId) {
+  async deleteAgent(schema, agentId, tenantId) {
     const query = `
-      UPDATE voice_agents
-      SET is_active = false, updated_at = NOW()
+      DELETE FROM ${schema}.voice_agents
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(query, [agentId, tenantId]);
+    const result = await this.db.query(query, [agentId, tenantId]);
     return result.rowCount > 0;
   }
 }

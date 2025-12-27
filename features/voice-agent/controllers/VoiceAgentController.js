@@ -1,6 +1,6 @@
 /**
  * Voice Agent Controller
- * 
+ * 1.0
  * Handles voice agent, voice profile, and phone number management
  * Includes user-specific endpoints for available resources
  */
@@ -11,6 +11,10 @@ const {
   PhoneNumberModel 
 } = require('../models');
 const { RecordingService } = require('../services');
+const { getSchemaFromRequest } = require('../utils/schemaHelper');
+const { getLogger } = require('../utils/logger');
+
+const logger = getLogger();
 
 class VoiceAgentController {
   constructor(db) {
@@ -38,7 +42,7 @@ class VoiceAgentController {
         count: agents.length
       });
     } catch (error) {
-      console.error('Get user available agents error:', error);
+      logger.error('Get user available agents error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch available agents',
@@ -65,7 +69,7 @@ class VoiceAgentController {
         count: numbers.length
       });
     } catch (error) {
-      console.error('Get user available numbers error:', error);
+      logger.error('Get user available numbers error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch available numbers',
@@ -119,7 +123,7 @@ class VoiceAgentController {
         }
       });
     } catch (error) {
-      console.error('Get voice sample signed URL error:', error);
+      logger.error('Get voice sample signed URL error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to generate signed URL',
@@ -149,10 +153,10 @@ class VoiceAgentController {
         });
       }
 
-      // Get voice details
-      const voice = await this.voiceModel.getVoiceById(agent.voice_id, tenantId);
-      
-      if (!voice || !voice.voice_sample_url) {
+      // Get voice sample URL for this agent's voice
+      const voiceSampleUrl = await this.voiceModel.getVoiceSampleUrl(agent.voice_id, tenantId);
+
+      if (!voiceSampleUrl) {
         return res.status(404).json({
           success: false,
           error: 'Voice sample not found for this agent'
@@ -162,7 +166,7 @@ class VoiceAgentController {
       // Get signed URL
       const result = await this.recordingService.getAgentVoiceSampleSignedUrl(
         agent.voice_id,
-        voice.voice_sample_url,
+        voiceSampleUrl,
         expirationHours
       );
 
@@ -185,7 +189,7 @@ class VoiceAgentController {
         }
       });
     } catch (error) {
-      console.error('Get agent voice sample signed URL error:', error);
+      logger.error('Get agent voice sample signed URL error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to generate signed URL',
@@ -202,6 +206,13 @@ class VoiceAgentController {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
 
+      logger.info('[/api/voiceagent/all] request context:', {
+        user: req.user,
+        tenantId,
+        headersTenantId: req.headers['x-tenant-id'],
+        queryTenantId: req.query.tenant_id,
+      });
+
       const agents = await this.agentModel.getAllAgents(tenantId);
 
       res.json({
@@ -210,7 +221,7 @@ class VoiceAgentController {
         count: agents.length
       });
     } catch (error) {
-      console.error('Get all agents error:', error);
+      logger.error('Get all agents error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch agents',
@@ -222,19 +233,6 @@ class VoiceAgentController {
   /**
    * GET /agent/:name
    * Get agent by name
-   */
-  async getAgentByName(req, res) {
-    try {
-      const { name } = req.params;
-      const tenantId = req.tenantId || req.user?.tenantId;
-
-      const agent = await this.agentModel.getAgentByName(name, tenantId);
-
-      if (!agent) {
-        return res.status(404).json({
-          success: false,
-          error: 'Agent not found'
-        });
       }
 
       res.json({
@@ -242,7 +240,7 @@ class VoiceAgentController {
         data: agent
       });
     } catch (error) {
-      console.error('Get agent by name error:', error);
+      logger.error('Get agent by name error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch agent',
@@ -258,8 +256,9 @@ class VoiceAgentController {
   async getAllVoices(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchemaFromRequest(req);
 
-      const voices = await this.voiceModel.getAllVoices(tenantId);
+      const voices = await this.voiceModel.getAllVoices(schema, tenantId);
 
       res.json({
         success: true,
@@ -267,7 +266,7 @@ class VoiceAgentController {
         count: voices.length
       });
     } catch (error) {
-      console.error('Get all voices error:', error);
+      logger.error('Get all voices error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch voices',
@@ -283,8 +282,9 @@ class VoiceAgentController {
   async getAllPhoneNumbers(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchemaFromRequest(req);
 
-      const numbers = await this.phoneModel.getAllPhoneNumbers(tenantId);
+      const numbers = await this.phoneModel.getAllPhoneNumbers(schema, tenantId);
 
       res.json({
         success: true,
@@ -292,7 +292,7 @@ class VoiceAgentController {
         count: numbers.length
       });
     } catch (error) {
-      console.error('Get all phone numbers error:', error);
+      logger.error('Get all phone numbers error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch phone numbers',
