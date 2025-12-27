@@ -280,7 +280,26 @@ router.get('/me', async (req, res) => {
     
     const user = result.rows[0];
     
-    // Get user capabilities
+    // Get all tenants user belongs to via memberships
+    const tenantsResult = await query(`
+      SELECT 
+        t.id, t.name, t.plan_tier, t.status,
+        m.role
+      FROM memberships m
+      JOIN tenants t ON m.tenant_id = t.id
+      WHERE m.user_id = $1 AND m.deleted_at IS NULL AND t.deleted_at IS NULL
+      ORDER BY t.id = $2 DESC, t.created_at ASC
+    `, [user.id, user.primary_tenant_id]);
+    
+    const tenants = tenantsResult.rows.map(t => ({
+      id: t.id,
+      name: t.name,
+      planTier: t.plan_tier,
+      status: t.status,
+      role: t.role,
+    }));
+    
+    // Get user capabilities scoped to primary tenant
     const capabilitiesResult = await query(`
       SELECT capability_key
       FROM user_capabilities
@@ -289,10 +308,19 @@ router.get('/me', async (req, res) => {
     
     const capabilities = capabilitiesResult.rows.map(r => r.capability_key);
     
+    // Get tenant features for primary tenant (active tenant)
+    const tenantFeaturesResult = await query(`
+      SELECT feature_key
+      FROM tenant_features
+      WHERE tenant_id = $1 AND enabled = true
+    `, [user.primary_tenant_id]);
+    
+    const tenantFeatures = tenantFeaturesResult.rows.map(r => r.feature_key);
+    
     // Parse credit balance with fallback
     const creditBalance = parseFloat(user.credit_balance) || 0;
     
-    console.log(`✅ /api/auth/me - Returning user data for: ${user.email}, balance: ${creditBalance}`);
+    console.log(`✅ /api/auth/me - Returning user data for: ${user.email}, active tenant: ${user.primary_tenant_id}, balance: ${creditBalance}, capabilities: ${capabilities.length}, features: ${tenantFeatures.length}, total tenants: ${tenants.length}`);
     
     res.json({
       success: true,
@@ -303,15 +331,18 @@ router.get('/me', async (req, res) => {
         lastName: user.last_name,
         name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
         role: user.tenant_role || 'member',
-        tenantId: user.primary_tenant_id,
+        tenantId: user.primary_tenant_id, // Active tenant ID
+        activeTenantId: user.primary_tenant_id, // Explicit active tenant
         tenantName: user.tenant_name,
+        tenants, // All tenants user belongs to
         plan: user.plan_tier,
         creditBalance: creditBalance,
         balance: creditBalance,  // Dashboard expects 'balance' field
         credit_balance: creditBalance,  // Alternative field name
         credits: creditBalance,  // Another alternative
         monthly_usage: 0,  // Add monthly usage tracking
-        capabilities
+        capabilities, // User capabilities (RBAC)
+        tenantFeatures // Tenant features for active tenant (plan/entitlement)
       }
     });
   } catch (error) {

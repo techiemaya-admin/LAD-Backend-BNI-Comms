@@ -1,73 +1,13 @@
 /**
- * Core Billing Routes
+ * Core Billing Routes - Credit-Based Billing System
  * 
- * PURPOSE:
- * Manages subscription plans, payments, and usage tracking for the SaaS platform.
- * This is part of the CORE platform as billing is essential for SaaS operation.
- * 
- * CORE PLATFORM RATIONALE:
- * Billing functionality must always be available to:
- * - Allow plan upgrades/downgrades
- * - Track usage and enforce limits
- * - Process payments and manage subscriptions
- * - Provide usage analytics for capacity planning
- * 
- * FEATURES PROVIDED:
- * 1. PLAN MANAGEMENT: List available subscription plans with features
- * 2. SUBSCRIPTION: Create/modify subscriptions via Stripe integration
- * 3. USAGE TRACKING: Monitor feature usage for billing and limits
- * 4. CREDIT MANAGEMENT: Track and manage credit balances per client
- * 
- * STRIPE INTEGRATION:
- * - Customer creation and management
- * - Subscription lifecycle (create, update, cancel)
- * - Webhook handling for payment events
- * - Invoice generation and payment processing
- * 
- * USAGE ANALYTICS:
- * - Per-feature usage tracking (apollo searches, voice calls, etc.)
- * - Credit consumption monitoring
- * - Billing period usage summaries
- * - Overage detection and billing
- * 
- * PLAN-FEATURE MAPPING:
- * - Basic: Core features only
- * - Premium: Core + apollo-leads + voice-agent
- * - Enterprise: All features enabled
- * 
- * ENDPOINTS:
- * GET  /api/billing/plans         - Available subscription plans
- * POST /api/billing/subscribe     - Create/update subscription
- * GET  /api/billing/usage/:clientId - Usage metrics for billing
+ * Re-exported from routes/billing.routes.js
+ * This file maintains backward compatibility with existing imports
  */
 
-const express = require('express');
-const router = express.Router();
+const billingRoutes = require('./routes/billing.routes');
+module.exports = billingRoutes;
 
-// Core billing routes (always available)
-router.get('/plans', async (req, res) => {
-  try {
-    // Get available billing plans with their features
-    const plans = [
-      {
-        id: 'basic',
-        name: 'Basic',
-        price: 29,
-        features: ['dashboard', 'basic_reports']
-      },
-      {
-        id: 'premium',
-        name: 'Premium', 
-        price: 99,
-        features: ['dashboard', 'basic_reports', 'apollo_leads', 'voice_agent']
-      },
-      {
-        id: 'enterprise',
-        name: 'Enterprise',
-        price: 299,
-        features: ['dashboard', 'basic_reports', 'apollo_leads', 'voice_agent', 'linkedin_integration']
-      }
-    ];
     
     res.json({ success: true, plans });
   } catch (error) {
