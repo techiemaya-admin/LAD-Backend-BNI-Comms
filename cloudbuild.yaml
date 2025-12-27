@@ -54,7 +54,7 @@ steps:
           --concurrency 80 \
           --timeout 300 \
           --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
-          --update-env-vars NODE_ENV=production,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL \
+          --update-env-vars NODE_ENV=production,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL \
           --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
 
 # Images to be pushed to Container Registry
@@ -80,3 +80,4 @@ substitutions:
   _SERVICE_NAME: 'lad-backend-develop'
   _ENV: 'develop'
   _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
+  _BACKEND_URL: 'https://lad-backend-develop-m33ggxz7iq-uc.a.run.app'
