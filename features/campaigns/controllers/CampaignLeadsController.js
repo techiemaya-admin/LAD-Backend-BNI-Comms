@@ -19,6 +19,8 @@ class CampaignLeadsController {
       const { status, limit, offset } = req.query;
       const { pool } = require('../utils/dbConnection');
 
+      const schema = getSchema(req);
+      
       // First, try to get leads with joined data from leads table (if it exists)
       // If that fails, fall back to just campaign_leads data
       let query = `
@@ -30,8 +32,6 @@ class CampaignLeadsController {
           cl.snapshot,
           cl.lead_data,
           cl.created_at,
-        const schema = getSchema(req);
-
           cl.updated_at
         FROM ${schema}.campaign_leads cl
         WHERE cl.campaign_id = $1 AND cl.tenant_id = $2 AND cl.is_deleted = FALSE
@@ -48,7 +48,6 @@ class CampaignLeadsController {
       query += ` ORDER BY cl.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
       params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
-      const schema = getSchema(req);
       const result = await pool.query(query, params);
       
       // Format leads for frontend
