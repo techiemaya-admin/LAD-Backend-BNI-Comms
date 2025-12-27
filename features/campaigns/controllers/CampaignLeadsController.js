@@ -30,8 +30,9 @@ class CampaignLeadsController {
           cl.snapshot,
           cl.lead_data,
           cl.created_at,
-          cl.updated_at
         const schema = getSchema(req);
+
+          cl.updated_at
         FROM ${schema}.campaign_leads cl
         WHERE cl.campaign_id = $1 AND cl.tenant_id = $2 AND cl.is_deleted = FALSE
       `;
@@ -47,6 +48,7 @@ class CampaignLeadsController {
       query += ` ORDER BY cl.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
       params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
+      const schema = getSchema(req);
       const result = await pool.query(query, params);
       
       // Format leads for frontend
@@ -224,8 +226,8 @@ class CampaignLeadsController {
       const { pool } = require('../utils/dbConnection');
 
       // Get lead data from campaign_leads
+      const schema = getSchema(req);
       const leadResult = await pool.query(
-        const schema = getSchema(req);
         `SELECT lead_data FROM ${schema}.campaign_leads 
          WHERE id = $1 AND campaign_id = $2 AND tenant_id = $3 AND is_deleted = FALSE`,
         [leadId, campaignId, tenantId]
@@ -292,9 +294,9 @@ class CampaignLeadsController {
       // Get lead data from database
       let lead = profileData;
       if (!lead) {
+      const schema = getSchema(req);
         const leadResult = await pool.query(
           `SELECT cl.*, cl.lead_data as lead_data_full
-           const schema = getSchema(req);
            FROM ${schema}.campaign_leads cl
            WHERE cl.id = $1 AND cl.campaign_id = $2 AND cl.tenant_id = $3 AND cl.is_deleted = FALSE`,
           [leadId, campaignId, tenantId]
@@ -358,6 +360,7 @@ Summary:`;
 
       // Save summary to lead_data
       try {
+      const schema = getSchema(req);
         const leadDataResult = await pool.query(
           `SELECT lead_data FROM ${schema}.campaign_leads 
            WHERE id = $1 AND campaign_id = $2 AND tenant_id = $3 AND is_deleted = FALSE`,
@@ -375,6 +378,7 @@ Summary:`;
           currentLeadData.profile_summary = summary;
           currentLeadData.profile_summary_generated_at = new Date().toISOString();
 
+      const schema = getSchema(req);
           await pool.query(
             `UPDATE ${schema}.campaign_leads 
              SET lead_data = $1, updated_at = CURRENT_TIMESTAMP 

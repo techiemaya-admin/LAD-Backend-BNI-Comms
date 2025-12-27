@@ -34,7 +34,7 @@ class LinkedInAccountService {
       }
       
       const account = accountResult.account;
-      const schema = accountResult.schema;
+      const accountSchema = accountResult.schema;
       
       // Try to delete from Unipile using SDK (don't fail if it errors)
       if (this.baseService.isConfigured()) {

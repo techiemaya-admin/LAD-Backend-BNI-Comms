@@ -394,8 +394,9 @@ class LinkedInAuthController {
         
         // Try TDD schema first
         const checkpointQuery = `
-          SELECT metadata
           const schema = getSchema(req);
+
+          SELECT metadata
           FROM ${schema}.linkedin_accounts
           WHERE unipile_account_id = $1 AND tenant_id = $2 AND is_active = TRUE
           ORDER BY created_at DESC
