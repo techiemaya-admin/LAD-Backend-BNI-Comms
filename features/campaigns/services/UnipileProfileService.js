@@ -164,8 +164,8 @@ class UnipileProfileService {
                         // Mark account as inactive in database
                         try {
                             const { pool } = require('../utils/dbConnection');
+                            const schema = getSchema(req);
                             await pool.query(
-                                const schema = getSchema(req);
                                 `UPDATE ${schema}.linkedin_accounts 
                                  SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP 
                                  WHERE unipile_account_id = $1`,

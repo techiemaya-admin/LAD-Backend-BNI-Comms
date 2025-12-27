@@ -38,8 +38,8 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, orgId
     let configColumnExists = false;
     try {
       // Per TDD: Use lad_dev schema
+      const schema = getSchema(req);
       const campaignResult = await pool.query(
-        const schema = getSchema(req);
         `SELECT config FROM ${schema}.campaigns WHERE id = $1`,
         [campaignId]
       );

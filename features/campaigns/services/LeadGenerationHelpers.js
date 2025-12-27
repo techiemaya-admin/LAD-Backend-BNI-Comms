@@ -12,8 +12,8 @@ const { getSchema } = require('../../../core/utils/schemaHelper');
 async function checkLeadExists(campaignId, apolloPersonId) {
   try {
     // Per TDD: Use lad_dev schema
+    const schema = getSchema(req);
     const existingLead = await pool.query(
-      const schema = getSchema(req);
       `SELECT id FROM ${schema}.campaign_leads 
        WHERE campaign_id = $1 AND lead_data->>'apollo_person_id' = $2 AND is_deleted = FALSE`,
       [campaignId, String(apolloPersonId)]
@@ -60,8 +60,8 @@ function createSnapshot(fields) {
  * Save lead to campaign
  */
 async function saveLeadToCampaign(campaignId, tenantId, leadId, snapshot, leadData) {
+  const schema = getSchema(req);
   const insertResult = await pool.query(
-    const schema = getSchema(req);
     `INSERT INTO ${schema}.campaign_leads 
      (tenant_id, campaign_id, lead_id, status, snapshot, lead_data, created_at)
      VALUES ($1, $2, $3, 'active', $4, $5, CURRENT_TIMESTAMP)
@@ -77,8 +77,8 @@ async function saveLeadToCampaign(campaignId, tenantId, leadId, snapshot, leadDa
 async function updateCampaignConfig(campaignId, config) {
   try {
     // Per TDD: Use lad_dev schema
+    const schema = getSchema(req);
     await pool.query(
-      const schema = getSchema(req);
       `UPDATE ${schema}.campaigns SET config = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [JSON.stringify(config), campaignId]
     );
@@ -95,8 +95,8 @@ async function updateCampaignConfig(campaignId, config) {
 async function updateStepConfig(stepId, stepConfig) {
   try {
     // Per TDD: Use lad_dev schema
+    const schema = getSchema(req);
     await pool.query(
-      const schema = getSchema(req);
       `UPDATE ${schema}.campaign_steps SET config = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [JSON.stringify(stepConfig), stepId]
     );

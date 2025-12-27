@@ -54,8 +54,8 @@ async function executeStepForLead(campaignId, step, campaignLead, userId, orgId,
     // Record activity start (skip for lead generation as it's campaign-level and creates leads)
     if (stepType !== 'lead_generation' && campaignLead && campaignLead.id) {
       // Get tenant_id from campaign
+      const schema = getSchema(req);
       const campaignQuery = await pool.query(
-        const schema = getSchema(req);
         `SELECT tenant_id FROM ${schema}.campaigns WHERE id = $1 AND is_deleted = FALSE`,
         [campaignId]
       );

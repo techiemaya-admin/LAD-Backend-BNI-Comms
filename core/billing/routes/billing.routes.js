@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const billingService = require('../services/billingService');
-const { authenticateToken } = require('../../auth/middleware');
+const { authenticateToken } = require('../../middleware/auth');
 
 /**
  * Billing API Routes

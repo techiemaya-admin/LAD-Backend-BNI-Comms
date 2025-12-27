@@ -17,8 +17,8 @@ async function createActivity(campaignId, tenantId, campaignLeadId, stepId, step
   
   try {
     // Try with campaign_id first (TDD schema)
+    const schema = getSchema(req);
     const activityResult = await pool.query(
-      const schema = getSchema(req);
       `INSERT INTO ${schema}.campaign_lead_activities 
        (tenant_id, campaign_id, campaign_lead_id, step_id, step_type, action_type, status, channel, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, 'sent', $7, CURRENT_TIMESTAMP)
@@ -60,8 +60,8 @@ async function updateActivityStatus(activityId, status, errorMessage = null) {
   }
   
   try {
+    const schema = getSchema(req);
     await pool.query(
-      const schema = getSchema(req);
       `UPDATE ${schema}.campaign_lead_activities 
        SET status = $1, 
            error_message = $2,
@@ -84,8 +84,8 @@ async function createLeadGenerationActivity(tenantId, campaignId, campaignLeadId
   
   try {
     const activityStatus = 'sent'; // Always 'sent' for lead generation (represents successful execution)
+    const schema = getSchema(req);
     await pool.query(
-      const schema = getSchema(req);
       `INSERT INTO ${schema}.campaign_lead_activities 
        (tenant_id, campaign_id, campaign_lead_id, step_id, step_type, action_type, status, channel, created_at)
        VALUES ($1, $2, $3, $4, 'lead_generation', 'lead_generation', $5, 'web', CURRENT_TIMESTAMP)`,

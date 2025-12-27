@@ -19,8 +19,8 @@ if (!BACKEND_URL) {
 // Per TDD: Use lad_dev schema
 async function getLeadData(campaignLeadId) {
   try {
+    const schema = getSchema(req);
     const leadDataResult = await pool.query(
-      const schema = getSchema(req);
       `SELECT lead_data, snapshot FROM ${schema}.campaign_leads WHERE id = $1 AND is_deleted = FALSE`,
       [campaignLeadId]
     );
@@ -197,8 +197,8 @@ async function executeConditionStep(stepConfig, campaignLead) {
   const conditionType = stepConfig.condition || stepConfig.conditionType;
   
   // Per TDD: Use lad_dev schema
+  const schema = getSchema(req);
   const activitiesResult = await pool.query(
-    const schema = getSchema(req);
     `SELECT status FROM ${schema}.campaign_lead_activities 
      WHERE campaign_lead_id = $1 AND is_deleted = FALSE
      ORDER BY created_at DESC LIMIT 10`,

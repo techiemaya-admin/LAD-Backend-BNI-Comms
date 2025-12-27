@@ -91,8 +91,8 @@ async function findOrCreateLead(tenantId, apolloPersonId, fields, leadData) {
   
   try {
     // Find existing lead by source_id (Apollo person ID)
+    const schema = getSchema(req);
     const findLeadResult = await pool.query(
-      const schema = getSchema(req);
       `SELECT id FROM ${schema}.leads 
        WHERE tenant_id = $1 AND source_id = $2 AND source = 'apollo_io'
        LIMIT 1`,

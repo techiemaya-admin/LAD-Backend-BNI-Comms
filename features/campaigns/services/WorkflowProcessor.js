@@ -20,8 +20,8 @@ async function processLeadThroughWorkflow(campaign, steps, campaignLead, userId,
     // Find the last successfully completed step for this lead
     // This ensures we don't re-execute steps that were already completed
     // Per TDD: Use lad_dev schema
+    const schema = getSchema(req);
     const lastSuccessfulActivityResult = await pool.query(
-      const schema = getSchema(req);
       `SELECT step_id, status, created_at FROM ${schema}.campaign_lead_activities 
        WHERE campaign_lead_id = $1 
        AND status IN ('delivered', 'connected', 'replied')
