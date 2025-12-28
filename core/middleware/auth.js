@@ -37,6 +37,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 
 const authenticateToken = (req, res, next) => {
   // Skip auth for OPTIONS requests (CORS preflight)
@@ -60,7 +61,8 @@ const authenticateToken = (req, res, next) => {
   }
 
   if (!token) {
-    console.log(`❌ Auth failed - No token for ${req.method} ${req.path}`);
+    // Only log at debug level - missing tokens are common for unauthenticated requests
+    logger.debug(`Auth failed - No token for ${req.method} ${req.path}`);
     return res.status(401).json({
       success: false,
       error: 'Access token required'
@@ -70,11 +72,16 @@ const authenticateToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
     req.user = decoded;
-    console.log(`✅ Auth success for ${req.method} ${req.path} - User:`, decoded.userId, decoded.email);
+    logger.debug(`Auth success for ${req.method} ${req.path}`, { 
+      userId: decoded.userId, 
+      email: decoded.email 
+    });
     next();
   } catch (error) {
-    console.log(`❌ Auth failed - Invalid token for ${req.method} ${req.path}:`, error.message);
-    console.log(`   Token starts with: ${token.substring(0, 20)}...`);
+    logger.warn(`Auth failed - Invalid token for ${req.method} ${req.path}`, {
+      error: error.message,
+      tokenPrefix: token ? token.substring(0, 20) : 'none'
+    });
     return res.status(403).json({
       success: false,
       error: 'Invalid token',
