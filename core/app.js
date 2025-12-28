@@ -40,6 +40,7 @@ const billingRoutes = require('./billing/routes');
 const userRoutes = require('./users/routes');
 const { authenticateToken } = require('./middleware/auth');
 const { trackClientFeatures } = require('./middleware/feature_tracking');
+const logger = require('./utils/logger');
 
 class CoreApplication {
   constructor() {
@@ -163,15 +164,15 @@ class CoreApplication {
     
     // Setup dynamic feature loading
     this.app.use('/api/:feature', async (req, res, next) => {
+      const featureKey = req.params.feature;
       try {
-        const featureKey = req.params.feature;
         const organizationId = req.user?.tenantId || req.user?.organizationId || req.headers['x-organization-id'];
         const userId = req.user?.userId;
         
-        console.log(`[Core App] Feature: ${featureKey}, OrgID: ${organizationId}, UserID: ${userId}`);
+        logger.debug(`Feature request: ${featureKey}`, { organizationId, userId });
         
         const isEnabled = await this.featureFlagService.isEnabled(organizationId, featureKey, userId);
-        console.log(`[Core App] Feature ${featureKey} enabled: ${isEnabled}`);
+        logger.debug(`Feature ${featureKey} enabled: ${isEnabled}`, { organizationId });
         
         if (!isEnabled) {
           return res.status(403).json({
@@ -181,15 +182,37 @@ class CoreApplication {
           });
         }
         
-        // Load and mount feature router dynamically
+        // Load feature router dynamically (cached in registry after first load)
         const featureRouter = await this.featureRegistry.loadFeatureRouter(featureKey, organizationId);
         if (featureRouter) {
-          featureRouter(req, res, next);
+          // Store original URL and path
+          const originalUrl = req.url;
+          const originalBaseUrl = req.baseUrl;
+          
+          // Strip the /api/:feature prefix so router matches routes correctly
+          // req.url should be relative to the mount point
+          const mountPath = `/api/${featureKey}`;
+          if (req.url.startsWith(mountPath)) {
+            req.url = req.url.substring(mountPath.length) || '/';
+          }
+          req.baseUrl = mountPath;
+          
+          // Use router as middleware
+          featureRouter(req, res, (err) => {
+            // Restore original URL in case of error or no match
+            req.url = originalUrl;
+            req.baseUrl = originalBaseUrl;
+            if (err) {
+              next(err);
+            } else {
+              next();
+            }
+          });
         } else {
           next();
         }
       } catch (error) {
-        console.error('Error loading feature:', error);
+        logger.error('Error loading feature', { error: error.message, featureKey, stack: error.stack });
         next();
       }
     });
@@ -199,8 +222,8 @@ class CoreApplication {
     await this.registerFeatures();
     
     this.app.listen(port, () => {
-      console.log(`🚀 Core Platform running on port ${port}`);
-      console.log('📦 Registered features:', this.featureRegistry.getFeatureList());
+      logger.info(`Core Platform running on port ${port}`);
+      logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
     });
   }
 }

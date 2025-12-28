@@ -8,7 +8,7 @@ require('dotenv')
 const axios = require('axios');
 const { VoiceCallModel, PhoneResolverModel, VoiceAgentModel } = require('../models');
 const { VAPIService, CallLoggingService, RecordingService } = require('../services');
-const { getSchemaFromRequest } = require('../utils/schemaHelper');
+const { getSchema } = require('../../../core/utils/schemaHelper');
 
 class CallController {
   constructor(db) {
@@ -398,7 +398,7 @@ class CallController {
         });
       }
 
-      const schema = getSchemaFromRequest(req);
+      const schema = getSchema(req);
 
       const calls = await this.callModel.getBatchCallsByBatchId(schema, tenantId, batchId);
 

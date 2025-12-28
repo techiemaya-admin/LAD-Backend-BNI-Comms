@@ -271,7 +271,8 @@ function defaultJwtAuth(req, res, next) {
   // const decoded = jwt.verify(token, process.env.JWT_SECRET);
   // req.user = { id: decoded.userId, tenantId: decoded.tenantId };
   
-  console.warn('Using default JWT auth - please provide jwtAuth middleware');
+  // JWT auth is provided by the caller, so this should not be reached
+  // But if it is, we'll check if user is already set (by upstream middleware)
   
   // For now, check if user is already set (by upstream middleware)
   if (!req.user) {

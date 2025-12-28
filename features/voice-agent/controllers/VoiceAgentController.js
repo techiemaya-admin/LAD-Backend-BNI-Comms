@@ -11,10 +11,8 @@ const {
   PhoneNumberModel 
 } = require('../models');
 const { RecordingService } = require('../services');
-const { getSchemaFromRequest } = require('../utils/schemaHelper');
-const { getLogger } = require('../utils/logger');
-
-const logger = getLogger();
+const { getSchema } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
 
 class VoiceAgentController {
   constructor(db) {
@@ -205,15 +203,17 @@ class VoiceAgentController {
   async getAllAgents(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
 
       logger.info('[/api/voiceagent/all] request context:', {
         user: req.user,
         tenantId,
+        schema,
         headersTenantId: req.headers['x-tenant-id'],
         queryTenantId: req.query.tenant_id,
       });
 
-      const agents = await this.agentModel.getAllAgents(tenantId);
+      const agents = await this.agentModel.getAllAgents(schema, tenantId);
 
       res.json({
         success: true,
@@ -256,7 +256,7 @@ class VoiceAgentController {
   async getAllVoices(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = getSchemaFromRequest(req);
+      const schema = getSchema(req);
 
       const voices = await this.voiceModel.getAllVoices(schema, tenantId);
 
@@ -282,7 +282,7 @@ class VoiceAgentController {
   async getAllPhoneNumbers(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = getSchemaFromRequest(req);
+      const schema = getSchema(req);
 
       const numbers = await this.phoneModel.getAllPhoneNumbers(schema, tenantId);
 

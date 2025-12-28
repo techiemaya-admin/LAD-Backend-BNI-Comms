@@ -16,8 +16,23 @@ class VAPIService {
     this.phoneNumberId = config.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID;
     this.apiUrl = 'https://api.vapi.ai/call';
     
-    if (!this.apiKey) {
-      throw new Error('VAPI API key is required');
+    // VAPI API key is optional - service will fail gracefully when methods are called without it
+    // This allows the router to initialize even if VAPI is not configured
+  }
+
+  /**
+   * Check if VAPI is configured
+   */
+  isConfigured() {
+    return !!this.apiKey;
+  }
+
+  /**
+   * Ensure VAPI is configured before making API calls
+   */
+  _ensureConfigured() {
+    if (!this.isConfigured()) {
+      throw new Error('VAPI API key is required. Please set VAPI_API_KEY environment variable.');
     }
   }
 
