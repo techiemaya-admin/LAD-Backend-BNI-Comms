@@ -14,12 +14,15 @@ class UnipileService {
     this.dsn = process.env.UNIPILE_DSN;
     this.token = process.env.UNIPILE_TOKEN;
     
+    // Debug logging
+    console.log('[UnipileService] Initializing - DSN present:', !!this.dsn, 'Token present:', !!this.token);
+    
     if (!this.isConfigured()) {
       console.warn('[UnipileService] ⚠️ WARNING: UNIPILE_DSN or UNIPILE_TOKEN not configured');
       console.warn('[UnipileService] Unipile features will be disabled');
     } else {
       console.log('[UnipileService] ✅ Configured successfully');
-      console.log('[UnipileService] DSN:', this.dsn);
+      console.log('[UnipileService] DSN:', this.dsn ? (this.dsn.substring(0, 30) + '...') : 'undefined');
     }
   }
   

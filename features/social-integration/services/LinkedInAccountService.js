@@ -380,6 +380,13 @@ class LinkedInAccountService {
     const unipileService = new UnipileService();
 
     if (!unipileService.isConfigured()) {
+      logger.error('[LinkedInAccountService] Unipile not configured', {
+        dsnPresent: !!unipileService.dsn,
+        tokenPresent: !!unipileService.token,
+        dsnValue: unipileService.dsn ? unipileService.dsn.substring(0, 20) + '...' : 'undefined',
+        envDsn: process.env.UNIPILE_DSN ? 'present' : 'undefined',
+        envToken: process.env.UNIPILE_TOKEN ? 'present' : 'undefined'
+      });
       throw new Error('Unipile is not configured');
     }
 
