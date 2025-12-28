@@ -107,31 +107,36 @@ class VoiceAgentModel {
    * Get available agents for a user
    * Uses view or joins with user permissions
    * 
+   * @param {string} schema - Database schema name
    * @param {string} userId - User ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Available agents with voice details
    */
-  // async getAvailableAgentsForUser(userId, tenantId) {
-  //   const query = `
-  //     SELECT 
-  //       va.id as agent_id,
-  //       va.name as agent_name,
-  //       va.language as agent_language,
-  //       va.voice_id,
-  //       v.description as voice_description,
-  //       v.voice_sample_url
-  //     FROM lad_dev.voice_agents va
-  //     LEFT JOIN voices v ON va.voice_id = v.id AND v.tenant_id = va.tenant_id
-  //     WHERE va.tenant_id = $1 
-  //     ORDER BY va.name ASC
-  //   `;
+  async getAvailableAgentsForUser(schema, userId, tenantId) {
+    const query = `
+      SELECT
+        vac.agent_id,
+        vac.agent_name,
+        vac.agent_language,
+        vac.voice_id,
+        vav.description,
+        vav.voice_sample_url,
+        vav.gender,
+        vav.accent,
+        vav.provider
+      FROM ${schema}.voice_agent_config_view vac
+      JOIN ${schema}.voice_agent_voices vav
+        ON vav.id = vac.voice_id
+      WHERE vac.tenant_id = $1
+      ORDER BY vac.agent_name ASC
+    `;
 
-  //   // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
-  //   // For now, all active agents are available to all users in the tenant
+    // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
+    // For now, all active agents are available to all users in the tenant
 
-  //   const result = await this.pool.query(query, [tenantId]);
-  //   return result.rows;
-  // }
+    const result = await this.db.query(query, [tenantId]);
+    return result.rows;
+  }
 
   /**
    * Create a new agent (tenant-isolated)

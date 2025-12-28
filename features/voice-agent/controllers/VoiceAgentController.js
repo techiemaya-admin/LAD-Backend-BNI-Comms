@@ -31,8 +31,9 @@ class VoiceAgentController {
     try {
       const userId = req.user.id; // From JWT middleware
       const tenantId = req.user.tenantId; // From JWT middleware
+      const schema = getSchema(req);
 
-      const agents = await this.agentModel.getAvailableAgentsForUser(userId, tenantId);
+      const agents = await this.agentModel.getAvailableAgentsForUser(schema, userId, tenantId);
 
       res.json({
         success: true,
@@ -58,8 +59,9 @@ class VoiceAgentController {
     try {
       const userId = req.user.id;
       const tenantId = req.user.tenantId;
+      const schema = getSchema(req);
 
-      const numbers = await this.phoneModel.getAvailableNumbersForUser(userId, tenantId);
+      const numbers = await this.phoneModel.getAvailableNumbersForUser(schema, userId, tenantId);
 
       res.json({
         success: true,
