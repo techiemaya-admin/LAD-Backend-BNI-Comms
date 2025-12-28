@@ -567,13 +567,25 @@ class SocialIntegrationController {
 
           // Handle checkpoint/2FA response
           if (result.checkpoint_required) {
+            // Extract checkpoint info for frontend
+            const checkpointInfo = result.checkpoint || {};
+            
             return res.json({
               success: true,
               checkpoint_required: true,
-              data: {
-                accountId: result.account_id,
-                checkpoint: result.checkpoint,
-                method: method
+              account_id: result.account_id,
+              checkpoint: {
+                required: true,
+                type: checkpointInfo.type,
+                is_yes_no: checkpointInfo.is_yes_no,
+                is_otp: checkpointInfo.is_otp,
+                message: checkpointInfo.message,
+                sent_to: checkpointInfo.sent_to
+              },
+              email: result.email || email,
+              profileName: result.profileName || email?.split('@')[0],
+              unipileAccount: {
+                id: result.account_id
               },
               message: 'LinkedIn account created but requires verification (OTP/2FA)'
             });
@@ -844,6 +856,19 @@ class SocialIntegrationController {
         });
       }
       
+      // LinkedIn uses its own service (LAD architecture)
+      if (platform.toLowerCase() === 'linkedin') {
+        const LinkedInAccountService = require('../services/LinkedInAccountService');
+        
+        const result = await LinkedInAccountService.disconnectAccount(req, accountId);
+        
+        return res.json({
+          success: true,
+          message: 'Account disconnected successfully'
+        });
+      }
+      
+      // Other platforms use generic service
       const service = this.getService(platform);
       
       console.log(`[SocialIntegrationController] Disconnecting ${platform} account: ${accountId}`);

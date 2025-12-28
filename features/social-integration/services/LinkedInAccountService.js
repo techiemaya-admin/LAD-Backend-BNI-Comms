@@ -77,6 +77,22 @@ class LinkedInAccountService {
         checkpointType: unipileResult.checkpoint?.type
       });
       
+      // Extract checkpoint info with proper structure for frontend
+      const checkpointType = unipileResult.checkpoint.type || 'IN_APP_VALIDATION';
+      const hasCodeField = !!unipileResult.checkpoint.code;
+      const hasChallengeField = !!unipileResult.checkpoint.challenge;
+      const isOTP = hasCodeField || hasChallengeField || checkpointType === 'OTP' || checkpointType === 'SMS' || checkpointType === 'EMAIL';
+      const isYesNo = !isOTP && (checkpointType === 'IN_APP_VALIDATION' || checkpointType === 'YES_NO');
+      
+      const checkpointInfo = {
+        type: checkpointType,
+        required: true,
+        is_yes_no: isYesNo,
+        is_otp: isOTP,
+        message: unipileResult.checkpoint.message || unipileResult.checkpoint.description || null,
+        sent_to: unipileResult.checkpoint.sent_to || unipileResult.checkpoint.sentTo || null
+      };
+      
       // Save account with checkpoint status
       const accountData = {
         tenant_id: tenantId,
@@ -86,7 +102,7 @@ class LinkedInAccountService {
         account_name: unipileResult.profile_name || unipileResult.profileName || email,
         status: 'checkpoint',
         metadata: {
-          checkpoint: unipileResult.checkpoint,
+          checkpoint: checkpointInfo,
           checkpoint_required_at: new Date().toISOString(),
           email: unipileResult.email || email
         }
@@ -98,7 +114,9 @@ class LinkedInAccountService {
         success: true,
         checkpoint_required: true,
         account_id: unipileAccountId,
-        checkpoint: unipileResult.checkpoint
+        checkpoint: checkpointInfo,
+        email: unipileResult.email || email,
+        profileName: unipileResult.profile_name || unipileResult.profileName || email?.split('@')[0]
       };
     }
 
