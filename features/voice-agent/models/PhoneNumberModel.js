@@ -100,15 +100,15 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        number_type,
-        capabilities,
-        is_active,
-        metadata,
+        status,
+        rules,
+        default_agent_id,
         created_at,
-        updated_at
+        updated_at,
+        CONCAT('+', country_code, base_number) as phone_number
       FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
-        AND is_active = true
+        AND status = 'active'
       ORDER BY created_at DESC
     `;
 
