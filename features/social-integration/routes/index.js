@@ -61,6 +61,36 @@ function initializeRoutes(db) {
   // Disconnect account
   router.post('/:platform/disconnect', jwtAuth, (req, res) => controller.disconnectAccount(req, res));
   
+  // Verify OTP for checkpoint
+  router.post('/:platform/verify-otp', jwtAuth, (req, res) => controller.verifyOTP(req, res));
+  
+  // Solve checkpoint (Yes/No validation)
+  router.post('/:platform/solve-checkpoint', jwtAuth, (req, res) => controller.solveCheckpoint(req, res));
+  
+  // Get checkpoint status (for polling)
+  router.get('/:platform/checkpoint-status', jwtAuth, (req, res) => controller.getCheckpointStatus(req, res));
+  
+  // LinkedIn account management (LAD architecture)
+  router.get('/linkedin/accounts', jwtAuth, async (req, res) => {
+    try {
+      const LinkedInAccountService = require('../services/LinkedInAccountService');
+      const accounts = await LinkedInAccountService.getUserAccounts(req);
+      res.json({ success: true, accounts });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+  
+  router.delete('/linkedin/accounts/:id', jwtAuth, async (req, res) => {
+    try {
+      const LinkedInAccountService = require('../services/LinkedInAccountService');
+      await LinkedInAccountService.disconnectAccount(req, req.params.id);
+      res.json({ success: true, message: 'Account disconnected' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  });
+  
   // Webhook endpoints (no auth - validated by signature)
   router.post('/webhook', (req, res) => controller.handleWebhook(req, res));
   router.get('/webhook/test', (req, res) => controller.testWebhook(req, res));

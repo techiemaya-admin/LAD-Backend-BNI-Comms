@@ -526,23 +526,8 @@ class SocialIntegrationController {
     try {
       const { platform } = req.params;
       const { method, email, password, li_at, li_a, user_agent } = req.body;
-      const userId = req.user?.id || req.user?.userId || 'demo_user_123';
-
-      console.log(`[SocialIntegrationController] Connecting ${platform} account with method: ${method}`);
-      console.log(`[SocialIntegrationController] User ID: ${userId}`);
-
-      const service = this.getService(platform);
 
       if (platform.toLowerCase() === 'linkedin') {
-        // Validate Unipile configuration
-        if (!service.isConfigured || !service.isConfigured()) {
-          return res.status(503).json({
-            success: false,
-            error: 'LinkedIn integration service not configured',
-            message: 'UNIPILE_DSN or UNIPILE_TOKEN not set'
-          });
-        }
-
         // Validate method
         if (!method || (method !== 'credentials' && method !== 'cookies')) {
           return res.status(400).json({
@@ -552,49 +537,42 @@ class SocialIntegrationController {
           });
         }
 
+        // Validate credentials/cookies based on method
+        if (method === 'credentials' && (!email || !password)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Email and password are required for credentials method'
+          });
+        }
+
+        if (method === 'cookies' && !li_at) {
+          return res.status(400).json({
+            success: false,
+            error: 'li_at cookie is required for cookies method'
+          });
+        }
+
         try {
-          let connectionResult;
+          // Use new LinkedInAccountService (LAD architecture compliant)
+          const LinkedInAccountService = require('../services/LinkedInAccountService');
           
-          if (method === 'credentials') {
-            if (!email || !password) {
-              return res.status(400).json({
-                success: false,
-                error: 'Email and password are required for credentials method'
-              });
-            }
-            
-            // Use LinkedInIntegration service to connect with credentials
-            connectionResult = await service.connectWithCredentials({
-              email,
-              password,
-              userId
-            });
-            
-          } else if (method === 'cookies') {
-            if (!li_at) {
-              return res.status(400).json({
-                success: false,
-                error: 'li_at cookie is required for cookies method'
-              });
-            }
-            
-            // Use LinkedInIntegration service to connect with cookies
-            connectionResult = await service.connectWithCookies({
-              li_at,
-              li_a,
-              user_agent: user_agent || req.headers['user-agent'],
-              userId
-            });
-          }
+          const result = await LinkedInAccountService.connectAccount(req, {
+            method,
+            email,
+            password,
+            li_at,
+            li_a,
+            user_agent: user_agent || req.headers['user-agent']
+          });
 
           // Handle checkpoint/2FA response
-          if (connectionResult.checkpoint_required) {
+          if (result.checkpoint_required) {
             return res.json({
               success: true,
               checkpoint_required: true,
               data: {
-                accountId: connectionResult.accountId,
-                checkpoint: connectionResult.checkpoint,
+                accountId: result.account_id,
+                checkpoint: result.checkpoint,
                 method: method
               },
               message: 'LinkedIn account created but requires verification (OTP/2FA)'
@@ -605,9 +583,10 @@ class SocialIntegrationController {
           return res.json({
             success: true,
             data: {
-              accountId: connectionResult.accountId,
-              profileUrl: connectionResult.profileUrl,
-              profileName: connectionResult.profileName,
+              accountId: result.account.id,
+              providerAccountId: result.account.provider_account_id,
+              accountName: result.account.account_name,
+              status: result.account.status,
               connected: true,
               method: method
             },
@@ -615,7 +594,6 @@ class SocialIntegrationController {
           });
 
         } catch (connectionError) {
-          console.error(`[SocialIntegrationController] LinkedIn connection failed:`, connectionError);
           return res.status(400).json({
             success: false,
             error: 'LinkedIn connection failed',
@@ -624,7 +602,8 @@ class SocialIntegrationController {
         }
       }
 
-      // For other platforms, use generic service method if available
+      // For other platforms, use old service method
+      const service = this.getService(platform);
       if (service.connectAccount) {
         const result = await service.connectAccount(req.body);
         return res.json({
@@ -641,10 +620,205 @@ class SocialIntegrationController {
       });
 
     } catch (error) {
-      console.error(`[SocialIntegrationController] Connect error:`, error);
       res.status(500).json({
         success: false,
         error: 'Failed to connect account',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Verify OTP for checkpoint
+   * 
+   * POST /api/social-integration/:platform/verify-otp
+   * 
+   * Body:
+   * - otp: string (required)
+   * - account_id: string (optional, can be database UUID or unipile_account_id)
+   * - email: string (optional)
+   */
+  async verifyOTP(req, res) {
+    try {
+      const { platform } = req.params;
+      const { otp, account_id, email } = req.body;
+
+      if (platform.toLowerCase() !== 'linkedin') {
+        return res.status(501).json({
+          success: false,
+          error: `OTP verification not supported for ${platform}`
+        });
+      }
+
+      if (!otp) {
+        return res.status(400).json({
+          success: false,
+          error: 'OTP is required'
+        });
+      }
+
+      const LinkedInAccountService = require('../services/LinkedInAccountService');
+      
+      // account_id can be database UUID or unipile_account_id
+      // LinkedInAccountService.verifyOTP will handle both cases
+      const accountId = account_id;
+      
+      if (!accountId) {
+        // Try to get first account for user
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        if (accounts.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Account ID is required. No LinkedIn accounts found.'
+          });
+        }
+        // Use first account's ID
+        const firstAccount = accounts.find(acc => acc.status === 'checkpoint') || accounts[0];
+        const result = await LinkedInAccountService.verifyOTP(req, firstAccount.id, otp);
+        
+        return res.json({
+          success: true,
+          message: 'OTP verified successfully',
+          result
+        });
+      }
+
+      const result = await LinkedInAccountService.verifyOTP(req, accountId, otp);
+      
+      res.json({
+        success: true,
+        message: 'OTP verified successfully',
+        result
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to verify OTP',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Solve checkpoint (Yes/No validation)
+   * 
+   * POST /api/social-integration/:platform/solve-checkpoint
+   * 
+   * Body:
+   * - answer: string (required, 'YES' or 'NO')
+   * - account_id: string (optional, database UUID)
+   * - email: string (optional)
+   */
+  async solveCheckpoint(req, res) {
+    try {
+      const { platform } = req.params;
+      const { answer, account_id, email } = req.body;
+
+      if (platform.toLowerCase() !== 'linkedin') {
+        return res.status(501).json({
+          success: false,
+          error: `Checkpoint solving not supported for ${platform}`
+        });
+      }
+
+      if (!answer || (answer !== 'YES' && answer !== 'NO')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Answer is required and must be YES or NO'
+        });
+      }
+
+      const LinkedInAccountService = require('../services/LinkedInAccountService');
+      
+      let accountId = account_id;
+      
+      if (!accountId) {
+        // Try to get first checkpoint account for user
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        const checkpointAccount = accounts.find(acc => acc.status === 'checkpoint');
+        
+        if (!checkpointAccount) {
+          return res.status(400).json({
+            success: false,
+            error: 'Account ID is required. No checkpoint account found.'
+          });
+        }
+        accountId = checkpointAccount.id;
+      }
+
+      // Get checkpoint type from account metadata (default: IN_APP_VALIDATION)
+      let checkpointType = 'IN_APP_VALIDATION';
+      try {
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        const account = accounts.find(acc => acc.id === accountId);
+        if (account?.metadata?.checkpoint?.type) {
+          checkpointType = account.metadata.checkpoint.type;
+        }
+      } catch (dbError) {
+        // Use default checkpoint type
+      }
+
+      const result = await LinkedInAccountService.solveCheckpoint(req, accountId, answer, checkpointType);
+      
+      res.json({
+        success: true,
+        message: 'Checkpoint solved successfully',
+        result
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to solve checkpoint',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Get checkpoint status (for polling Yes/No checkpoints)
+   * 
+   * GET /api/social-integration/:platform/checkpoint-status
+   * 
+   * Query params:
+   * - account_id: string (optional, unipile_account_id)
+   */
+  async getCheckpointStatus(req, res) {
+    try {
+      const { platform } = req.params;
+      const { account_id } = req.query;
+
+      if (platform.toLowerCase() !== 'linkedin') {
+        return res.status(501).json({
+          success: false,
+          error: `Checkpoint status not supported for ${platform}`
+        });
+      }
+
+      const LinkedInAccountService = require('../services/LinkedInAccountService');
+      
+      let unipileAccountId = account_id;
+      
+      if (!unipileAccountId) {
+        // Try to get first checkpoint account for user
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        const checkpointAccount = accounts.find(acc => acc.status === 'checkpoint');
+        
+        if (!checkpointAccount) {
+          return res.status(400).json({
+            success: false,
+            error: 'Account ID is required. No checkpoint account found.'
+          });
+        }
+        unipileAccountId = checkpointAccount.provider_account_id || checkpointAccount.unipile_account_id;
+      }
+
+      const result = await LinkedInAccountService.getCheckpointStatus(req, unipileAccountId);
+      
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get checkpoint status',
         message: error.message
       });
     }
