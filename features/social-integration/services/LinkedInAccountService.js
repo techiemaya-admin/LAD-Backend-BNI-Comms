@@ -461,7 +461,11 @@ class LinkedInAccountService {
         }
       } catch (sdkError) {
         logger.error('[LinkedInAccountService] SDK connection failed', {
-          error: sdkError.message
+          error: sdkError.message,
+          stack: sdkError.stack,
+          response: sdkError.response?.data,
+          status: sdkError.response?.status,
+          statusText: sdkError.response?.statusText
         });
         throw sdkError;
       }
@@ -472,16 +476,22 @@ class LinkedInAccountService {
 
       let payload = {};
       if (method === 'credentials') {
-        payload = { username: email, password };
+        // Unipile API requires provider field for credentials method
+        payload = {
+          provider: 'LINKEDIN',
+          username: email,
+          password: password
+        };
       } else if (method === 'cookies') {
+        // For cookies method, use access_token and premium_token fields
         payload = { 
           provider: 'LINKEDIN',
-          cookies: {
-            li_at: li_at,
-            li_a: li_a || undefined
-          },
-          user_agent: user_agent || 'LAD/1.0'
+          access_token: li_at,
+          premium_token: li_a || undefined
         };
+        if (user_agent) {
+          payload.user_agent = user_agent;
+        }
       }
 
       try {
@@ -500,6 +510,14 @@ class LinkedInAccountService {
             'LinkedIn connection endpoint not found. Please install unipile-node-sdk: npm install unipile-node-sdk'
           );
         }
+        
+        logger.error('[LinkedInAccountService] HTTP API connection failed', {
+          error: apiError.message,
+          status: apiError.response?.status,
+          statusText: apiError.response?.statusText,
+          responseData: apiError.response?.data,
+          url: `${baseUrl}/accounts`
+        });
         
         throw apiError;
       }
