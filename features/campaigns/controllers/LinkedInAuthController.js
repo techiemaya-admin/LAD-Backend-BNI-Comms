@@ -167,7 +167,7 @@ class LinkedInAuthController {
           return res.status(501).json({
             success: false,
             error: 'LinkedIn connection via credentials is not supported',
-            message: 'The Unipile API endpoint for credential-based LinkedIn connection is not available. Please use one of the following alternatives:',
+            message: 'The API endpoint for credential-based LinkedIn connection is not available. Please use one of the following alternatives:',
             alternatives: [
               {
                 method: 'OAuth',
@@ -175,9 +175,9 @@ class LinkedInAuthController {
                 endpoint: '/api/campaigns/linkedin/auth/start'
               },
               {
-                method: 'Unipile Dashboard',
-                description: 'Connect your LinkedIn account through the Unipile dashboard',
-                action: 'Visit your Unipile dashboard to connect LinkedIn accounts'
+                method: 'Direct Connection',
+                description: 'Connect your LinkedIn account directly using credentials or cookies',
+                action: 'Use the connection form to add your LinkedIn account'
               }
             ],
             details: errorMessage

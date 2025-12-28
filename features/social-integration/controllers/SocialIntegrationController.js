@@ -12,6 +12,7 @@ const FacebookIntegration = require('../services/FacebookIntegration');
 const LinkedInWebhookService = require('../services/LinkedInWebhookService');
 const PlatformValidator = require('../utils/platformValidator');
 const UrlParser = require('../utils/urlParser');
+const logger = require('../../../core/utils/logger');
 
 class SocialIntegrationController {
   constructor(db) {
@@ -425,6 +426,34 @@ class SocialIntegrationController {
         });
       }
       
+      // For LinkedIn, use LinkedInAccountService to get user accounts
+      if (platform.toLowerCase() === 'linkedin') {
+        const LinkedInAccountService = require('../services/LinkedInAccountService');
+        
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        
+        // Format accounts for frontend
+        const connections = accounts.map(account => ({
+          id: account.id,
+          connected: account.status === 'active',
+          status: account.status || 'disconnected',
+          profileName: account.account_name || account.metadata?.email?.split('@')[0] || 'LinkedIn Account',
+          accountName: account.account_name, // Include account_name explicitly
+          email: account.metadata?.email || null,
+          profileUrl: account.metadata?.profile_url || null,
+          connectedAt: account.created_at,
+          connectionMethod: account.metadata?.connected_via || null
+        }));
+        
+        return res.json({
+          success: true,
+          connected: connections.some(acc => acc.connected),
+          status: connections.length > 0 ? 'connected' : 'disconnected',
+          connections: connections,
+          totalConnections: connections.length
+        });
+      }
+      
       const service = this.getService(platform);
       
       // If accountId provided, get specific account info
@@ -439,7 +468,7 @@ class SocialIntegrationController {
         });
       }
       
-      // Otherwise, check if Unipile is configured for this platform
+      // Otherwise, check if service is configured for this platform
       const configured = service.isConfigured();
       
       res.json({
@@ -452,7 +481,11 @@ class SocialIntegrationController {
       });
       
     } catch (error) {
-      console.error(`[SocialIntegrationController] Status error:`, error);
+      logger.error('[SocialIntegrationController] Status error', {
+        error: error.message,
+        stack: error.stack,
+        platform
+      });
       res.status(500).json({
         success: false,
         error: 'Failed to get status',
@@ -574,6 +607,7 @@ class SocialIntegrationController {
               success: true,
               checkpoint_required: true,
               account_id: result.account_id,
+              database_account_id: result.database_account_id, // Include database ID for frontend
               checkpoint: {
                 required: true,
                 type: checkpointInfo.type,
@@ -822,12 +856,43 @@ class SocialIntegrationController {
           });
         }
         unipileAccountId = checkpointAccount.provider_account_id || checkpointAccount.unipile_account_id;
+      } else {
+        // account_id might be a database UUID, try to resolve it
+        // Check if it looks like a UUID (contains dashes)
+        if (account_id.includes('-')) {
+          try {
+            const accounts = await LinkedInAccountService.getUserAccounts(req);
+            const account = accounts.find(acc => acc.id === account_id);
+            if (account) {
+              unipileAccountId = account.provider_account_id || account.unipile_account_id;
+            }
+            // If not found, assume account_id is already a Unipile account ID
+          } catch (resolveError) {
+            // If resolution fails, assume account_id is already a Unipile account ID
+            logger.warn('[SocialIntegrationController] Could not resolve account_id, assuming it is Unipile account ID', {
+              account_id,
+              error: resolveError.message
+            });
+          }
+        }
+        // If account_id doesn't contain dashes, assume it's already a Unipile account ID
+      }
+
+      if (!unipileAccountId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid account ID. Could not resolve Unipile account ID.'
+        });
       }
 
       const result = await LinkedInAccountService.getCheckpointStatus(req, unipileAccountId);
       
       res.json(result);
     } catch (error) {
+      logger.error('[SocialIntegrationController] getCheckpointStatus error', {
+        error: error.message,
+        stack: error.stack
+      });
       res.status(500).json({
         success: false,
         error: 'Failed to get checkpoint status',

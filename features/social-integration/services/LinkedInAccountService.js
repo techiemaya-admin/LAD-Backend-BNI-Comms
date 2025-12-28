@@ -108,12 +108,34 @@ class LinkedInAccountService {
         }
       };
       
-      await linkedInAccountRepo.create(req, accountData);
+      let savedAccount;
+      try {
+        savedAccount = await linkedInAccountRepo.create(req, accountData);
+        logger.info('[LinkedInAccountService] Checkpoint account saved successfully', {
+          accountId: savedAccount.id,
+          providerAccountId: unipileAccountId,
+          tenantId,
+          userId
+        });
+      } catch (dbError) {
+        logger.error('[LinkedInAccountService] Failed to save checkpoint account to database', {
+          error: dbError.message,
+          stack: dbError.stack,
+          providerAccountId: unipileAccountId,
+          tenantId,
+          userId,
+          code: dbError.code,
+          constraint: dbError.constraint
+        });
+        // Re-throw with a more user-friendly message
+        throw new Error(`Failed to save account to database: ${dbError.message}`);
+      }
       
       return {
         success: true,
         checkpoint_required: true,
         account_id: unipileAccountId,
+        database_account_id: savedAccount.id, // Return database ID for frontend
         checkpoint: checkpointInfo,
         email: unipileResult.email || email,
         profileName: unipileResult.profile_name || unipileResult.profileName || email?.split('@')[0]
@@ -145,14 +167,28 @@ class LinkedInAccountService {
       }
     };
 
-    const savedAccount = await linkedInAccountRepo.create(req, accountData);
-
-    logger.info('[LinkedInAccountService] Account connected successfully', {
-      accountId: savedAccount.id,
-      providerAccountId: savedAccount.provider_account_id,
-      tenantId,
-      userId
-    });
+    let savedAccount;
+    try {
+      savedAccount = await linkedInAccountRepo.create(req, accountData);
+      logger.info('[LinkedInAccountService] Account connected successfully', {
+        accountId: savedAccount.id,
+        providerAccountId: savedAccount.provider_account_id,
+        tenantId,
+        userId
+      });
+    } catch (dbError) {
+      logger.error('[LinkedInAccountService] Failed to save connected account to database', {
+        error: dbError.message,
+        stack: dbError.stack,
+        providerAccountId: unipileAccountId,
+        tenantId,
+        userId,
+        code: dbError.code,
+        constraint: dbError.constraint
+      });
+      // Re-throw with a more user-friendly message
+      throw new Error(`Failed to save account to database: ${dbError.message}`);
+    }
 
     return {
       success: true,
@@ -616,6 +652,10 @@ class LinkedInAccountService {
       throw new Error('Account not found');
     }
 
+    if (!account.provider_account_id) {
+      throw new Error('Account missing provider_account_id');
+    }
+
     // Get checkpoint type from account metadata if not provided
     if (checkpointType === 'IN_APP_VALIDATION' && account.metadata?.checkpoint?.type) {
       checkpointType = account.metadata.checkpoint.type;
@@ -630,6 +670,7 @@ class LinkedInAccountService {
       
       logger.info('[LinkedInAccountService] Checkpoint solved successfully', {
         accountId,
+        providerAccountId: account.provider_account_id,
         answer,
         checkpointType,
         tenantId
@@ -639,11 +680,20 @@ class LinkedInAccountService {
     } catch (error) {
       logger.error('[LinkedInAccountService] Checkpoint solve failed', {
         error: error.message,
+        stack: error.stack,
         accountId,
+        providerAccountId: account.provider_account_id,
         answer,
         checkpointType,
-        tenantId
+        tenantId,
+        responseData: error.response?.data
       });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        throw new Error(`Checkpoint solve failed: ${error.response.status} ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+      }
+      
       throw new Error(`Checkpoint solve failed: ${error.message}`);
     }
   }
@@ -675,13 +725,18 @@ class LinkedInAccountService {
       }
 
       // Check if account is still in checkpoint state
-      const isCheckpoint = accountDetails?.checkpoint && accountDetails.checkpoint.required;
-      const isConnected = accountDetails?.state === 'connected' || accountDetails?.status === 'connected';
+      // Handle both object === 'Checkpoint' format and nested checkpoint object
+      const isCheckpoint = (accountDetails?.object === 'Checkpoint' && accountDetails?.checkpoint) ||
+                          (accountDetails?.checkpoint && accountDetails.checkpoint.required);
+      const isConnected = accountDetails?.state === 'connected' || 
+                         accountDetails?.status === 'connected' ||
+                         accountDetails?.object === 'Account';
       
       logger.info('[LinkedInAccountService] Checkpoint status retrieved', {
         unipileAccountId,
         isCheckpoint,
         isConnected,
+        accountObject: accountDetails?.object,
         tenantId
       });
 
@@ -694,9 +749,17 @@ class LinkedInAccountService {
     } catch (error) {
       logger.error('[LinkedInAccountService] Error getting checkpoint status', {
         error: error.message,
+        stack: error.stack,
         unipileAccountId,
-        tenantId
+        tenantId,
+        responseData: error.response?.data
       });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        throw new Error(`Failed to get checkpoint status: ${error.response.status} ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+      }
+      
       throw new Error(`Failed to get checkpoint status: ${error.message}`);
     }
   }
@@ -763,8 +826,18 @@ class LinkedInAccountService {
     } catch (error) {
       logger.error('[LinkedInAccountService] Error solving checkpoint', {
         error: error.message,
-        accountId: unipileAccountId
+        stack: error.stack,
+        accountId: unipileAccountId,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
       });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        const errorMsg = error.response.data?.detail || error.response.data?.error || error.response.data?.message || error.response.statusText;
+        throw new Error(`Unipile API error: ${error.response.status} - ${errorMsg}`);
+      }
+      
       throw error;
     }
   }
