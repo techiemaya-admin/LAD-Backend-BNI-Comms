@@ -723,36 +723,83 @@ class SocialIntegrationController {
       
       // account_id can be database UUID or unipile_account_id
       // LinkedInAccountService.verifyOTP will handle both cases
-      const accountId = account_id;
+      let accountId = account_id;
       
       if (!accountId) {
-        // Try to get first account for user
-        const accounts = await LinkedInAccountService.getUserAccounts(req);
-        if (accounts.length === 0) {
-          return res.status(400).json({
+        // Try to get first checkpoint account for user
+        try {
+          const accounts = await LinkedInAccountService.getUserAccounts(req);
+          if (accounts.length === 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'Account ID is required. No LinkedIn accounts found.'
+            });
+          }
+          // Use first checkpoint account, or first account if none in checkpoint status
+          const checkpointAccount = accounts.find(acc => acc.status === 'checkpoint');
+          if (!checkpointAccount) {
+            return res.status(400).json({
+              success: false,
+              error: 'Account ID is required. No checkpoint account found.'
+            });
+          }
+          
+          // Use database ID (UUID) if available, otherwise use provider_account_id
+          accountId = checkpointAccount.id || checkpointAccount.provider_account_id;
+          
+          if (!accountId) {
+            return res.status(400).json({
+              success: false,
+              error: 'Account ID is required. Found account but missing ID.'
+            });
+          }
+        } catch (accountError) {
+          logger.error('[SocialIntegrationController] Error getting user accounts for OTP verification', {
+            error: accountError.message,
+            stack: accountError.stack
+          });
+          return res.status(500).json({
             success: false,
-            error: 'Account ID is required. No LinkedIn accounts found.'
+            error: 'Failed to retrieve account information',
+            message: accountError.message
           });
         }
-        // Use first account's ID
-        const firstAccount = accounts.find(acc => acc.status === 'checkpoint') || accounts[0];
-        const result = await LinkedInAccountService.verifyOTP(req, firstAccount.id, otp);
+      }
+
+      if (!accountId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Account ID is required'
+        });
+      }
+
+      try {
+        const result = await LinkedInAccountService.verifyOTP(req, accountId, otp);
         
         return res.json({
           success: true,
           message: 'OTP verified successfully',
           result
         });
+      } catch (verifyError) {
+        logger.error('[SocialIntegrationController] OTP verification failed', {
+          error: verifyError.message,
+          stack: verifyError.stack,
+          accountId,
+          hasOtp: !!otp
+        });
+        
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to verify OTP',
+          message: verifyError.message
+        });
       }
-
-      const result = await LinkedInAccountService.verifyOTP(req, accountId, otp);
-      
-      res.json({
-        success: true,
-        message: 'OTP verified successfully',
-        result
-      });
     } catch (error) {
+      logger.error('[SocialIntegrationController] verifyOTP error', {
+        error: error.message,
+        stack: error.stack
+      });
       res.status(500).json({
         success: false,
         error: 'Failed to verify OTP',

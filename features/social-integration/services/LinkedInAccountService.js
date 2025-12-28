@@ -343,6 +343,14 @@ class LinkedInAccountService {
       throw new Error('Tenant context required');
     }
 
+    if (!accountId || typeof accountId !== 'string') {
+      throw new Error('Account ID is required and must be a string');
+    }
+
+    if (!otp || typeof otp !== 'string') {
+      throw new Error('OTP is required and must be a string');
+    }
+
     // accountId can be either database UUID or unipile_account_id
     // Try to find by database ID first, then by unipile_account_id
     let account = null;
@@ -397,10 +405,20 @@ class LinkedInAccountService {
     } catch (error) {
       logger.error('[LinkedInAccountService] OTP verification failed', {
         error: error.message,
+        stack: error.stack,
         accountId,
         unipileAccountId,
-        tenantId
+        tenantId,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
       });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        const errorMsg = error.response.data?.detail || error.response.data?.error || error.response.data?.message || error.response.statusText;
+        throw new Error(`OTP verification failed: ${error.response.status} - ${errorMsg}`);
+      }
+      
       throw new Error(`OTP verification failed: ${error.message}`);
     }
   }
@@ -588,43 +606,78 @@ class LinkedInAccountService {
       throw new Error('UNIPILE_TOKEN is not configured');
     }
 
-    // Try SDK first
-    try {
-      const { UnipileClient } = require('unipile-node-sdk');
-      const unipile = new UnipileClient(sdkBaseUrl, token);
+    // Try SDK first (if available)
+    if (UnipileClient) {
+      try {
+        const unipile = new UnipileClient(sdkBaseUrl, token);
 
-      let verificationResponse;
-      if (unipile.account && typeof unipile.account.solveCodeCheckpoint === 'function') {
-        logger.info('[LinkedInAccountService] Using SDK solveCodeCheckpoint()');
-        verificationResponse = await unipile.account.solveCodeCheckpoint({
-          provider: 'LINKEDIN',
-          account_id: unipileAccountId,
-          code: otp
-        });
-      } else {
-        // Fallback to HTTP
-        logger.info('[LinkedInAccountService] SDK method not available, using HTTP fallback');
-        const headers = unipileService.getAuthHeaders();
-        const response = await axios.post(
-          `${baseUrl}/accounts/${unipileAccountId}/solve-checkpoint`,
-          {
-            type: 'OTP',
+        if (unipile.account && typeof unipile.account.solveCodeCheckpoint === 'function') {
+          logger.info('[LinkedInAccountService] Using SDK solveCodeCheckpoint()', {
+            accountId: unipileAccountId,
+            sdkBaseUrl
+          });
+          const verificationResponse = await unipile.account.solveCodeCheckpoint({
+            provider: 'LINKEDIN',
+            account_id: unipileAccountId,
             code: otp
-          },
-          { headers, timeout: 30000 }
-        );
-        verificationResponse = response.data;
+          });
+          logger.info('[LinkedInAccountService] OTP verified successfully via Unipile SDK');
+          return verificationResponse;
+        } else {
+          logger.warn('[LinkedInAccountService] SDK solveCodeCheckpoint method not available on account object', {
+            hasAccount: !!unipile.account,
+            accountMethods: unipile.account ? Object.keys(unipile.account) : []
+          });
+        }
+      } catch (sdkError) {
+        // Extract error details - SDK errors might have different structures
+        // Check for body property which seems to exist based on errorKeys
+        const errorBody = sdkError.body || (typeof sdkError.body === 'string' ? JSON.parse(sdkError.body) : null);
+        
+        const errorDetails = {
+          message: sdkError.message,
+          name: sdkError.name,
+          stack: sdkError.stack,
+          response: sdkError.response?.data,
+          status: sdkError.response?.status,
+          statusText: sdkError.response?.statusText,
+          code: sdkError.code,
+          // Check for common error properties
+          detail: sdkError.detail,
+          error: sdkError.error,
+          // Check body property
+          body: errorBody,
+          bodyString: typeof sdkError.body === 'string' ? sdkError.body : JSON.stringify(sdkError.body),
+          // Stringify the whole error to see all properties
+          errorString: sdkError.toString(),
+          errorKeys: Object.keys(sdkError)
+        };
+        
+        logger.error('[LinkedInAccountService] SDK solveCodeCheckpoint failed', errorDetails);
+        
+        // Construct a meaningful error message
+        let errorMsg = 'Unipile SDK solveCodeCheckpoint failed';
+        if (errorBody) {
+          // Try to extract error message from body
+          const bodyError = errorBody.detail || errorBody.error || errorBody.message || (typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody));
+          errorMsg += `: ${bodyError}`;
+        } else if (sdkError.message) {
+          errorMsg += `: ${sdkError.message}`;
+        } else if (sdkError.response?.data) {
+          const data = sdkError.response.data;
+          errorMsg += `: ${data.detail || data.error || data.message || JSON.stringify(data)}`;
+        } else if (sdkError.response?.statusText) {
+          errorMsg += `: ${sdkError.response.status} ${sdkError.response.statusText}`;
+        } else {
+          errorMsg += `: ${sdkError.toString()}`;
+        }
+        
+        throw new Error(errorMsg);
       }
-
-      logger.info('[LinkedInAccountService] OTP verified successfully');
-      return verificationResponse;
-    } catch (error) {
-      logger.error('[LinkedInAccountService] Error verifying OTP', {
-        error: error.message,
-        accountId: unipileAccountId
-      });
-      throw error;
     }
+
+    // If SDK is not available, throw an error (HTTP API doesn't support checkpoint solving)
+    throw new Error('Unipile SDK is required for OTP verification. The HTTP API endpoint for solving checkpoints is not available. Please install unipile-node-sdk: npm install unipile-node-sdk');
   }
 
   /**
@@ -793,36 +846,44 @@ class LinkedInAccountService {
       throw new Error('UNIPILE_TOKEN is not configured');
     }
 
-    // Try SDK first
-    try {
-      const { UnipileClient } = require('unipile-node-sdk');
-      const unipile = new UnipileClient(sdkBaseUrl, token);
+    // Try SDK first (if available)
+    if (UnipileClient) {
+      try {
+        const unipile = new UnipileClient(sdkBaseUrl, token);
 
-      let solveResponse;
-      if (unipile.account && typeof unipile.account.solveCheckpoint === 'function') {
-        logger.info('[LinkedInAccountService] Using SDK solveCheckpoint()');
-        solveResponse = await unipile.account.solveCheckpoint({
-          account_id: unipileAccountId,
-          type: checkpointType,
-          answer: answer
-        });
-      } else {
-        // Fallback to HTTP
-        logger.info('[LinkedInAccountService] SDK method not available, using HTTP fallback');
-        const headers = unipileService.getAuthHeaders();
-        const response = await axios.post(
-          `${baseUrl}/accounts/${unipileAccountId}/solve-checkpoint`,
-          {
+        if (unipile.account && typeof unipile.account.solveCheckpoint === 'function') {
+          logger.info('[LinkedInAccountService] Using SDK solveCheckpoint()');
+          const solveResponse = await unipile.account.solveCheckpoint({
+            account_id: unipileAccountId,
             type: checkpointType,
             answer: answer
-          },
-          { headers, timeout: 30000 }
-        );
-        solveResponse = response.data;
+          });
+          logger.info('[LinkedInAccountService] Checkpoint solved successfully via SDK');
+          return solveResponse;
+        }
+      } catch (sdkError) {
+        logger.warn('[LinkedInAccountService] SDK solveCheckpoint failed, falling back to HTTP API', {
+          error: sdkError.message
+        });
+        // Fall through to HTTP API fallback
       }
+    }
 
-      logger.info('[LinkedInAccountService] Checkpoint solved successfully');
-      return solveResponse;
+    // Fallback to HTTP API
+    try {
+      logger.info('[LinkedInAccountService] Using HTTP API fallback for solve checkpoint');
+      const headers = unipileService.getAuthHeaders();
+      const response = await axios.post(
+        `${baseUrl}/accounts/${unipileAccountId}/solve-checkpoint`,
+        {
+          type: checkpointType,
+          answer: answer
+        },
+        { headers, timeout: 30000 }
+      );
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved successfully via HTTP API');
+      return response.data;
     } catch (error) {
       logger.error('[LinkedInAccountService] Error solving checkpoint', {
         error: error.message,
