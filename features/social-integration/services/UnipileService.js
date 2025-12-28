@@ -25,14 +25,19 @@ class UnipileService {
   
   /**
    * Get normalized base URL for Unipile API
-   * Ensures URL has /api/v1 path
+   * Ensures URL has protocol and /api/v1 path
    */
   getBaseUrl() {
     if (!this.dsn) {
       throw new Error('UNIPILE_DSN not configured');
     }
     
-    let baseUrl = this.dsn;
+    let baseUrl = this.dsn.trim();
+    
+    // Add protocol if missing (default to https)
+    if (!baseUrl.match(/^https?:\/\//i)) {
+      baseUrl = `https://${baseUrl}`;
+    }
     
     // Remove trailing slashes
     baseUrl = baseUrl.replace(/\/+$/, '');
