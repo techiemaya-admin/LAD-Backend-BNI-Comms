@@ -1,3 +1,5 @@
+const logger = require('../utils/logger');
+
 const trackClientFeatures = async (req, res, next) => {
   // Track feature usage for analytics and billing
   if (req.user && req.path.startsWith('/api/')) {
@@ -15,7 +17,7 @@ const trackClientFeatures = async (req, res, next) => {
       };
       
       // Log feature usage (could be sent to analytics service)
-      console.log(`📊 Feature usage:`, req.featureUsage);
+      logger.debug('Feature usage', req.featureUsage);
     }
   }
   
