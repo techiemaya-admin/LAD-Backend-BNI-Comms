@@ -433,17 +433,33 @@ class SocialIntegrationController {
         const accounts = await LinkedInAccountService.getUserAccounts(req);
         
         // Format accounts for frontend
-        const connections = accounts.map(account => ({
-          id: account.id,
-          connected: account.status === 'active',
-          status: account.status || 'disconnected',
-          profileName: account.account_name || account.metadata?.email?.split('@')[0] || 'LinkedIn Account',
-          accountName: account.account_name, // Include account_name explicitly
-          email: account.metadata?.email || null,
-          profileUrl: account.metadata?.profile_url || null,
-          connectedAt: account.created_at,
-          connectionMethod: account.metadata?.connected_via || null
-        }));
+        const connections = accounts.map(account => {
+          // Map database status to frontend status
+          let frontendStatus = 'disconnected';
+          if (account.status === 'active') {
+            frontendStatus = 'connected';
+          } else if (account.status === 'checkpoint') {
+            frontendStatus = 'checkpoint';
+          } else if (account.status === 'expired' || account.status === 'revoked') {
+            frontendStatus = 'disconnected';
+          } else if (account.status === 'error') {
+            frontendStatus = 'error';
+          } else {
+            frontendStatus = account.status || 'disconnected';
+          }
+          
+          return {
+            id: account.id,
+            connected: account.status === 'active',
+            status: frontendStatus,
+            profileName: account.account_name || account.metadata?.email?.split('@')[0] || 'LinkedIn Account',
+            accountName: account.account_name, // Include account_name explicitly
+            email: account.metadata?.email || null,
+            profileUrl: account.metadata?.profile_url || null,
+            connectedAt: account.created_at,
+            connectionMethod: account.metadata?.connected_via || null
+          };
+        });
         
         return res.json({
           success: true,
