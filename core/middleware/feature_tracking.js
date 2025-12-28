@@ -7,7 +7,7 @@ const trackClientFeatures = async (req, res, next) => {
     if (possibleFeature && possibleFeature !== 'auth' && possibleFeature !== 'billing' && possibleFeature !== 'users') {
       // This is a feature request
       req.featureUsage = {
-        clientId: req.user.clientId,
+        clientId: req.user.tenantId || req.user.organizationId || req.user.clientId,
         feature: possibleFeature,
         endpoint: req.path,
         method: req.method,
