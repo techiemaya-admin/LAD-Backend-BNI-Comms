@@ -37,6 +37,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('../../shared/database/connection');
+const logger = require('../utils/logger');
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -148,7 +149,7 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       error: 'Authentication failed'
@@ -222,7 +223,7 @@ router.post('/register', async (req, res) => {
       VALUES ($1, $2, $3)
     `, [user.id, tenant.id, 100.0]);
     
-    console.log(`✅ Registered new user: ${email} with tenant: ${tenant.name}`);
+    logger.info('Registered new user', { email, tenantId: tenant.id, tenantName: tenant.name });
     
     res.json({
       success: true,
@@ -237,7 +238,7 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('Registration error', { error: error.message, stack: error.stack });
     res.status(400).json({
       success: false,
       error: 'Registration failed',
@@ -320,7 +321,15 @@ router.get('/me', async (req, res) => {
     // Parse credit balance with fallback
     const creditBalance = parseFloat(user.credit_balance) || 0;
     
-    console.log(`✅ /api/auth/me - Returning user data for: ${user.email}, active tenant: ${user.primary_tenant_id}, balance: ${creditBalance}, capabilities: ${capabilities.length}, features: ${tenantFeatures.length}, total tenants: ${tenants.length}`);
+    logger.debug('Returning user data', {
+      email: user.email,
+      userId: user.id,
+      tenantId: user.primary_tenant_id,
+      balance: creditBalance,
+      capabilitiesCount: capabilities.length,
+      featuresCount: tenantFeatures.length,
+      tenantsCount: tenants.length
+    });
     
     res.json({
       success: true,
@@ -346,7 +355,7 @@ router.get('/me', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    logger.error('Get current user error', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       error: 'Failed to get user information'
@@ -368,7 +377,7 @@ router.post('/logout', (req, res) => {
       message: 'Logged out successfully'
     });
   } catch (error) {
-    console.error('Logout error:', error);
+    logger.error('Logout error', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       error: 'Logout failed'
