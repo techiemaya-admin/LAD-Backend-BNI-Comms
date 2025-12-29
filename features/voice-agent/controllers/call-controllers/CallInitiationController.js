@@ -19,28 +19,40 @@ class CallInitiationController {
       const tenantId = req.tenantId || req.user?.tenantId;
       const userId = req.user?.id;
 
+      // LAD Standard: API/HTTP uses snake_case, convert to camelCase for internal use
       const {
-        phoneNumber,
-        leadName,
-        leadId,
-        agentId,
-        voiceId,
-        fromNumber,
-        addedContext,
-        assistantOverrides = {}
+        // API/HTTP layer: snake_case (from frontend)
+        to_number,
+        agent_id,
+        from_number,
+        lead_name,
+        lead_id,
+        voice_id,
+        added_context,
+        assistant_overrides = {}
       } = req.body;
+
+      // Convert to camelCase for internal JavaScript use
+      const phoneNumber = to_number;
+      const agentId = agent_id;
+      const fromNumber = from_number;
+      const leadName = lead_name;
+      const leadId = lead_id;
+      const voiceId = voice_id;
+      const addedContext = added_context;
+      const assistantOverrides = assistant_overrides;
 
       // Validate required fields
       if (!phoneNumber || !agentId) {
         return res.status(400).json({
           success: false,
-          error: 'phoneNumber and agentId are required'
+          error: 'to_number and agent_id are required'
         });
       }
 
-      // Check if should use VAPI
+      // Check if should use VAPI (internal JS uses camelCase)
       if (this.vapiService.shouldUseVAPI(agentId)) {
-        // Use VAPI for the call
+        // Use VAPI for the call (internal JS uses camelCase)
         const result = await this.vapiService.initiateCall({
           phoneNumber,
           leadName,
@@ -72,7 +84,7 @@ class CallInitiationController {
           });
         }
 
-        // Get voice_id from agent if not provided
+        // Get voice_id from agent if not provided (internal JS uses camelCase)
         let resolvedVoiceId = voiceId;
         if (!resolvedVoiceId && agentId) {
           try {
@@ -86,7 +98,7 @@ class CallInitiationController {
           }
         }
 
-        // Build payload, only include voice_id if it's not null
+        // Build payload for remote API (LAD Standard: API/HTTP uses snake_case)
         const callPayload = {
           to_number: phoneNumber,
           added_context: addedContext || '',

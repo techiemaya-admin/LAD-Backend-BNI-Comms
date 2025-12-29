@@ -172,17 +172,28 @@ class VoiceAgentController {
       );
 
       if (!result.success) {
+        logger.error('Failed to generate signed URL for agent voice sample', {
+          agentId,
+          voiceId: agent.voice_id,
+          voiceSampleUrl,
+          error: result.error
+        });
+        
         return res.status(500).json({
           success: false,
-          error: result.error
+          error: result.error || 'Failed to generate signed URL',
+          message: result.error
         });
       }
 
+      // LAD Standard: Return snake_case for API/HTTP response
+      // Frontend expects signed_url at top level
       res.json({
         success: true,
+        signed_url: result.signedUrl,  // Top-level for frontend compatibility
         data: {
           agent_id: agentId,
-          agent_name: agent.agent_name,
+          agent_name: agent.name || agent.agent_name,
           voice_id: agent.voice_id,
           signed_url: result.signedUrl,
           expires_at: result.expiresAt,

@@ -6,6 +6,7 @@
  */
 
 const axios = require('axios');
+const logger = require('../../../core/utils/logger');
 
 class RecordingService {
   constructor(config = {}) {
@@ -44,7 +45,11 @@ class RecordingService {
         expirationHours: hours
       };
     } catch (error) {
-      console.error('Recording signed URL error:', error.message);
+      logger.error('Recording signed URL error', {
+        error: error.message,
+        status: error.response?.status,
+        responseData: error.response?.data
+      });
       
       return {
         success: false,
@@ -65,19 +70,49 @@ class RecordingService {
   async getVoiceSampleSignedUrl(gsUrl, expirationHours = null) {
     const hours = expirationHours || this.defaultExpirationHours;
     
+    // If URL is not a GCS URL (gs://), return it directly without signing
+    if (!gsUrl || !gsUrl.startsWith('gs://')) {
+      logger.info('Voice sample URL is not a GCS URL, returning as-is', {
+        url: gsUrl,
+        isGcs: false
+      });
+      
+      return {
+        success: true,
+        signedUrl: gsUrl,  // Return the original URL if it's already accessible
+        expiresAt: null,   // No expiration for non-GCS URLs
+        originalUrl: gsUrl
+      };
+    }
+    
+    // Declare url outside try block for error logging
+    // If signingEndpoint is set, use it directly (assumes full URL)
+    // Otherwise, append /recordings/signed-url to baseUrl
+    const url = this.signingEndpoint || `${this.baseUrl}/recordings/signed-url`;
+    
     try {
-      const url = `${this.signingEndpoint || this.baseUrl}/recordings/signed-url`;
+      // LAD Standard: Include authentication headers for remote API
+      const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER;
+      const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
+      
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (frontendHeader) {
+        headers['X-Frontend-ID'] = frontendHeader;
+      }
+      if (frontendApiKey) {
+        headers['X-API-Key'] = frontendApiKey;
+      }
+      
       const response = await axios.post(
         url,
         {
           gs_url: gsUrl,
           expiration_hours: hours
         },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
+        { headers }
       );
 
       return {
@@ -87,11 +122,27 @@ class RecordingService {
         originalUrl: gsUrl
       };
     } catch (error) {
-      console.error('Voice sample signed URL error:', error.message);
+      const errorDetails = {
+        error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        requestUrl: url,
+        requestPayload: { gs_url: gsUrl, expiration_hours: hours }
+      };
+      
+      logger.error('Voice sample signed URL error', errorDetails);
+      
+      // Provide more detailed error message
+      let errorMessage = error.message;
+      if (error.response?.data) {
+        const data = error.response.data;
+        errorMessage = data.detail || data.message || data.error || error.message;
+      }
       
       return {
         success: false,
-        error: error.response?.data?.message || error.message
+        error: errorMessage
       };
     }
   }
