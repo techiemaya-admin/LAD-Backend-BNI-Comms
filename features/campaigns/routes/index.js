@@ -6,6 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const CampaignController = require('../controllers/CampaignController');
+const CampaignLeadsSummaryController = require('../controllers/CampaignLeadsSummaryController');
+const CampaignLeadsRevealController = require('../controllers/CampaignLeadsRevealController');
 const linkedInRoutes = require('./linkedin');
 const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
 const {
@@ -30,8 +32,10 @@ router.delete('/:id', jwtAuth, validateUuidParam('id'), CampaignController.delet
 // Campaign leads
 router.get('/:id/leads', jwtAuth, validateUuidParam('id'), validatePagination, CampaignController.getCampaignLeads);
 router.post('/:id/leads', jwtAuth, validateUuidParam('id'), validateLeadIds, CampaignController.addLeadsToCampaign);
-router.get('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignController.getLeadSummary);
-router.post('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignController.generateLeadSummary);
+router.get('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsSummaryController.getLeadSummary);
+router.post('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsSummaryController.generateLeadSummary);
+router.post('/:id/leads/:leadId/reveal-email', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadEmail);
+router.post('/:id/leads/:leadId/reveal-phone', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadPhone);
 
 // Campaign analytics
 router.get('/:id/analytics', jwtAuth, validateUuidParam('id'), CampaignController.getCampaignAnalytics);
@@ -47,36 +51,5 @@ router.post('/:id/stop', jwtAuth, validateUuidParam('id'), CampaignController.st
 // Campaign steps
 router.get('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.getCampaignSteps);
 router.post('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.updateCampaignSteps);
-
-// Campaign LinkedIn accounts (LAD architecture)
-router.get('/:id/linkedin-accounts', jwtAuth, validateUuidParam('id'), async (req, res) => {
-  try {
-    const CampaignLinkedInService = require('../services/CampaignLinkedInService');
-    const accounts = await CampaignLinkedInService.getCampaignAccounts(req, req.params.id);
-    res.json({ success: true, accounts });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.post('/:id/linkedin-accounts', jwtAuth, validateUuidParam('id'), async (req, res) => {
-  try {
-    const CampaignLinkedInService = require('../services/CampaignLinkedInService');
-    const mapping = await CampaignLinkedInService.attachAccount(req, req.params.id, req.body);
-    res.json({ success: true, data: mapping });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-router.delete('/:id/linkedin-accounts/:mappingId', jwtAuth, validateUuidParam('id'), validateUuidParam('mappingId'), async (req, res) => {
-  try {
-    const CampaignLinkedInService = require('../services/CampaignLinkedInService');
-    await CampaignLinkedInService.detachAccount(req, req.params.id, req.params.mappingId);
-    res.json({ success: true, message: 'Account removed from campaign' });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
 
 module.exports = router;
