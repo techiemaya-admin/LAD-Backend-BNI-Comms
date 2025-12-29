@@ -293,7 +293,6 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
         nextRunAt: nextRunAt.toISOString(),
         lastExecutionReason: `No leads found. Retrying in ${retryIntervalHours}h or tomorrow at ${dailyRetryHour}:${dailyRetryMinute.toString().padStart(2, '0')}`
       }, null);
-      });
       
       logger.info('[Campaign Execution] Campaign set to waiting_for_leads state', { nextRetry: nextRunAt.toISOString() });
       
