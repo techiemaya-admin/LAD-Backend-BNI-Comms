@@ -32,7 +32,9 @@
  * 3. Controller function: Business logic
  * 
  * INTEGRATION:
- * - Uses existing Apollo service from sts-service/scripts/apollo_service.py
+ * - Uses Apollo service script via LAD_SCRIPTS_PATH environment variable
+ * - Script location: backend/shared/services/apollo_service.py (when merged to LAD)
+ * - For local dev: Set LAD_SCRIPTS_PATH to scripts directory (symlink setup)
  * - Maintains backward compatibility with existing Apollo implementation
  * - Adds proper access control and billing on top of existing functionality
  * 
@@ -51,9 +53,10 @@
 
 const express = require('express');
 const router = express.Router();
-const { requireFeature } = require('../../shared/middleware/feature_guard');
-const { requireCredits } = require('../../shared/middleware/credit_guard');
-const ApolloLeadsController = require('./controllers/ApolloLeadsController');
+const path = require('path');
+const { requireFeature } = require('../../../shared/middleware/feature_guard');
+const { requireCredits } = require('../../../shared/middleware/credit_guard');
+const ApolloLeadsController = require(path.join(__dirname, '../controllers/ApolloLeadsController'));
 
 // Feature guard middleware - all routes require apollo-leads feature
 router.use(requireFeature('apollo-leads'));
@@ -118,16 +121,52 @@ router.get('/search-history', ApolloLeadsController.getSearchHistory);
 router.delete('/search-history/:id', ApolloLeadsController.deleteSearchHistory);
 
 /**
+ * POST /api/apollo-leads/reveal-email
+ * Reveal email - checks database cache first, then calls Apollo API
+ * Request body: { person_id: string, employee_name?: string }
+ */
+router.post('/reveal-email', 
+  requireCredits('apollo_email', 1),
+  ApolloLeadsController.revealEmail
+);
+
+/**
+ * POST /api/apollo-leads/reveal-phone
+ * Reveal phone - checks database cache first, then calls Apollo API
+ * Request body: { person_id: string, employee_name?: string }
+ */
+router.post('/reveal-phone',
+  requireCredits('apollo_phone', 8),
+  ApolloLeadsController.revealPhone
+);
+
+/**
+ * POST /api/apollo-leads/search-employees-from-db
+ * Search employees from database cache (employees_cache table)
+ * Falls back to Apollo API if no results found in database
+ */
+router.post('/search-employees-from-db', ApolloLeadsController.searchEmployeesFromDb);
+
+/**
  * Feature health check
  */
 router.get('/health', async (req, res) => {
   try {
-    const { healthCheck } = require('./manifest');
-    const health = await healthCheck();
-    
+    // Simple health check - no need for manifest
     res.json({
       feature: 'apollo-leads',
-      ...health
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      endpoints: [
+        'POST /search',
+        'GET /companies/:id',
+        'POST /companies/:id/leads',
+        'GET /leads/:id/email',
+        'POST /reveal-email',
+        'GET /leads/:id/phone',
+        'POST /reveal-phone',
+        'POST /search-employees-from-db'
+      ]
     });
   } catch (error) {
     res.status(500).json({

@@ -1,19 +1,47 @@
+/**
+ * Apollo Leads Service
+ * LAD Architecture Compliant - Main service for Apollo.io lead generation
+ * 
+ * Coordinates between various specialized services:
+ * - ApolloRevealService: Email and phone reveals
+ * - ApolloFormatterService: Data formatting
+ * - ApolloSearchHistoryService: Search history
+ * - ApolloCacheService: Database cache operations
+ */
+
 const axios = require('axios');
-const { pool } = require('../../../shared/database/connection');
+const ApolloFormatterService = require('./ApolloFormatterService');
+const ApolloPythonService = require('./ApolloPythonService');
+const ApolloRevealService = require('./ApolloRevealService');
+const { APOLLO_CONFIG, TIMEOUT_CONFIG } = require('../../../core/config/constants');
+const logger = require('../../../core/utils/logger');
 
 class ApolloLeadsService {
   constructor() {
     this.apiKey = process.env.APOLLO_API_KEY || process.env.APOLLO_IO_API_KEY;
-    this.baseURL = 'https://api.apollo.io/v1';
+    // LAD Architecture: Use environment variable for API base URL
+    // Apollo.io API v1 base URL: https://api.apollo.io/v1
+    this.baseURL = process.env.APOLLO_API_BASE_URL || APOLLO_CONFIG.DEFAULT_BASE_URL;
+    
+    // Initialize reveal service
+    this.revealService = new ApolloRevealService(this.apiKey, this.baseURL);
     
     if (!this.apiKey) {
-      console.warn('⚠️ Apollo API key not configured');
+      logger.warn('[Apollo Leads Service] Apollo API key not configured');
     }
+    
+    logger.debug('[Apollo Leads Service] Initialized', {
+      baseURL: this.baseURL,
+      hasApiKey: !!this.apiKey
+    });
   }
 
-  async searchCompanies(searchParams) {
-    // Feature access is checked by middleware
-
+  /**
+   * Search companies using Apollo.io
+   * @param {Object} searchParams - Search parameters
+   * @param {Object} req - Express request object (for tenant context)
+   */
+  async searchCompanies(searchParams, req = null) {
     const {
       keywords = [],
       industry,
@@ -26,74 +54,132 @@ class ApolloLeadsService {
     } = searchParams;
 
     try {
-      // Build Apollo API request payload
+      const mainKeyword = keywords.length > 0 ? keywords[0] : '';
+      
       const payload = {
-        q_keywords: keywords.join(' '),
+        // Apollo.io API: Prefer X-Api-Key header over api_key in body
+        // Remove api_key from body when using header to avoid conflicts
+        q_organization_name: mainKeyword,
         page: page,
-        per_page: Math.min(limit, 100) // Apollo max is 100 per page
+        per_page: Math.min(limit, APOLLO_CONFIG.MAX_PER_PAGE)
       };
 
-      // Add optional filters
+      // Apollo.io API parameter format for /mixed_companies/search:
+      // - organization_locations: Array of location strings (e.g., ["San Francisco, CA", "New York, NY"])
+      // - organization_industries: Array of industry name strings (e.g., ["Software", "Technology"])
+      //   Note: industry_tag_ids is for numeric tag IDs, but organization_industries is more common for names
+      // - organization_num_employees_ranges: Array of employee range strings
+      
       if (industry) {
-        payload.industry_tag_ids = [industry];
+        // Support both array and single value
+        const industryValue = Array.isArray(industry) ? industry : [industry];
+        // Check if first value is a numeric string (tag ID) or text (industry name)
+        const firstValue = String(industryValue[0] || '');
+        const isNumeric = /^\d+$/.test(firstValue.trim()); // Only digits
+        
+        if (isNumeric) {
+          // Numeric tag IDs - use industry_tag_ids
+          payload.industry_tag_ids = industryValue.map(id => parseInt(id));
+        } else {
+          // Text industry names - use organization_industries (preferred for company search)
+          payload.organization_industries = industryValue;
+        }
       }
       
       if (location) {
-        payload.organization_locations = [location];
+        // organization_locations must be an array of location strings
+        // Format: ["City, State", "City, Country", etc.]
+        payload.organization_locations = Array.isArray(location) ? location : [location];
       }
       
       if (company_size) {
-        payload.organization_num_employees_ranges = [company_size];
+        // organization_num_employees_ranges must be an array
+        payload.organization_num_employees_ranges = Array.isArray(company_size) ? company_size : [company_size];
       }
 
+      // Log payload for debugging (remove sensitive data in production)
+      logger.debug('[Apollo Leads] API request payload', {
+        url: `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.ORGANIZATIONS_SEARCH}`,
+        payload: { ...payload, hasApiKey: !!this.apiKey }
+      });
+
       const response = await axios.post(
-        `${this.baseURL}/mixed_companies/search`,
+        `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.ORGANIZATIONS_SEARCH}`,
         payload,
         {
           headers: {
             'Content-Type': 'application/json',
             'X-Api-Key': this.apiKey
           },
-          timeout: 30000
+          timeout: TIMEOUT_CONFIG.APOLLO_API
         }
       );
 
       const companies = response.data.organizations || [];
       
-      // Save search to history
-      await this.saveSearchHistory({
-        searchParams,
-        results: companies.length,
-        userId: 'demo-user' // In real app, get from context
+      logger.debug('[Apollo Leads] API response', {
+        companiesFound: companies.length,
+        hasPagination: !!response.data.pagination
       });
+      
+      // Save search to history (if req context available)
+      if (req) {
+        try {
+          const ApolloSearchHistoryService = require('./ApolloSearchHistoryService');
+          await ApolloSearchHistoryService.saveSearchHistory({
+            searchParams,
+            results: companies.length,
+            userId: req.user?.id || 'system'
+          }, req);
+        } catch (historyError) {
+          logger.warn('[Apollo Leads] Failed to save search history', { error: historyError.message });
+        }
+      }
 
-      return this.formatCompanies(companies);
+      return ApolloFormatterService.formatCompanies(companies);
     } catch (error) {
-      console.error('Apollo API error:', error.response?.data || error.message);
+      const errorDetails = {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method
+      };
+      logger.error('[Apollo Leads] Apollo API error', errorDetails);
+      
+      // Provide more helpful error message for parameter issues
+      if (error.response?.status === 422) {
+        const errorMsg = error.response?.data?.error || error.message;
+        throw new Error(`Apollo search failed: ${errorMsg}. Check that industry/location parameters are formatted correctly.`);
+      }
+      
       throw new Error(`Apollo search failed: ${error.message}`);
     }
   }
 
+  /**
+   * Get company details by ID
+   */
   async getCompanyById(companyId) {
-    if (!isFeatureEnabled('apollo_leads')) {
-      throw new Error('Apollo Leads feature is disabled');
-    }
-
     try {
       const response = await axios.get(
-        `${this.baseURL}/organizations/${companyId}`,
+        `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.ORGANIZATION_BY_ID}/${companyId}`,
         {
           headers: { 'X-Api-Key': this.apiKey }
         }
       );
 
-      return this.formatCompany(response.data.organization);
+      return ApolloFormatterService.formatCompany(response.data.organization);
     } catch (error) {
-      console.error('Apollo get company error:', error);
+      logger.error('[Apollo Leads] Get company error', { error: error.message, stack: error.stack });
       throw new Error(`Failed to get company: ${error.message}`);
     }
   }
 
+  /**
+   * Get company leads (employees)
+   */
   async getCompanyLeads(companyId, options = {}) {
     const { limit = 25, page = 1, title_filter } = options;
 
@@ -109,7 +195,7 @@ class ApolloLeadsService {
       }
 
       const response = await axios.post(
-        `${this.baseURL}/people/search`,
+        `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.PEOPLE_SEARCH}`,
         payload,
         {
           headers: {
@@ -119,168 +205,74 @@ class ApolloLeadsService {
         }
       );
 
-      return this.formatLeads(response.data.people || []);
+      return ApolloFormatterService.formatLeads(response.data.people || []);
     } catch (error) {
-      console.error('Apollo get leads error:', error);
+      logger.error('[Apollo Leads] Get leads error', { error: error.message, stack: error.stack });
       throw new Error(`Failed to get leads: ${error.message}`);
     }
   }
 
-  async revealEmail(personId) {
-    try {
-      const response = await axios.post(
-        `${this.baseURL}/people/bulk_match`,
-        {
-          details: [{ id: personId }],
-          reveal_personal_emails: true,
-          reveal_phone_number: false
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Api-Key': this.apiKey
-          }
-        }
-      );
-
-      const person = response.data?.matches?.[0];
-      return person?.email || null;
-    } catch (error) {
-      console.error('Apollo reveal email error:', error);
-      throw new Error(`Email reveal failed: ${error.message}`);
-    }
+  /**
+   * Reveal email - delegates to ApolloRevealService
+   */
+  async revealEmail(personId, employeeName = null, req = null) {
+    return this.revealService.revealEmail(personId, employeeName, req);
+  }
+  
+  /**
+   * Reveal phone - delegates to ApolloRevealService
+   */
+  async revealPhone(personId, employeeName = null, req = null) {
+    return this.revealService.revealPhone(personId, employeeName, req);
   }
 
-  async revealPhone(personId) {
-    try {
-      const response = await axios.post(
-        `${this.baseURL}/people/bulk_match`,
-        {
-          details: [{ id: personId }],
-          reveal_personal_emails: false,
-          reveal_phone_number: true
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Api-Key': this.apiKey
-          }
-        }
-      );
-
-      const person = response.data?.matches?.[0];
-      return person?.phone_numbers?.[0]?.raw_number || null;
-    } catch (error) {
-      console.error('Apollo reveal phone error:', error);
-      throw new Error(`Phone reveal failed: ${error.message}`);
-    }
+  /**
+   * Search history methods - delegate to ApolloSearchHistoryService
+   */
+  async saveSearchHistory(searchData, req = null) {
+    const ApolloSearchHistoryService = require('./ApolloSearchHistoryService');
+    return ApolloSearchHistoryService.saveSearchHistory(searchData, req);
   }
 
-  async saveSearchHistory(searchData) {
-    try {
-      const query = `
-        INSERT INTO apollo_search_history (user_id, search_params, results_count, created_at)
-        VALUES ($1, $2, $3, NOW())
-        RETURNING id
-      `;
-      
-      await pool.query(query, [
-        searchData.userId,
-        JSON.stringify(searchData.searchParams),
-        searchData.results
-      ]);
-    } catch (error) {
-      console.error('Save search history error:', error);
-      // Don't throw - this is not critical
-    }
+  async getSearchHistory(userId, options = {}, req = null) {
+    const ApolloSearchHistoryService = require('./ApolloSearchHistoryService');
+    return ApolloSearchHistoryService.getSearchHistory(userId, options, req);
   }
 
-  async getSearchHistory(userId, options = {}) {
-    const { limit = 50, page = 1 } = options;
-    const offset = (page - 1) * limit;
-
-    try {
-      const query = `
-        SELECT id, search_params, results_count, created_at
-        FROM apollo_search_history
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
-      `;
-      
-      const result = await pool.query(query, [userId, limit, offset]);
-      return result.rows.map(row => ({
-        ...row,
-        search_params: JSON.parse(row.search_params)
-      }));
-    } catch (error) {
-      console.error('Get search history error:', error);
-      return [];
-    }
+  async deleteSearchHistory(historyId, userId, req = null) {
+    const ApolloSearchHistoryService = require('./ApolloSearchHistoryService');
+    return ApolloSearchHistoryService.deleteSearchHistory(historyId, userId, req);
   }
 
-  async deleteSearchHistory(historyId, userId) {
-    try {
-      const query = `
-        DELETE FROM apollo_search_history
-        WHERE id = $1 AND user_id = $2
-      `;
-      
-      await pool.query(query, [historyId, userId]);
-    } catch (error) {
-      console.error('Delete search history error:', error);
-      throw error;
-    }
-  }
-
+  /**
+   * Format methods - delegate to ApolloFormatterService
+   */
   formatCompanies(companies) {
-    return companies.map(this.formatCompany);
+    return ApolloFormatterService.formatCompanies(companies);
   }
 
   formatCompany(company) {
-    return {
-      id: company.id,
-      name: company.name,
-      website: company.website_url,
-      domain: company.primary_domain,
-      industry: company.primary_vertical,
-      location: {
-        country: company.organization_raw_address_country,
-        city: company.organization_raw_address_city,
-        state: company.organization_raw_address_state
-      },
-      size: company.num_current_employees,
-      revenue: company.estimated_num_employees,
-      description: company.short_description,
-      technologies: company.technology_names || [],
-      apollo_id: company.id,
-      linkedin_url: company.linkedin_url,
-      twitter_url: company.twitter_url,
-      facebook_url: company.facebook_url,
-      created_at: new Date().toISOString()
-    };
+    return ApolloFormatterService.formatCompany(company);
   }
 
   formatLeads(people) {
-    return people.map(person => ({
-      id: person.id,
-      name: person.name,
-      first_name: person.first_name,
-      last_name: person.last_name,
-      title: person.title,
-      email: person.email,
-      phone: person.phone_numbers?.[0]?.raw_number,
-      linkedin_url: person.linkedin_url,
-      company_id: person.organization?.id,
-      company_name: person.organization?.name,
-      location: {
-        country: person.country,
-        city: person.city,
-        state: person.state
-      },
-      apollo_id: person.id,
-      created_at: new Date().toISOString()
-    }));
+    return ApolloFormatterService.formatLeads(people);
+  }
+
+  /**
+   * Call Python Apollo service - delegate to ApolloPythonService
+   */
+  _callApolloService(method, params = {}) {
+    return ApolloPythonService.callApolloService(method, params);
+  }
+
+  /**
+   * Search employees from database cache
+   * Delegates to ApolloCacheService
+   */
+  async searchEmployeesFromDb(searchParams, req = null) {
+    const { searchEmployeesFromDb } = require('./ApolloCacheService');
+    return searchEmployeesFromDb(searchParams, req);
   }
 }
 

@@ -85,7 +85,7 @@ const FEATURE = {
   // Environment requirements
   environment: {
     required: ['APOLLO_API_KEY'],
-    optional: ['APOLLO_WEBHOOK_URL']
+    optional: ['APOLLO_WEBHOOK_URL', 'APOLLO_API_BASE_URL']
   },
   
   // Database tables this feature uses
@@ -105,7 +105,7 @@ const FEATURE = {
   external_apis: [
     {
       name: 'Apollo.io API',
-      url: 'https://api.apollo.io',
+      url: process.env.APOLLO_API_BASE_URL || require('../../../core/config/constants').APOLLO_CONFIG.DEFAULT_BASE_URL,
       required: true
     }
   ],
@@ -119,18 +119,18 @@ const FEATURE = {
 
 // Feature activation function
 const activate = (app, config) => {
-  console.log(`🚀 Activating Apollo Leads feature v${FEATURE.version}`);
+  // Feature activation logging handled by feature registry
   
   // Load routes
   const routes = require('./routes');
   app.use(`/api/${FEATURE.key}`, routes);
   
-  console.log(`✅ Apollo Leads feature activated with ${FEATURE.routes.length} routes`);
+  // Feature activation logging handled by feature registry
 };
 
 // Feature deactivation function
 const deactivate = (app) => {
-  console.log('🛑 Deactivating Apollo Leads feature');
+  // Feature deactivation logging handled by feature registry
   // Cleanup logic here
 };
 
