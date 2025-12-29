@@ -36,6 +36,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { FeatureFlagService } = require('../feature_flags/service');
+const logger = require('./utils/logger');
 
 class FeatureRegistry {
   constructor() {
@@ -48,6 +49,8 @@ class FeatureRegistry {
     
     try {
       const featureDirs = await fs.readdir(featuresDir);
+      logger.info('[FeatureRegistry] Discovering features', { featuresDir, directoryCount: featureDirs.length });
+      logger.debug('[FeatureRegistry] Found directories', { directories: featureDirs });
       
       for (const featureDir of featureDirs) {
         const manifestPath = path.join(featuresDir, featureDir, 'manifest.js');
@@ -58,20 +61,38 @@ class FeatureRegistry {
           
           // Load feature manifest
           const manifest = require(manifestPath);
+          logger.debug('[FeatureRegistry] Loaded manifest', { 
+            featureDir, 
+            key: manifest.key, 
+            hasRoutes: Array.isArray(manifest.routes),
+            routesCount: manifest.routes?.length 
+          });
           
           // Validate manifest
           if (this.validateManifest(manifest)) {
             this.registerFeature(manifest);
-            console.log(`✅ Registered feature: ${manifest.key}`);
+            logger.info('[FeatureRegistry] Registered feature', { key: manifest.key, name: manifest.name });
           } else {
-            console.warn(`⚠️  Invalid manifest for feature: ${featureDir}`);
+            logger.warn('[FeatureRegistry] Invalid manifest', { 
+              featureDir,
+              key: manifest.key, 
+              name: manifest.name, 
+              version: manifest.version,
+              hasRoutes: Array.isArray(manifest.routes)
+            });
           }
         } catch (error) {
-          console.warn(`⚠️  No manifest found for feature: ${featureDir}`);
+          logger.debug('[FeatureRegistry] No manifest found', { featureDir, error: error.message });
         }
       }
+      
+      const registeredFeatures = Array.from(this.features.keys());
+      logger.info('[FeatureRegistry] Feature discovery complete', { 
+        count: registeredFeatures.length,
+        features: registeredFeatures 
+      });
     } catch (error) {
-      console.error('❌ Error discovering features:', error);
+      logger.error('[FeatureRegistry] Error discovering features', { error: error.message, stack: error.stack });
     }
   }
 
@@ -114,7 +135,14 @@ class FeatureRegistry {
 
     // Lazy load router if not already loaded
     if (!feature.router) {
-      const routerPath = path.join(__dirname, '../features', featureKey, 'routes.js');
+      // Try routes/index.js first, then routes.js
+      let routerPath = path.join(__dirname, '../features', featureKey, 'routes', 'index.js');
+      try {
+        await fs.access(routerPath);
+      } catch {
+        // Fallback to routes.js
+        routerPath = path.join(__dirname, '../features', featureKey, 'routes.js');
+      }
       feature.router = require(routerPath);
     }
 

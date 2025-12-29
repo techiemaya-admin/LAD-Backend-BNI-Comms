@@ -8,7 +8,7 @@
 const axios = require('axios');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const { requireTenantId } = require('../../../core/utils/tenantHelper');
-const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../../../core/config/constants');
+const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../models/constants');
 const { pool } = require('../../../shared/database/connection');
 const logger = require('../../../core/utils/logger');
 
@@ -109,10 +109,24 @@ class ApolloRevealService {
       });
 
       const person = response.data?.matches?.[0];
-      const email = person?.email;
+      // Apollo returns email in multiple places:
+      // 1. person.email - work/corporate email
+      // 2. person.personal_emails array - personal emails revealed with credits
+      const workEmail = person?.email;
+      const personalEmails = person?.personal_emails || [];
+      
+      // Prefer work email, fallback to first personal email
+      let email = workEmail;
+      if (!email || this._isFakeEmail(email)) {
+        email = personalEmails.find(e => e && !this._isFakeEmail(e)) || null;
+      }
       
       if (!email || this._isFakeEmail(email)) {
-        logger.warn('[Apollo Reveal] Apollo returned fake/placeholder email or no email');
+        logger.warn('[Apollo Reveal] Apollo returned fake/placeholder email or no email', {
+          email_status: person?.email_status,
+          has_work_email: !!workEmail,
+          personal_emails_count: personalEmails.length
+        });
         return { email: null, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL, error: 'Real email not available for this person' };
       }
       

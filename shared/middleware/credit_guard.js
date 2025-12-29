@@ -61,20 +61,20 @@ const { pool } = require('../database/connection');
 const requireCredits = (usageType, creditsRequired) => {
   return async (req, res, next) => {
     try {
-      // Support both organizationId (new schema) and clientId (legacy)
-      const organizationId = req.user?.organizationId || req.user?.clientId || req.headers['x-organization-id'] || req.headers['x-client-id'];
-      const featureKey = req.feature?.key;
+      // Support tenantId (LAD schema), organizationId, and clientId (legacy)
+      const tenantId = req.user?.tenantId || req.user?.organizationId || req.user?.clientId || req.headers['x-organization-id'] || req.headers['x-client-id'] || req.headers['x-tenant-id'];
+      const featureKey = req.feature?.key || 'apollo-leads'; // Default to apollo-leads if not set
 
-      if (!organizationId || !featureKey) {
+      if (!tenantId) {
         return res.status(400).json({
           success: false,
-          error: 'Missing organization or feature information',
+          error: 'Missing tenant or feature information',
           message: 'Unable to process credit check'
         });
       }
 
       // Check current credit balance
-      const balance = await getCreditBalance(organizationId);
+      const balance = await getCreditBalance(tenantId);
       
       if (balance < creditsRequired) {
         return res.status(402).json({
@@ -88,7 +88,7 @@ const requireCredits = (usageType, creditsRequired) => {
       }
 
       // Deduct credits
-      await deductCredits(organizationId, featureKey, usageType, creditsRequired, req);
+      await deductCredits(tenantId, featureKey, usageType, creditsRequired, req);
 
       // Add credit info to request
       req.credits = {
@@ -110,18 +110,22 @@ const requireCredits = (usageType, creditsRequired) => {
 };
 
 /**
- * Get current credit balance for an organization
+ * Get current credit balance for a tenant
  */
-async function getCreditBalance(organizationId) {
+async function getCreditBalance(tenantId) {
+  // LAD Architecture: Use dynamic schema resolution
+  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  
+  // Note: user_credits table uses user_id and tenant_id
   const query = `
     SELECT 
       COALESCE(uc.balance, 0) as balance
-    FROM lad_LAD.user_credits uc
-    WHERE uc.organization_id = $1
+    FROM ${schema}.user_credits uc
+    WHERE uc.user_id = $1 OR uc.tenant_id = $1
     LIMIT 1
   `;
   
-  const result = await pool.query(query, [organizationId]);
+  const result = await pool.query(query, [tenantId]);
   
   if (result.rows.length === 0) {
     // Return 0 balance if no record found instead of throwing error
@@ -134,38 +138,39 @@ async function getCreditBalance(organizationId) {
 /**
  * Deduct credits and log usage
  */
-async function deductCredits(organizationId, featureKey, usageType, credits, req) {
+async function deductCredits(tenantId, featureKey, usageType, credits, req) {
+  // LAD Architecture: Use dynamic schema resolution
+  const schema = process.env.DB_SCHEMA || 'lad_dev';
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
     
-    // Deduct from organization balance
+    // Deduct from user balance
     await client.query(
-      'UPDATE lad_LAD.user_credits SET balance = balance - $1, updated_at = NOW() WHERE organization_id = $2',
-      [credits, organizationId]
+      `UPDATE ${schema}.user_credits SET balance = balance - $1, updated_at = NOW() WHERE user_id = $2 OR tenant_id = $2`,
+      [credits, tenantId]
     );
     
     // Log transaction
     await client.query(
-      `INSERT INTO lad_LAD.credit_transactions (
+      `INSERT INTO ${schema}.credit_transactions (
         user_id,
-        organization_id,
+        tenant_id,
         amount,
-        type,
-        feature,
+        transaction_type,
         description,
         metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
       [
-        req.user?.userId || req.user?.id,
-        organizationId,
+        req.user?.userId || req.user?.id || tenantId,
+        tenantId,
         -credits,
         'deduction',
-        featureKey,
         `${featureKey} - ${usageType}`,
         {
           usage_type: usageType,
+          feature: featureKey,
           endpoint: req.path,
           method: req.method,
           user_agent: req.headers['user-agent'],
@@ -176,7 +181,7 @@ async function deductCredits(organizationId, featureKey, usageType, credits, req
     
     await client.query('COMMIT');
     
-    console.log(`💰 Deducted ${credits} credits for ${organizationId} (${usageType})`);
+    console.log(`💰 Deducted ${credits} credits for ${tenantId} (${usageType})`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -191,11 +196,11 @@ async function deductCredits(organizationId, featureKey, usageType, credits, req
 const trackUsage = (usageType) => {
   return async (req, res, next) => {
     try {
-      // Support both organizationId (new schema) and clientId (legacy)
-      const organizationId = req.user?.organizationId || req.user?.clientId || req.headers['x-organization-id'] || req.headers['x-client-id'];
+      // Support tenantId (LAD schema), organizationId, and clientId (legacy)
+      const tenantId = req.user?.tenantId || req.user?.organizationId || req.user?.clientId || req.headers['x-organization-id'] || req.headers['x-client-id'] || req.headers['x-tenant-id'];
       const featureKey = req.feature?.key;
 
-      if (organizationId && featureKey) {
+      if (tenantId && featureKey) {
         // Track usage without deducting credits
         await pool.query(
           `INSERT INTO feature_usage (
@@ -212,7 +217,7 @@ const trackUsage = (usageType) => {
             $4
           )`,
           [
-            organizationId,
+            tenantId,
             featureKey,
             usageType,
             {

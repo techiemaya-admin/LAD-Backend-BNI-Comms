@@ -1,7 +1,8 @@
 /**
  * Social Account Model
  * 
- * Manages connected social media accounts
+ * Manages connected social media accounts 
+ * need to update organization_id as tenant_id
  */
 
 const { query } = require('../../../shared/database/connection');

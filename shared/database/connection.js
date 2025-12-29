@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const logger = require('../../core/utils/logger');
 
 // Database connection configuration
 const dbConfig = {
@@ -10,20 +11,20 @@ const dbConfig = {
   max: parseInt(process.env.POSTGRES_MAX_CLIENTS) || 20,
   idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
   connectionTimeoutMillis: 2000,
-  // Set default schema to lad_LAD
-  options: `-c search_path=${process.env.POSTGRES_SCHEMA || 'lad_LAD'},public`,
+  // Set default schema - dynamic based on environment
+  options: `-c search_path=${process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev'},public`,
 };
 
 const pool = new Pool(dbConfig);
 
 // Handle pool errors
 pool.on('error', (err) => {
-  console.error('❌ Unexpected database pool error:', err);
+  logger.error('[Database] Unexpected pool error', { error: err.message, stack: err.stack });
 });
 
 // Test connection
 pool.on('connect', () => {
-  console.log('✅ Database connection established');
+  logger.info('[Database] Connection established');
 });
 
 // Graceful shutdown

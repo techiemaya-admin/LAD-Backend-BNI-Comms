@@ -1,19 +1,21 @@
 // Minimal Lead Model for deals-pipeline
 const { query } = require('../../../shared/database/connection');
+const { getSchema } = require('../../../core/utils/schemaHelper');
 
 // Get all leads
-async function getAllLeads(organizationId, filters = {}) {
+async function getAllLeads(organizationId, filters = {}, req = null) {
+  const schema = getSchema(req);
   let sql = `
     SELECT l.*
-    FROM lad_dev.leads l
+    FROM ${schema}.leads l
     WHERE l.is_deleted = FALSE
   `;
   let params = [];
   let paramIndex = 1; 
 
-  // Add organization filter if provided
+  // Add tenant filter if provided
   if (organizationId) {
-    sql += ` AND l.organization_id = $${paramIndex}`;
+    sql += ` AND l.tenant_id = $${paramIndex}`;
     params.push(organizationId);
     paramIndex++;
   }
@@ -40,16 +42,18 @@ async function getAllLeads(organizationId, filters = {}) {
 }
 
 // Get lead by ID
-async function getLeadById(id) {
-  const sql = 'SELECT * FROM lad_dev.leads WHERE id = $1 AND is_deleted = FALSE';
+async function getLeadById(id, req = null) {
+  const schema = getSchema(req);
+  const sql = `SELECT * FROM ${schema}.leads WHERE id = $1 AND is_deleted = FALSE`;
   const result = await query(sql, [id]);
   return result.rows[0] || null;
 }
 
 // Create new lead
-async function createLead(leadData) {
+async function createLead(leadData, req = null) {
+  const schema = getSchema(req);
   const sql = `
-    INSERT INTO lad_dev.leads (name, email, phone, company, stage, status, source, priority, value)
+    INSERT INTO ${schema}.leads (name, email, phone, company, stage, status, source, priority, value)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `;
@@ -69,7 +73,8 @@ async function createLead(leadData) {
 }
 
 // Update lead
-async function updateLead(id, leadData) {
+async function updateLead(id, leadData, req = null) {
+  const schema = getSchema(req);
   const fields = [];
   const params = [];
   let paramIndex = 1;
@@ -82,13 +87,13 @@ async function updateLead(id, leadData) {
     }
   });
 
-  if (fields.length === 0) return getLeadById(id);
+  if (fields.length === 0) return getLeadById(id, req);
 
   fields.push(`updated_at = NOW()`);
   params.push(id);
 
   const sql = `
-    UPDATE lad_dev.leads 
+    UPDATE ${schema}.leads 
     SET ${fields.join(', ')}
     WHERE id = $${paramIndex} AND is_deleted = FALSE
     RETURNING *
@@ -99,20 +104,22 @@ async function updateLead(id, leadData) {
 }
 
 // Delete lead (soft delete)
-async function deleteLead(id) {
-  const sql = 'UPDATE lad_dev.leads SET is_deleted = TRUE WHERE id = $1 RETURNING *';
+async function deleteLead(id, req = null) {
+  const schema = getSchema(req);
+  const sql = `UPDATE ${schema}.leads SET is_deleted = TRUE WHERE id = $1 RETURNING *`;
   const result = await query(sql, [id]);
   return result.rows[0];
 }
 
 // Get conversion stats
-async function getLeadConversionStats() {
+async function getLeadConversionStats(req = null) {
+  const schema = getSchema(req);
   const sql = `
     SELECT 
       stage,
       COUNT(*) as count,
       SUM(value) as total_value
-    FROM lad_dev.leads
+    FROM ${schema}.leads
     WHERE is_deleted = FALSE
     GROUP BY stage
   `;

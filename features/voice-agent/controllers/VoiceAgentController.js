@@ -136,16 +136,22 @@ class VoiceAgentController {
    * GET /agents/:agentId/sample-signed-url
    * Get signed URL for agent's voice sample
    * JWT Auth Required
+   * 
+   * Optimized: Uses getAvailableAgentsForUser which already includes voice_sample_url
+   * to avoid multiple database queries
    */
   async getAgentVoiceSampleSignedUrl(req, res) {
     try {
       const { agentId } = req.params;
       const tenantId = req.user.tenantId;
       const schema = getSchema(req);
+      const userId = req.user.id;
       const expirationHours = parseInt(req.query.expiration_hours) || 96;
 
-      // Get agent details
-      const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
+      // Optimize: Use getAvailableAgentsForUser which already includes voice_sample_url
+      // This avoids multiple database queries (getAgentById + getVoiceSampleUrl)
+      const agents = await this.agentModel.getAvailableAgentsForUser(schema, userId, tenantId);
+      const agent = agents.find(a => String(a.agent_id) === String(agentId));
       
       if (!agent) {
         return res.status(404).json({
@@ -154,8 +160,8 @@ class VoiceAgentController {
         });
       }
 
-      // Get voice sample URL for this agent's voice
-      const voiceSampleUrl = await this.voiceModel.getVoiceSampleUrl(schema, agent.voice_id, tenantId);
+      // Use voice_sample_url directly from agent (already loaded from view)
+      const voiceSampleUrl = agent.voice_sample_url;
 
       if (!voiceSampleUrl) {
         return res.status(404).json({
@@ -188,12 +194,18 @@ class VoiceAgentController {
 
       // LAD Standard: Return snake_case for API/HTTP response
       // Frontend expects signed_url at top level
+      // Add cache headers for signed URLs (valid for 96 hours, cache for 1 hour)
+      res.set({
+        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+        'Expires': new Date(Date.now() + 3600000).toUTCString()
+      });
+      
       res.json({
         success: true,
         signed_url: result.signedUrl,  // Top-level for frontend compatibility
         data: {
           agent_id: agentId,
-          agent_name: agent.name || agent.agent_name,
+          agent_name: agent.agent_name,
           voice_id: agent.voice_id,
           signed_url: result.signedUrl,
           expires_at: result.expiresAt,
@@ -204,7 +216,7 @@ class VoiceAgentController {
       logger.error('Get agent voice sample signed URL error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to generate signed URL',
+        error: 'Failed to get voice sample signed URL',
         message: error.message
       });
     }

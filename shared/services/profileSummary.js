@@ -193,7 +193,7 @@ Summary:`;
     });
 
   } catch (error) {
-    console.error('[Profile Summary] Error generating summary:', error);
+    logger.error('[Profile Summary] Error generating advanced summary', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       error: 'Failed to generate profile summary',
@@ -365,7 +365,7 @@ Summary:`;
       summary: summary
     };
   } catch (error) {
-    console.error('[Profile Summary] Error generating summary:', error);
+    logger.error('[Profile Summary] Error generating summary', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message || 'Failed to generate profile summary'

@@ -182,7 +182,7 @@ async function callApolloApi(searchParams) {
   }
   
   // LAD Architecture: Use environment variable or constants (no hardcoded URLs)
-  const { APOLLO_CONFIG } = require('../../../core/config/constants');
+  const { APOLLO_CONFIG } = require('../models/constants');
   // Normalize base URL to ensure it has /api/ in the path
   let apolloBaseUrl = process.env.APOLLO_API_BASE_URL || APOLLO_CONFIG.DEFAULT_BASE_URL;
   
@@ -216,14 +216,24 @@ async function callApolloApi(searchParams) {
     apolloRequestData.organization_locations = organization_locations;
   }
   if (organization_industries && organization_industries.length > 0) {
-    apolloRequestData.organization_industries = organization_industries;
+    // Apollo API expects q_organization_keyword_tags for industry/keyword search
+    apolloRequestData.q_organization_keyword_tags = organization_industries;
   }
   
   logger.info('[Apollo API] Calling Apollo.io API directly', {
     url: apolloSearchEndpoint,
-    baseUrl: apolloBaseUrl
+    baseUrl: apolloBaseUrl,
+    hasApiKey: !!apiKey,
+    apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none'
   });
-  logger.debug('[Apollo API] Request params', apolloRequestData);
+  logger.info('[Apollo API] Request params being sent', {
+    ...apolloRequestData,
+    searchCriteria: {
+      titles: person_titles?.length || 0,
+      locations: organization_locations?.length || 0,
+      industries: organization_industries?.length || 0
+    }
+  });
   
   try {
     const apolloResponse = await axios.post(
@@ -240,6 +250,13 @@ async function callApolloApi(searchParams) {
     );
     
     logger.info('[Apollo API] Apollo.io API responded', { status: apolloResponse.status });
+    logger.debug('[Apollo API] Response data structure', {
+      hasData: !!apolloResponse.data,
+      dataKeys: apolloResponse.data ? Object.keys(apolloResponse.data) : [],
+      hasPeople: !!(apolloResponse.data && apolloResponse.data.people),
+      peopleCount: apolloResponse.data?.people?.length || 0,
+      sampleData: apolloResponse.data ? JSON.stringify(apolloResponse.data).substring(0, 500) : 'no data'
+    });
     
     if (apolloResponse.data && apolloResponse.data.people) {
       const people = apolloResponse.data.people;
@@ -253,7 +270,8 @@ async function callApolloApi(searchParams) {
     } else {
       logger.warn('[Apollo API] Apollo.io API returned unexpected format', {
         hasData: !!apolloResponse.data,
-        dataKeys: apolloResponse.data ? Object.keys(apolloResponse.data) : []
+        dataKeys: apolloResponse.data ? Object.keys(apolloResponse.data) : [],
+        fullResponse: JSON.stringify(apolloResponse.data).substring(0, 1000)
       });
       return {
         success: false,

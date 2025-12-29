@@ -55,6 +55,7 @@ class CoreApplication {
     // Allow multiple origins for CORS
     const allowedOrigins = [
       'http://localhost:3000',
+      'http://localhost:3001',
       'http://localhost:3002',
       'https://lad-frontend-3nddlneyya-uc.a.run.app',
       'https://lad-frontend-741719885039.us-central1.run.app',
@@ -70,7 +71,7 @@ class CoreApplication {
         if (allowedOrigins.indexOf(origin) !== -1) {
           callback(null, true);
         } else {
-          console.log(`[CORS] Blocked origin: ${origin}`);
+          logger.warn('[CORS] Blocked origin', { origin });
           callback(new Error('Not allowed by CORS'));
         }
       },
@@ -115,7 +116,7 @@ class CoreApplication {
         
         next();
       } catch (error) {
-        console.error(`Error checking feature flag for ${featureKey}:`, error);
+        logger.error(`Error checking feature flag for ${featureKey}`, { error: error.message, stack: error.stack });
         return res.status(500).json({
           success: false,
           error: 'Error checking feature access'
@@ -143,12 +144,17 @@ class CoreApplication {
     // Campaigns routes with feature flag check
     const campaignsRoutes = require('../features/campaigns/routes/index');
     this.app.use('/api/campaigns', this.createFeatureMiddleware('campaigns'), campaignsRoutes);
-    console.log('✅ Campaigns routes mounted with feature flag check');
+    logger.info('[App] Campaigns routes mounted with feature flag check');
+    
+    // Apollo Leads routes with feature flag check
+    const apolloLeadsRoutes = require('../features/apollo-leads/routes/index');
+    this.app.use('/api/apollo-leads', this.createFeatureMiddleware('apollo-leads'), apolloLeadsRoutes);
+    logger.info('[App] Apollo Leads routes mounted with feature flag check');
     
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
       try {
-        const organizationId = req.user?.organizationId || req.headers['x-organization-id'];
+        const organizationId = req.user?.tenantId || req.user?.organizationId || req.headers['x-organization-id'];
         const userId = req.user?.userId;
         const features = await this.featureFlagService.getClientFeatures(organizationId, userId);
         res.json({ success: true, features });

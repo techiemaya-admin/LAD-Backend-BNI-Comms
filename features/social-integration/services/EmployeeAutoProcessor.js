@@ -47,7 +47,7 @@ class EmployeeAutoProcessor {
         SELECT DISTINCT
           u.id as user_id,
           u.user_id as user_identifier,
-          u.organization_id,
+          u.tenant_id,
           COALESCE(
             ui.credentials->>'unipile_account_id',
             u.linkedin_unipile_account_id
@@ -60,7 +60,7 @@ class EmployeeAutoProcessor {
           OR 
           (u.linkedin_is_connected = TRUE AND u.linkedin_unipile_account_id IS NOT NULL)
         )
-        AND u.organization_id IS NOT NULL
+        AND u.tenant_id IS NOT NULL
       `;
       
       const usersResult = await client.query(usersQuery);
@@ -129,7 +129,7 @@ class EmployeeAutoProcessor {
       // Process for each user with LinkedIn connected
       for (const user of users) {
         const userId = user.user_id || user.user_identifier;
-        const organizationId = user.organization_id;
+        const organizationId = user.tenant_id;
         const linkedInAccountId = user.linkedin_unipile_account_id;
         
         if (!userId || !organizationId || !linkedInAccountId) {
@@ -215,7 +215,7 @@ class EmployeeAutoProcessor {
         // Insert lead
         const leadQuery = `
           INSERT INTO leads (
-            organization_id,
+            tenant_id,
             user_id,
             name,
             title,
@@ -285,7 +285,7 @@ class EmployeeAutoProcessor {
       FROM lead_social ls
       WHERE l.id = ls.lead_id
         AND ls.linkedin = ANY($1::text[])
-        AND l.organization_id = $2
+        AND l.tenant_id = $2
         AND l.is_deleted = FALSE
     `;
     

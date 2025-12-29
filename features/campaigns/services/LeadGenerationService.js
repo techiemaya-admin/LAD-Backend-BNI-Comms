@@ -28,6 +28,9 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
   try {
     logger.info('[Campaign Execution] Executing lead generation', { campaignId, userId, tenantId });
     
+    // LAD Architecture: Use dynamic schema resolution with tenantId
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    
     // Ensure stepConfig is parsed if it's a string
     if (typeof stepConfig === 'string') {
       stepConfig = JSON.parse(stepConfig);
@@ -38,8 +41,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     let campaignConfig = {};
     let configColumnExists = false;
     try {
-      // LAD Architecture: Use dynamic schema resolution
-      const schema = getSchema(null); // No req available, will use default
+      // Try to get config from campaigns table (if config column exists)
       const campaignResult = await pool.query(
         `SELECT config FROM ${schema}.campaigns WHERE id = $1`,
         [campaignId]
@@ -310,15 +312,19 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     
     const employeesList = employees || [];
     
-    // Get tenant_id from campaign
+    // Use tenant_id from parameter (already available)
+    // Verify campaign exists
     const campaignQuery = await pool.query(
       `SELECT tenant_id FROM ${schema}.campaigns WHERE id = $1 AND is_deleted = FALSE`,
       [campaignId]
     );
-    const tenantId = campaignQuery.rows[0]?.tenant_id;
+    
+    if (!campaignQuery.rows[0]) {
+      throw new Error(`Campaign ${campaignId} not found`);
+    }
     
     if (!tenantId) {
-      throw new Error(`Campaign ${campaignId} not found or missing tenant_id`);
+      throw new Error(`Campaign ${campaignId} missing tenant_id parameter`);
     }
       
     // Save leads to campaign_leads table (only the daily limit)
@@ -339,7 +345,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     
     // Try to update config column (may not exist in all schemas)
     try {
-      await updateCampaignConfig(campaignId, updatedConfig);
+      await updateCampaignConfig(campaignId, updatedConfig, tenantId);
     } catch (updateError) {
       // If config column doesn't exist, store offset in step config as fallback
       logger.debug('[Campaign Execution] Config column not available, storing offset in step config');
@@ -352,7 +358,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
           leads_per_day: leadsPerDay
         };
         
-        await updateStepConfig(step.id, updatedStepConfig);
+        await updateStepConfig(step.id, updatedStepConfig, tenantId);
         logger.info('[Campaign Execution] Stored offset in step config', { offset: newOffset, date: today });
       } catch (stepUpdateErr) {
         logger.error('[Campaign Execution] Error storing offset in step config', { error: stepUpdateErr.message, stack: stepUpdateErr.stack });

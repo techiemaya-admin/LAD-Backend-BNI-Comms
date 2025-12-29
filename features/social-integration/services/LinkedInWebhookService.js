@@ -8,6 +8,7 @@
  * - connection.sent: Connection request sent
  * - connection.declined: Connection request declined
  * - AccountStatus: Account status changes (OK, ERROR, STOPPED, CREDENTIALS, etc.)
+ * - change linkedin_integration table to social_linkedin_accounts
  */
 
 const axios = require('axios');
@@ -86,7 +87,7 @@ class LinkedInWebhookService {
       
       // Find lead by LinkedIn URL using lead_social table
       const leadQuery = `
-        SELECT l.id, l.name, l.status, l.stage, l.organization_id, l.phone, l.email, l.job_title, l.company
+        SELECT l.id, l.name, l.status, l.stage, l.tenant_id, l.phone, l.email, l.job_title, l.company
         FROM leads l
         LEFT JOIN lead_social ls ON l.id = ls.lead_id
         WHERE (
@@ -161,23 +162,23 @@ class LinkedInWebhookService {
         
         console.log(`[LinkedIn Webhook] 📝 Using name for lead: ${fullName}`);
         
-        // Get organization_id from active LinkedIn account
+        // Get tenant_id from active LinkedIn account
         let organizationId = null;
         try {
           const orgQuery = `
-            SELECT DISTINCT organization_id
+            SELECT DISTINCT tenant_id
             FROM linkedin_integrations
             WHERE is_active = TRUE 
               AND unipile_account_id IS NOT NULL
-              AND organization_id IS NOT NULL
+              AND tenant_id IS NOT NULL
             LIMIT 1
           `;
           const orgResult = await this.pool.query(orgQuery);
           if (orgResult.rows.length > 0) {
-            organizationId = orgResult.rows[0].organization_id;
+            organizationId = orgResult.rows[0].tenant_id;
           }
         } catch (orgError) {
-          console.warn('[LinkedIn Webhook] ⚠️ Could not get organization_id:', orgError.message);
+          console.warn('[LinkedIn Webhook] ⚠️ Could not get tenant_id:', orgError.message);
         }
         
         // Auto-create lead
@@ -188,11 +189,11 @@ class LinkedInWebhookService {
             stage,
             source,
             channel,
-            organization_id,
+            tenant_id,
             created_at,
             updated_at
           ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-          RETURNING id, name, status, stage, organization_id, phone, email, job_title, company
+          RETURNING id, name, status, stage, tenant_id, phone, email, job_title, company
         `;
         
         const newLead = await this.pool.query(createLeadQuery, [
@@ -294,7 +295,7 @@ class LinkedInWebhookService {
       const stageQuery = `
         SELECT key
         FROM lead_stages
-        WHERE organization_id = $1
+        WHERE tenant_id = $1
           AND (LOWER(key) LIKE '%request_accepted%' 
                OR LOWER(key) LIKE '%connection_accepted%'
                OR LOWER(key) LIKE '%accepted%')
@@ -302,7 +303,7 @@ class LinkedInWebhookService {
         LIMIT 1
       `;
       
-      const stageResult = await this.pool.query(stageQuery, [lead.organization_id]);
+      const stageResult = await this.pool.query(stageQuery, [lead.tenant_id]);
       const acceptedStageKey = stageResult.rows.length > 0 
         ? stageResult.rows[0].key 
         : 'request_accepted';
@@ -314,7 +315,7 @@ class LinkedInWebhookService {
             stage = $1,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
-        RETURNING id, status, stage, phone, email, company, job_title, organization_id
+        RETURNING id, status, stage, phone, email, company, job_title, tenant_id
       `;
       
       const updateResult = await this.pool.query(updateQuery, [acceptedStageKey, lead.id]);
@@ -332,7 +333,7 @@ class LinkedInWebhookService {
         
         // Get updated lead with phone
         const updatedLeadWithPhone = await this.pool.query(
-          `SELECT id, name, phone, email, company, job_title, organization_id FROM leads WHERE id = $1`,
+          `SELECT id, name, phone, email, company, job_title, tenant_id FROM leads WHERE id = $1`,
           [updatedLead.id]
         );
         const leadWithPhone = updatedLeadWithPhone.rows[0] || updatedLead;
@@ -435,7 +436,7 @@ class LinkedInWebhookService {
         .replace(/^www\./, '');
       
       const leadQuery = `
-        SELECT l.id, l.status, l.stage, l.organization_id
+        SELECT l.id, l.status, l.stage, l.tenant_id
         FROM leads l
         LEFT JOIN lead_social ls ON l.id = ls.lead_id
         WHERE (
@@ -465,7 +466,7 @@ class LinkedInWebhookService {
       const stageQuery = `
         SELECT key, name
         FROM lead_stages
-        WHERE organization_id = $1
+        WHERE tenant_id = $1
           AND (LOWER(name) LIKE '%request sent%' 
                OR LOWER(name) LIKE '%connection sent%'
                OR LOWER(name) LIKE '%sent%')
@@ -473,7 +474,7 @@ class LinkedInWebhookService {
         LIMIT 1
       `;
       
-      const stageResult = await this.pool.query(stageQuery, [lead.organization_id]);
+      const stageResult = await this.pool.query(stageQuery, [lead.tenant_id]);
       const sentStageKey = stageResult.rows.length > 0 
         ? stageResult.rows[0].key 
         : 'request_sent';
@@ -535,7 +536,7 @@ class LinkedInWebhookService {
         .replace(/^www\./, '');
       
       const leadQuery = `
-        SELECT l.id, l.status, l.stage, l.organization_id
+        SELECT l.id, l.status, l.stage, l.tenant_id
         FROM leads l
         LEFT JOIN lead_social ls ON l.id = ls.lead_id
         WHERE (
@@ -851,16 +852,16 @@ class LinkedInWebhookService {
       // Get agent_id
       let agentId = lead.agent_id || null;
       
-      if (!agentId && lead.organization_id) {
+      if (!agentId && lead.tenant_id) {
         try {
           const orgQuery = `
             SELECT os.value
             FROM organization_settings os
-            WHERE os.organization_id = $1
+            WHERE os.tenant_id = $1
             AND os.key = 'default_agent_id'
             LIMIT 1
           `;
-          const orgResult = await this.pool.query(orgQuery, [lead.organization_id]);
+          const orgResult = await this.pool.query(orgQuery, [lead.tenant_id]);
           if (orgResult.rows.length > 0) {
             agentId = orgResult.rows[0].value;
           }
@@ -908,14 +909,14 @@ class LinkedInWebhookService {
           const callTriggeredStageQuery = `
             SELECT key
             FROM lead_stages
-            WHERE organization_id = $1
+            WHERE tenant_id = $1
               AND (LOWER(key) LIKE '%call_triggered%' 
                    OR LOWER(key) LIKE '%call%triggered%'
                    OR LOWER(key) LIKE '%triggered%')
             ORDER BY display_order ASC
             LIMIT 1
           `;
-          const stageResult = await this.pool.query(callTriggeredStageQuery, [lead.organization_id]);
+          const stageResult = await this.pool.query(callTriggeredStageQuery, [lead.tenant_id]);
           const callTriggeredStageKey = stageResult.rows.length > 0 
             ? stageResult.rows[0].key 
             : 'call_triggered';
