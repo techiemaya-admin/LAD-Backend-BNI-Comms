@@ -149,6 +149,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.post(
     '/calls',
+    jwtAuth,
     tenantMiddleware,
     (req, res) => callInitiationController.initiateCall(req, res)
   );

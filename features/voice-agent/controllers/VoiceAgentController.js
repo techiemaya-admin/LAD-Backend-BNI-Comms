@@ -141,10 +141,11 @@ class VoiceAgentController {
     try {
       const { agentId } = req.params;
       const tenantId = req.user.tenantId;
+      const schema = getSchema(req);
       const expirationHours = parseInt(req.query.expiration_hours) || 96;
 
       // Get agent details
-      const agent = await this.agentModel.getAgentById(agentId, tenantId);
+      const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
       
       if (!agent) {
         return res.status(404).json({
@@ -154,7 +155,7 @@ class VoiceAgentController {
       }
 
       // Get voice sample URL for this agent's voice
-      const voiceSampleUrl = await this.voiceModel.getVoiceSampleUrl(agent.voice_id, tenantId);
+      const voiceSampleUrl = await this.voiceModel.getVoiceSampleUrl(schema, agent.voice_id, tenantId);
 
       if (!voiceSampleUrl) {
         return res.status(404).json({

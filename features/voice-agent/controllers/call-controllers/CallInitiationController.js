@@ -1,10 +1,14 @@
 const axios = require('axios');
 const { VAPIService } = require('../../services');
+const { VoiceAgentModel } = require('../../models');
+const { getSchema } = require('../../../../core/utils/schemaHelper');
+const logger = require('../../../../core/utils/logger');
 
 class CallInitiationController {
   constructor(db) {
     this.vapiService = new VAPIService();
     this.db = db;
+    this.agentModel = new VoiceAgentModel(db);
   }
 
   /** 1.0
@@ -58,8 +62,8 @@ class CallInitiationController {
       } else {
         // Legacy call handling
         const baseUrl = process.env.BASE_URL;
-        const frontendHeader = req.headers['x-frontend-id'];
-        const frontendApiKey = process.env.FRONTEND_API_KEY;
+        const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
+        const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
 
         if (!baseUrl) {
           return res.status(500).json({
@@ -68,16 +72,39 @@ class CallInitiationController {
           });
         }
 
+        // Get voice_id from agent if not provided
+        let resolvedVoiceId = voiceId;
+        if (!resolvedVoiceId && agentId) {
+          try {
+            const schema = getSchema(req);
+            const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
+            if (agent && agent.voice_id) {
+              resolvedVoiceId = agent.voice_id;
+            }
+          } catch (error) {
+            logger.warn('Failed to get voice_id from agent', { error: error.message, agentId });
+          }
+        }
+
+        // Build payload, only include voice_id if it's not null
         const callPayload = {
-          voice_id: voiceId || null,
-          from_number: fromNumber || null,
           to_number: phoneNumber,
-          added_context: addedContext,
+          added_context: addedContext || '',
           initiated_by: userId,
           agent_id: parseInt(agentId, 10),
-          lead_name: leadName,
-          lead_id: leadId
+          lead_name: leadName || null,
+          lead_id: leadId || null
         };
+
+        // Only add voice_id if we have a valid value
+        if (resolvedVoiceId) {
+          callPayload.voice_id = resolvedVoiceId;
+        }
+
+        // Only add from_number if provided
+        if (fromNumber) {
+          callPayload.from_number = fromNumber;
+        }
 
         try {
           const response = await axios.post(`${baseUrl}/calls`, callPayload, {
@@ -97,11 +124,11 @@ class CallInitiationController {
             }
           });
         } catch (forwardError) {
-          console.error('Error forwarding call data to remote API:', forwardError.message);
-          if (forwardError.response) {
-            console.error('Response status:', forwardError.response.status);
-            console.error('Response data:', forwardError.response.data);
-          }
+          logger.error('Error forwarding call data to remote API', {
+            error: forwardError.message,
+            status: forwardError.response?.status,
+            responseData: forwardError.response?.data
+          });
 
           return res.status(502).json({
             success: false,
@@ -111,7 +138,10 @@ class CallInitiationController {
         }
       }
     } catch (error) {
-      console.error('Initiate call error:', error);
+      logger.error('Initiate call error', {
+        error: error.message,
+        stack: error.stack
+      });
       res.status(500).json({
         success: false,
         error: 'Failed to initiate call',

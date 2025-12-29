@@ -163,7 +163,8 @@ class CoreApplication {
     await this.featureRegistry.discoverFeatures();
     
     // Setup dynamic feature loading
-    this.app.use('/api/:feature', async (req, res, next) => {
+    // Apply authentication middleware first so req.user is available for feature checks
+    this.app.use('/api/:feature', authenticateToken, async (req, res, next) => {
       const featureKey = req.params.feature;
       try {
         const organizationId = req.user?.tenantId || req.user?.organizationId || req.headers['x-organization-id'];
@@ -191,21 +192,44 @@ class CoreApplication {
           
           // Strip the /api/:feature prefix so router matches routes correctly
           // req.url should be relative to the mount point
+          // req.url comes in as '/api/voice-agent/calls', we need '/calls'
           const mountPath = `/api/${featureKey}`;
+          logger.debug(`Feature router URL manipulation`, {
+            originalUrl: req.url,
+            mountPath,
+            featureKey
+          });
+          
           if (req.url.startsWith(mountPath)) {
             req.url = req.url.substring(mountPath.length) || '/';
+          } else if (req.url.startsWith(`/${featureKey}`)) {
+            // Handle case where URL might be '/voice-agent/calls'
+            req.url = req.url.substring(`/${featureKey}`.length) || '/';
           }
           req.baseUrl = mountPath;
           
-          // Use router as middleware
+          logger.debug(`After URL manipulation`, {
+            modifiedUrl: req.url,
+            baseUrl: req.baseUrl
+          });
+          
+          // Use router as middleware function
+          // Express routers can be called as functions: router(req, res, next)
+          // If a route matches, it handles the request
+          // If no route matches, it should call next() automatically, but we'll check
           featureRouter(req, res, (err) => {
-            // Restore original URL in case of error or no match
+            // Restore original URL
             req.url = originalUrl;
             req.baseUrl = originalBaseUrl;
+            
             if (err) {
-              next(err);
-            } else {
-              next();
+              return next(err);
+            }
+            
+            // If router matched a route, response should be sent
+            // If not, call next() to continue to next middleware
+            if (!res.headersSent) {
+              return next();
             }
           });
         } else {
