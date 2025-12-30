@@ -8,6 +8,7 @@
  */
 
 const axios = require('axios');
+const logger = require('../../../core/utils/logger');
 
 class VAPIService {
   constructor(config = {}) {
@@ -181,6 +182,20 @@ class VAPIService {
    */
   shouldUseVAPI(agentId) {
     // VAPI routing: agent_id === "24" or "VAPI"
+    // Also route to VAPI if BASE_URL points back to same service to prevent circular calls
+    const baseUrl = process.env.BASE_URL;
+    const backendUrl = process.env.BACKEND_URL;
+    
+    // If BASE_URL points back to this service, use VAPI instead to prevent circular calls
+    if (baseUrl && backendUrl && baseUrl.includes(backendUrl.split('://')[1])) {
+      logger.warn('[VAPI Service] Detected circular call configuration, routing to VAPI', {
+        agentId,
+        baseUrl,
+        backendUrl
+      });
+      return true;
+    }
+    
     return agentId === '24' || agentId === 'VAPI' || agentId === 24;
   }
 
