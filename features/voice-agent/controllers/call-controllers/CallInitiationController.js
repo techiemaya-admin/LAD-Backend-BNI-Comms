@@ -87,6 +87,14 @@ class CallInitiationController {
         const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
         const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
 
+        logger.info('Call forwarding configuration', {
+          baseUrl: baseUrl || 'NOT_SET',
+          hasHeader: !!frontendHeader,
+          hasApiKey: !!frontendApiKey,
+          agentId,
+          phoneNumber: phoneNumber?.substring(0, 4) + '***' // Partial phone for privacy
+        });
+
         if (!baseUrl) {
           return res.status(500).json({
             success: false,
@@ -104,7 +112,15 @@ class CallInitiationController {
               resolvedVoiceId = agent.voice_id;
             }
           } catch (error) {
-            logger.warn('Failed to get voice_id from agent', { error: error.message, agentId });
+            logger.error('Failed to get voice_id from agent', { 
+              error: error.message, 
+              agentId, 
+              tenantId,
+              errorCode: error.code,
+              stack: error.stack 
+            });
+            // Don't fail the call if we can't get voice_id from database
+            // Continue with the call without voice_id
           }
         }
 
@@ -129,12 +145,19 @@ class CallInitiationController {
         }
 
         try {
+          logger.info('Forwarding call to remote API', {
+            url: `${baseUrl}/calls`,
+            agentId: callPayload.agent_id,
+            leadId: callPayload.lead_id
+          });
+
           const response = await axios.post(`${baseUrl}/calls`, callPayload, {
             headers: {
               'Content-Type': 'application/json',
               ...(frontendHeader && { 'X-Frontend-ID': frontendHeader }),
               ...(frontendApiKey && { 'X-API-Key': frontendApiKey })
-            }
+            },
+            timeout: 30000 // 30 second timeout for call forwarding
           });
 
           return res.json({

@@ -10,22 +10,61 @@ const dbConfig = {
   password: process.env.POSTGRES_PASSWORD,
   max: parseInt(process.env.POSTGRES_MAX_CLIENTS) || 20,
   idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 10000, // Increased for cloud environments
+  acquireTimeoutMillis: parseInt(process.env.POSTGRES_ACQUIRE_TIMEOUT) || 60000, // Time to wait for connection from pool
   // Set default schema - dynamic based on environment
   options: `-c search_path=${process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev'},public`,
+  // Add retry logic for cloud environments
+  statement_timeout: parseInt(process.env.POSTGRES_STATEMENT_TIMEOUT) || 30000, // 30 second query timeout
+  query_timeout: parseInt(process.env.POSTGRES_QUERY_TIMEOUT) || 30000,
 };
 
 const pool = new Pool(dbConfig);
 
-// Handle pool errors
+// Handle pool errors with retry logic
 pool.on('error', (err) => {
-  logger.error('[Database] Unexpected pool error', { error: err.message, stack: err.stack });
+  logger.error('[Database] Unexpected pool error', { 
+    error: err.message, 
+    code: err.code,
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database
+  });
+  
+  // Log connection details for debugging (without password)
+  if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+    logger.error('[Database] Connection failure details', {
+      host: dbConfig.host,
+      port: dbConfig.port,
+      database: dbConfig.database,
+      user: dbConfig.user,
+      connectionTimeout: dbConfig.connectionTimeoutMillis
+    });
+  }
 });
 
-// Test connection
-pool.on('connect', () => {
-  logger.info('[Database] Connection established');
+// Test connection with better logging
+pool.on('connect', (client) => {
+  logger.info('[Database] Connection established', {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    processId: client.processID
+  });
 });
+
+// Add connection health check
+const healthCheck = async () => {
+  try {
+    const client = await pool.connect();
+    await client.query('SELECT NOW()');
+    client.release();
+    return true;
+  } catch (error) {
+    logger.error('[Database] Health check failed', { error: error.message });
+    return false;
+  }
+};
 
 // Graceful shutdown
 process.on('SIGINT', () => {
@@ -89,5 +128,6 @@ module.exports = {
   pool,
   query,
   getClient,
-  testConnection
+  testConnection,
+  healthCheck
 };
