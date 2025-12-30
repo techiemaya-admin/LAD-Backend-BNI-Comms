@@ -74,7 +74,19 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
       };
       
       try {
+        logger.debug('[Lead Search] Calling ApolloLeadsService.searchEmployeesFromDb directly', { 
+          tenantId: defaultTenantId, 
+          hasUser: !!mockReq.user,
+          hasTenantId: !!mockReq.user?.tenant_id 
+        });
+        
         const result = await ApolloLeadsService.searchEmployeesFromDb(mockReq.body, mockReq);
+        
+        logger.debug('[Lead Search] Direct service call result', { 
+          hasResult: !!result, 
+          success: result?.success,
+          employeeCount: result?.employees?.length || 0 
+        });
         
         if (result && result.success !== false) {
           const dbEmployees = result.employees || result || [];
@@ -98,9 +110,14 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
           }
         }
         
+        logger.warn('[Lead Search] Direct service call returned no results or failed', { result });
         return { employees: [], fromSource: 'database' };
       } catch (serviceError) {
-        logger.warn('[Lead Search] Direct service call failed, falling back to HTTP', { error: serviceError.message });
+        logger.error('[Lead Search] Direct service call failed, falling back to HTTP', { 
+          error: serviceError.message, 
+          stack: serviceError.stack,
+          tenantId: defaultTenantId 
+        });
         // Fall through to HTTP call with better error handling
       }
     }

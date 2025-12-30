@@ -111,42 +111,15 @@ class CallInitiationController {
       });
     }
 
-    // Get voice_id from agent if not provided (internal JS uses camelCase)
-    let resolvedVoiceId = voiceId;
-    if (!resolvedVoiceId && agentId) {
-      try {
-        const schema = getSchema(req);
-        const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
-        if (agent && agent.voice_id) {
-          resolvedVoiceId = agent.voice_id;
-        }
-      } catch (error) {
-        logger.error('Failed to get voice_id from agent', { 
-          error: error.message, 
-          agentId, 
-          tenantId,
-          errorCode: error.code,
-          stack: error.stack 
-        });
-        // Don't fail the call if we can't get voice_id from database
-        // Continue with the call without voice_id
-      }
-    }
-
     // Build payload for remote API (LAD Standard: API/HTTP uses snake_case)
     const callPayload = {
       to_number: phoneNumber,
       added_context: addedContext || '',
       initiated_by: userId,
       agent_id: parseInt(agentId, 10),
-      lead_name: leadName || null
-      //lead_id: leadId || null
+      lead_name: leadName || null,
+      voice_id: "default"
     };
-
-    // Only add voice_id if we have a valid value
-    if (resolvedVoiceId) {
-      callPayload.voice_id = resolvedVoiceId;
-    }
 
     // Only add from_number if provided
     if (fromNumber) {
