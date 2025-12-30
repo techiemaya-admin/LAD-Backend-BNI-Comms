@@ -153,6 +153,19 @@ router.get(
   // ============================================
 
   /**
+   * GET /calls
+   * Get call logs with optional filters
+   */
+  router.get(
+    '/calls',
+    jwtAuth,
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getCallLogs(req, res);
+    }
+  );
+
+  /**
    * POST /calls
    * Initiate a single voice call
    */
