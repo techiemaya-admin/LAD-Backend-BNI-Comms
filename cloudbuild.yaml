@@ -54,7 +54,7 @@ steps:
           --concurrency 80 \
           --timeout 300 \
           --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
-          --update-env-vars NODE_ENV=production,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL,BASE_URL=$_BACKEND_URL,BASE_URL_FRONTEND_HEADER=$_FRONTEND_HEADER,BASE_URL_FRONTEND_APIKEY=$_FRONTEND_APIKEY,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001,VAPI_API_KEY=e05f06b1-dd62-4d7d-bd57-af0089077d6e,VAPI_ASSISTANT_ID=77bf6217-7d09-4b1b-9d77-7c18aeba9330,VAPI_PHONE_NUMBER_ID=cdaed2ed-000b-4835-afb0-b2cebb3c532c \
+          --update-env-vars NODE_ENV=production,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL,BASE_URL=$_BASE_URL,BASE_URL_FRONTEND_HEADER=$_FRONTEND_HEADER,BASE_URL_FRONTEND_APIKEY=$_FRONTEND_APIKEY,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001,VAPI_API_KEY=e05f06b1-dd62-4d7d-bd57-af0089077d6e,VAPI_ASSISTANT_ID=77bf6217-7d09-4b1b-9d77-7c18aeba9330,VAPI_PHONE_NUMBER_ID=cdaed2ed-000b-4835-afb0-b2cebb3c532c \
           --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
 
 # Images to be pushed to Container Registry
@@ -83,3 +83,4 @@ substitutions:
   _BACKEND_URL: 'https://lad-backend-develop-741719885039.us-central1.run.app'
   _FRONTEND_HEADER: 'lad-frontend'
   _FRONTEND_APIKEY: 'lad-api-key'
+  _BASE_URL: 'https://voag.techiemaya.com'
