@@ -57,14 +57,20 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
       logger.debug('[Lead Search] Using direct service call for internal request');
       const ApolloLeadsService = require('../../apollo-leads/services/ApolloLeadsService');
       
-      // Create a mock request object with tenant context
+      // Create a mock request object with proper tenant context matching ApolloLeadsController expectations
+      const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
       const mockReq = {
         body: {
           ...searchParams,
           page: page,
           per_page: 100
         },
-        user: { tenant_id: process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001' }
+        user: { 
+          tenant_id: defaultTenantId  // This matches the controller's req.user?.tenant_id check
+        },
+        headers: {
+          'x-tenant-id': defaultTenantId  // Backup header for tenant context
+        }
       };
       
       try {

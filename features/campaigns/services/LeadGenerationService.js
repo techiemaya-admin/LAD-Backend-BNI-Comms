@@ -244,9 +244,17 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     
     // Handle actual errors (not access denied)
     if (searchError) {
+      // Safe way to get backend URL for logging without throwing
+      let backendUrl = 'not set';
+      try {
+        backendUrl = require('./LeadSearchService').BACKEND_URL || 'not set';
+      } catch (e) {
+        backendUrl = 'error retrieving URL';
+      }
+      
       logger.error('[Campaign Execution] Lead search returned error', { 
         error: searchError,
-        backendUrl: require('./LeadSearchService').BACKEND_URL || 'not set'
+        backendUrl
       });
       
       // Set execution state to error
