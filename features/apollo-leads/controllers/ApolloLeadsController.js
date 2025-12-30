@@ -317,13 +317,26 @@ class ApolloLeadsController {
   async searchEmployeesFromDb(req, res) {
     try {
       // LAD Architecture: Validate tenant context
-      const tenantId = req.user?.tenant_id || req.tenant?.id || req.headers?.['x-tenant-id'];
+      // Support both authenticated requests and internal service calls via header
+      const tenantId = req.user?.tenant_id || req.tenant?.id || req.headers['x-tenant-id'];
+      
       if (!tenantId && process.env.NODE_ENV === 'production') {
+        logger.warn('[Apollo Leads Controller] Missing tenant context', {
+          hasUser: !!req.user,
+          hasTenant: !!req.tenant,
+          hasHeader: !!req.headers['x-tenant-id'],
+          headers: Object.keys(req.headers)
+        });
         return res.status(400).json({
           success: false,
           error: 'Tenant context required'
         });
       }
+      
+      logger.debug('[Apollo Leads Controller] Processing search with tenant context', {
+        tenantId: tenantId ? tenantId.substring(0, 8) + '...' : 'none',
+        source: req.user ? 'user' : req.headers['x-tenant-id'] ? 'header' : 'tenant'
+      });
       
       // Pass req for schema and tenant context
       const result = await ApolloLeadsService.searchEmployeesFromDb(req.body, req);

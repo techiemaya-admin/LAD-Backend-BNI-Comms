@@ -54,11 +54,17 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
     
     // For internal service-to-service calls, use the service directly instead of HTTP
     if (!authToken && process.env.NODE_ENV === 'production') {
-      logger.debug('[Lead Search] Using direct service call for internal request');
+      const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+      
+      logger.info('[Lead Search] Using direct service call for internal request', { 
+        defaultTenantId, 
+        env: process.env.NODE_ENV,
+        hasDefaultTenantId: !!process.env.DEFAULT_TENANT_ID 
+      });
+      
       const ApolloLeadsService = require('../../apollo-leads/services/ApolloLeadsService');
       
       // Create a mock request object with proper tenant context matching ApolloLeadsController expectations
-      const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
       const mockReq = {
         body: {
           ...searchParams,
@@ -122,6 +128,19 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
       }
     }
     
+    // HTTP fallback call with tenant context header
+    const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    const headers = {
+      ...getAuthHeaders(authToken),
+      'x-tenant-id': defaultTenantId  // Add tenant context for internal calls
+    };
+    
+    logger.debug('[Lead Search] Making HTTP call to search-employees-from-db', {
+      url: `${BACKEND_URL}/api/apollo-leads/search-employees-from-db`,
+      hasAuthToken: !!authToken,
+      tenantId: defaultTenantId
+    });
+    
     const dbResponse = await axios.post(
       `${BACKEND_URL}/api/apollo-leads/search-employees-from-db`,
       {
@@ -130,7 +149,7 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
         per_page: 100
       },
       {
-        headers: getAuthHeaders(authToken),
+        headers: headers,
         timeout: 60000
       }
     );
