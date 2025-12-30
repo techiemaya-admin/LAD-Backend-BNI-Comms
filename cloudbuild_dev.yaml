@@ -53,8 +53,8 @@ steps:
           --max-instances 10 \
           --concurrency 80 \
           --timeout 300 \
-          --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,VAPI_API_KEY=vapi-api-key:latest,VAPI_ASSISTANT_ID=vapi-assistant-id:latest,VAPI_PHONE_NUMBER_ID=vapi-phone-number-id:latest,POSTGRES_HOST=postgres-host:latest,POSTGRES_PORT=postgres-port:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_PASSWORD=postgres-password:latest,POSTGRES_SCHEMA=postgres-schema:latest \
-          --update-env-vars NODE_ENV=production,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL,BASE_URL=$_BACKEND_URL,BASE_URL_FRONTEND_HEADER=$_FRONTEND_HEADER,BASE_URL_FRONTEND_APIKEY=$_FRONTEND_APIKEY \
+          --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
+          --update-env-vars NODE_ENV=development,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL,BASE_URL=$_BACKEND_URL,BASE_URL_FRONTEND_HEADER=$_FRONTEND_HEADER,BASE_URL_FRONTEND_APIKEY=$_FRONTEND_APIKEY,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001 \
           --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
 
 # Images to be pushed to Container Registry
