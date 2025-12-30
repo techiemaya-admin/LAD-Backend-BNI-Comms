@@ -137,7 +137,7 @@ class CampaignRepository {
         COUNT(DISTINCT CASE WHEN cla.status = 'clicked' THEN cla.id END) as clicked_count
       FROM ${schema}.campaigns c
       LEFT JOIN ${schema}.campaign_leads cl ON c.id = cl.campaign_id AND cl.tenant_id = $1 AND COALESCE(cl.is_deleted, FALSE) = FALSE
-      LEFT JOIN ${schema}.campaign_lead_activities cla ON cl.id = cla.campaign_lead_id AND cla.tenant_id = $1 AND COALESCE(cla.is_deleted, FALSE) = FALSE
+      LEFT JOIN ${schema}.campaign_lead_activities cla ON cl.id = cla.campaign_lead_id AND cla.tenant_id = $1
       WHERE c.tenant_id = $1 AND c.is_deleted = FALSE
     `;
 

@@ -52,6 +52,53 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
   try {
     logger.debug('[Lead Search] Checking database (employees_cache)', { page });
     
+    // For internal service-to-service calls, use the service directly instead of HTTP
+    if (!authToken && process.env.NODE_ENV === 'production') {
+      logger.debug('[Lead Search] Using direct service call for internal request');
+      const ApolloLeadsService = require('../../apollo-leads/services/ApolloLeadsService');
+      
+      // Create a mock request object with tenant context
+      const mockReq = {
+        body: {
+          ...searchParams,
+          page: page,
+          per_page: 100
+        },
+        user: { tenant_id: process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001' }
+      };
+      
+      try {
+        const result = await ApolloLeadsService.searchEmployeesFromDb(mockReq.body, mockReq);
+        
+        if (result && result.success !== false) {
+          const dbEmployees = result.employees || result || [];
+          logger.info('[Lead Search] Found leads in database (direct call)', { count: dbEmployees.length, page });
+          
+          // Apply offset within this page and take daily limit
+          const availableFromDb = dbEmployees.slice(offsetInPage, offsetInPage + dailyLimit);
+          
+          if (availableFromDb.length >= dailyLimit) {
+            // We have enough from database
+            return {
+              employees: availableFromDb.slice(0, dailyLimit),
+              fromSource: 'database'
+            };
+          } else {
+            // Not enough in database, take what we have
+            return {
+              employees: availableFromDb,
+              fromSource: 'mixed'
+            };
+          }
+        }
+        
+        return { employees: [], fromSource: 'database' };
+      } catch (serviceError) {
+        logger.warn('[Lead Search] Direct service call failed, falling back to HTTP', { error: serviceError.message });
+        // Fall through to HTTP call with better error handling
+      }
+    }
+    
     const dbResponse = await axios.post(
       `${BACKEND_URL}/api/apollo-leads/search-employees-from-db`,
       {
