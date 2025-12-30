@@ -68,132 +68,140 @@ class CallInitiationController {
 
         // Check if VAPI call was successful
         if (!result.success) {
-          return res.status(500).json({
-            success: false,
-            error: 'VAPI call initiation failed',
-            message: result.error,
-            details: result.errorDetails
-          });
-        }
-
-        return res.json({
-          success: true,
-          message: 'Call initiated via VAPI',
-          data: result
-        });
-      } else {
-        // Legacy call handling
-        const baseUrl = process.env.BASE_URL;
-        const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
-        const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
-
-        logger.info('Call forwarding configuration', {
-          baseUrl: baseUrl || 'NOT_SET',
-          hasHeader: !!frontendHeader,
-          hasApiKey: !!frontendApiKey,
-          agentId,
-          phoneNumber: phoneNumber?.substring(0, 4) + '***' // Partial phone for privacy
-        });
-
-        if (!baseUrl) {
-          return res.status(500).json({
-            success: false,
-            error: 'BASE_URL is not configured for call forwarding'
-          });
-        }
-
-        // Get voice_id from agent if not provided (internal JS uses camelCase)
-        let resolvedVoiceId = voiceId;
-        if (!resolvedVoiceId && agentId) {
-          try {
-            const schema = getSchema(req);
-            const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
-            if (agent && agent.voice_id) {
-              resolvedVoiceId = agent.voice_id;
-            }
-          } catch (error) {
-            logger.error('Failed to get voice_id from agent', { 
-              error: error.message, 
-              agentId, 
-              tenantId,
-              errorCode: error.code,
-              stack: error.stack 
+          // If VAPI is temporarily disabled, log and fall through to legacy
+          if (result.temporaryDisabled) {
+            logger.warn('[CallInitiationController] VAPI temporarily disabled, using legacy fallback', { agentId, phoneNumber });
+            // Don't return, fall through to legacy handling below
+          } else {
+            // For other VAPI failures, return error
+            return res.status(500).json({
+              success: false,
+              error: 'VAPI call initiation failed',
+              message: result.error,
+              details: result.errorDetails
             });
-            // Don't fail the call if we can't get voice_id from database
-            // Continue with the call without voice_id
           }
-        }
-
-        // Build payload for remote API (LAD Standard: API/HTTP uses snake_case)
-        const callPayload = {
-          to_number: phoneNumber,
-          added_context: addedContext || '',
-          initiated_by: userId,
-          agent_id: parseInt(agentId, 10),
-          lead_name: leadName || null
-          //lead_id: leadId || null
-        };
-
-        // Only add voice_id if we have a valid value
-        if (resolvedVoiceId) {
-          callPayload.voice_id = resolvedVoiceId;
-        }
-
-        // Only add from_number if provided
-        if (fromNumber) {
-          callPayload.from_number = fromNumber;
-        }
-
-        try {
-          logger.info('Forwarding call to remote API', {
-            url: `${baseUrl}/calls`,
-            agentId: callPayload.agent_id,
-            leadId: callPayload.lead_id
-          });
-
-          const response = await axios.post(`${baseUrl}/calls`, callPayload, {
-            headers: {
-              'Content-Type': 'application/json',
-              ...(frontendHeader && { 'X-Frontend-ID': frontendHeader }),
-              ...(frontendApiKey && { 'X-API-Key': frontendApiKey })
-            },
-            timeout: 30000 // 30 second timeout for call forwarding
-          });
-
+        } else {
+          // VAPI call succeeded
           return res.json({
             success: true,
-            message: 'Call forwarded to remote API',
-            data: {
-              remoteResponse: response.data,
-              call: callPayload
-            }
-          });
-        } catch (forwardError) {
-          logger.error('Error forwarding call data to remote API', {
-            error: forwardError.message,
-            status: forwardError.response?.status,
-            responseData: forwardError.response?.data
-          });
-
-          return res.status(502).json({
-            success: false,
-            error: 'Failed to forward call to remote API',
-            details: forwardError.response?.data || forwardError.message
+            message: 'Call initiated via VAPI',
+            data: result
           });
         }
       }
-    } catch (error) {
-      logger.error('Initiate call error', {
-        error: error.message,
-        stack: error.stack
+      
+      // Legacy call handling (also used as fallback when VAPI is disabled)
+      const baseUrl = process.env.BASE_URL;
+      const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
+      const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
+
+      logger.info('Call forwarding configuration', {
+        baseUrl: baseUrl || 'NOT_SET',
+        hasHeader: !!frontendHeader,
+        hasApiKey: !!frontendApiKey,
+        agentId,
+        phoneNumber: phoneNumber?.substring(0, 4) + '***' // Partial phone for privacy
       });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to initiate call',
-        message: error.message
+
+      if (!baseUrl) {
+        return res.status(500).json({
+          success: false,
+        error: 'BASE_URL is not configured for call forwarding'
       });
     }
+
+    // Get voice_id from agent if not provided (internal JS uses camelCase)
+    let resolvedVoiceId = voiceId;
+    if (!resolvedVoiceId && agentId) {
+      try {
+        const schema = getSchema(req);
+        const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
+        if (agent && agent.voice_id) {
+          resolvedVoiceId = agent.voice_id;
+        }
+      } catch (error) {
+        logger.error('Failed to get voice_id from agent', { 
+          error: error.message, 
+          agentId, 
+          tenantId,
+          errorCode: error.code,
+          stack: error.stack 
+        });
+        // Don't fail the call if we can't get voice_id from database
+        // Continue with the call without voice_id
+      }
+    }
+
+    // Build payload for remote API (LAD Standard: API/HTTP uses snake_case)
+    const callPayload = {
+      to_number: phoneNumber,
+      added_context: addedContext || '',
+      initiated_by: userId,
+      agent_id: parseInt(agentId, 10),
+      lead_name: leadName || null
+      //lead_id: leadId || null
+    };
+
+    // Only add voice_id if we have a valid value
+    if (resolvedVoiceId) {
+      callPayload.voice_id = resolvedVoiceId;
+    }
+
+    // Only add from_number if provided
+    if (fromNumber) {
+      callPayload.from_number = fromNumber;
+    }
+
+    try {
+      logger.info('Forwarding call to remote API', {
+        url: `${baseUrl}/calls`,
+        agentId: callPayload.agent_id,
+        leadId: callPayload.lead_id
+      });
+
+      const response = await axios.post(`${baseUrl}/calls`, callPayload, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(frontendHeader && { 'X-Frontend-ID': frontendHeader }),
+          ...(frontendApiKey && { 'X-API-Key': frontendApiKey })
+        },
+        timeout: 30000 // 30 second timeout for call forwarding
+      });
+
+      return res.json({
+        success: true,
+        message: 'Call forwarded to remote API',
+      data: {
+        remoteResponse: response.data,
+        call: callPayload
+      }
+    });
+  } catch (forwardError) {
+      logger.error('Error forwarding call data to remote API', {
+        error: forwardError.message,
+        status: forwardError.response?.status,
+        responseData: forwardError.response?.data
+      });
+
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to forward call to remote API',
+        details: forwardError.response?.data || forwardError.message
+      });
+    }
+  } catch (error) {
+    logger.error('Initiate call error', {
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to initiate call',
+      message: error.message
+    });
   }
+}
 }
 
 module.exports = CallInitiationController;
