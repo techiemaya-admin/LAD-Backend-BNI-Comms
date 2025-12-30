@@ -93,18 +93,27 @@ class VAPIService {
     };
 
     try {
-      const response = await axios.post(this.apiUrl, payload, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
+      // const response = await axios.post(this.apiUrl, payload, {
+      //   headers: {
+      //     'Authorization': `Bearer ${this.apiKey}`,
+      //     'Content-Type': 'application/json'
+      //   }
+      // });
 
+      // return {
+      //   success: true,
+      //   vapiCallId: response.data.id,
+      //   status: response.data.status,
+      //   data: response.data
+      // };
+      
+      // Mock response for now
+      logger.info('[VAPI Service] VAPI API call temporarily disabled', { phoneNumber, leadName, agentId });
       return {
-        success: true,
-        vapiCallId: response.data.id,
-        status: response.data.status,
-        data: response.data
+        success: false,
+        error: 'VAPI API calls temporarily disabled to prevent 500 errors',
+        temporaryDisabled: true
       };
     } catch (error) {
       console.error('VAPI API Error:', error.response?.data || error.message);
@@ -245,24 +254,32 @@ class VAPIService {
    * @returns {Promise<Object>} Call status
    */
   async getCallStatus(vapiCallId) {
-    try {
-      const response = await axios.get(`${this.apiUrl}/${vapiCallId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
+    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
+    // try {
+    //   const response = await axios.get(`${this.apiUrl}/${vapiCallId}`, {
+    //     headers: {
+    //       'Authorization': `Bearer ${this.apiKey}`
+    //     }
+    //   });
 
-      return {
-        success: true,
-        status: response.data.status,
-        data: response.data
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || error.message
-      };
-    }
+    //   return {
+    //     success: true,
+    //     status: response.data.status,
+    //     data: response.data
+    //   };
+    // } catch (error) {
+    //   return {
+    //     success: false,
+    //     error: error.response?.data?.message || error.message
+    //   };
+    // }
+    
+    logger.info('[VAPI Service] getCallStatus temporarily disabled', { vapiCallId });
+    return {
+      success: false,
+      error: 'VAPI API calls temporarily disabled',
+      temporaryDisabled: true
+    };
   }
 
   /**
@@ -273,28 +290,36 @@ class VAPIService {
    * @returns {Promise<Object>} Update result
    */
   async updateCall(vapiCallId, updates) {
-    try {
-      const response = await axios.patch(
-        `${this.apiUrl}/${vapiCallId}`,
-        updates,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
+    // try {
+    //   const response = await axios.patch(
+    //     `${this.apiUrl}/${vapiCallId}`,
+    //     updates,
+    //     {
+    //       headers: {
+    //         'Authorization': `Bearer ${this.apiKey}`,
+    //         'Content-Type': 'application/json'
+    //       }
+    //     }
+    //   );
 
-      return {
-        success: true,
-        data: response.data
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || error.message
-      };
-    }
+    //   return {
+    //     success: true,
+    //     data: response.data
+    //   };
+    // } catch (error) {
+    //   return {
+    //     success: false,
+    //     error: error.response?.data?.message || error.message
+    //   };
+    // }
+    
+    logger.info('[VAPI Service] updateCall temporarily disabled', { vapiCallId, updates });
+    return {
+      success: false,
+      error: 'VAPI API calls temporarily disabled',
+      temporaryDisabled: true
+    };
   }
 
   /**
@@ -304,23 +329,31 @@ class VAPIService {
    * @returns {Promise<Object>} End call result
    */
   async endCall(vapiCallId) {
-    try {
-      const response = await axios.delete(`${this.apiUrl}/${vapiCallId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
+    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
+    // try {
+    //   const response = await axios.delete(`${this.apiUrl}/${vapiCallId}`, {
+    //     headers: {
+    //       'Authorization': `Bearer ${this.apiKey}`
+    //     }
+    //   });
 
-      return {
-        success: true,
-        data: response.data
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || error.message
-      };
-    }
+    //   return {
+    //     success: true,
+    //     data: response.data
+    //   };
+    // } catch (error) {
+    //   return {
+    //     success: false,
+    //     error: error.response?.data?.message || error.message
+    //   };
+    // }
+    
+    logger.info('[VAPI Service] endCall temporarily disabled', { vapiCallId });
+    return {
+      success: false,
+      error: 'VAPI API calls temporarily disabled',
+      temporaryDisabled: true
+    };
   }
 
   /**
