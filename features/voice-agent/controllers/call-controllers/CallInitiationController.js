@@ -130,8 +130,8 @@ class CallInitiationController {
           added_context: addedContext || '',
           initiated_by: userId,
           agent_id: parseInt(agentId, 10),
-          lead_name: leadName || null,
-          lead_id: leadId || null
+          lead_name: leadName || null
+          //lead_id: leadId || null
         };
 
         // Only add voice_id if we have a valid value
