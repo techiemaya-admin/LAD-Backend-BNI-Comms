@@ -151,13 +151,10 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       searchParams.organization_industries = Array.isArray(filters.industries) ? filters.industries : [filters.industries];
     }
     
-    if (tenantId) {
-      searchParams.tenant_id = tenantId;
-    }
+    // Note: tenant_id and user_id are passed separately to search functions, not in searchParams
+    // searchParams only contains Apollo API parameters (titles, locations, industries, etc.)
     
-    if (userId) {
-      searchParams.user_id = userId;
-    }
+    // Add disable_leads_sync flag if configured
     
     logger.info('[Campaign Execution] Lead generation parameters', { dailyLimit, currentOffset, page, offsetInPage });
     
