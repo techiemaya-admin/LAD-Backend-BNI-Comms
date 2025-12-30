@@ -1,9 +1,10 @@
-const { VAPIService } = require('../../services');
+// const { VAPIService } = require('../../services');
 const axios = require('axios');
 
 class BatchCallController {
   constructor(db) {
-    this.vapiService = new VAPIService();
+    // VAPI disabled: keep code commented for future re-enable.
+    // this.vapiService = new VAPIService();
     this.db = db;
   }
 
@@ -40,23 +41,24 @@ class BatchCallController {
       }
 
       // VAPI agents use VAPI batch API; others forward to legacy BASE_URL /calls/batch
-      if (this.vapiService.shouldUseVAPI(agentId)) {
-        // Initiate batch calls via VAPI
-        const vapiResults = await this.vapiService.batchInitiateCalls({
-          entries,
-          globalContext,
-          agentId,
-          assistantOverrides,
-          tenantId,
-          userId
-        });
-
-        return res.json({
-          success: true,
-          message: 'Batch calls initiated via VAPI',
-          data: vapiResults
-        });
-      } else {
+      // VAPI disabled: always use legacy forwarding for now.
+      //
+      // if (this.vapiService.shouldUseVAPI(agentId)) {
+      //   const vapiResults = await this.vapiService.batchInitiateCalls({
+      //     entries,
+      //     globalContext,
+      //     agentId,
+      //     assistantOverrides,
+      //     tenantId,
+      //     userId
+      //   });
+      //
+      //   return res.json({
+      //     success: true,
+      //     message: 'Batch calls initiated via VAPI',
+      //     data: vapiResults
+      //   });
+      // } else {
         // Legacy batch call handling
         const baseUrl = process.env.BASE_URL;
         const frontendHeader = req.headers['x-frontend-id'];
@@ -101,7 +103,7 @@ class BatchCallController {
             details: forwardError.response?.data || forwardError.message
           });
         }
-      }
+      // }
     } catch (error) {
       console.error('Batch initiate calls error:', error);
       res.status(500).json({

@@ -22,21 +22,13 @@ class VoiceModel {
    */
   async getAllVoices(schema, tenantId) {
     const query = `
-      SELECT 
-        id,
-        tenant_id,
-        voice_name,
-        description,
-        voice_sample_url,
-        provider,
-        language,
-        gender,
-        is_active,
-        created_at,
-        updated_at
-      FROM ${schema}.voices
-      WHERE tenant_id = $1 AND is_active = true
-      ORDER BY voice_name ASC
+      SELECT DISTINCT
+        vav.*
+      FROM ${schema}.voice_agent_config_view vac
+      JOIN ${schema}.voice_agent_voices vav
+        ON vav.id = vac.voice_id
+      WHERE vac.tenant_id = $1
+      ORDER BY vav.id ASC
     `;
 
     const result = await this.db.query(query, [tenantId]);
@@ -67,7 +59,7 @@ class VoiceModel {
         metadata,
         created_at,
         updated_at
-      FROM ${schema}.voices
+      FROM ${schema}.voice_agent_voices
       WHERE id = $1 AND tenant_id = $2
     `;
 
@@ -85,7 +77,7 @@ class VoiceModel {
   async getVoiceSampleUrl(schema, voiceId, tenantId) {
     const query = `
       SELECT voice_sample_url
-      FROM ${schema}.voices
+      FROM ${schema}.voice_agent_voices
       WHERE id = $1 AND tenant_id = $2
     `;
 

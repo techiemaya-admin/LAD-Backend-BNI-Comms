@@ -8,7 +8,7 @@ require('dotenv')
 const axios = require('axios');
 const { VoiceCallModel, PhoneResolverModel, VoiceAgentModel } = require('../models');
 const { VAPIService, CallLoggingService, RecordingService } = require('../services');
-const { getSchemaFromRequest } = require('../utils/schemaHelper');
+const { getSchema } = require('../../../core/utils/schemaHelper');
 
 class CallController {
   constructor(db) {
@@ -34,14 +34,6 @@ class CallController {
         });
       }
 
-      const tenantId = req.tenantId || req.user?.tenantId;
-      if (!tenantId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Tenant context required'
-        });
-      }
-
       const baseUrl = process.env.BASE_URL;
       const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER;
       const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY;
@@ -53,37 +45,7 @@ class CallController {
         });
       }
 
-      // IMPORTANT:
-      // The signing service expects the recording identifier (recording_url from voice_call_logs),
-      // not the call_log_id. So fetch the call log first.
-      const callLog = await this.callLoggingService.getCallLog(id, tenantId);
-      if (!callLog) {
-        return res.status(404).json({
-          success: false,
-          error: 'Call log not found'
-        });
-      }
-
-      const user = req.user;
-      if (shouldRestrictToInitiator(user)) {
-        if (String(callLog.initiated_by_user_id) !== String(user.id)) {
-          return res.status(403).json({
-            success: false,
-            error: 'You do not have permission to view this call recording'
-          });
-        }
-      }
-
-      const recordingUrl = callLog.recording_url;
-      if (!recordingUrl) {
-        return res.status(404).json({
-          success: false,
-          error: 'Recording not found',
-          message: 'This call log does not have a recording_url yet.'
-        });
-      }
-
-      const signingEndpoint = `${baseUrl}/recordings/calls/${encodeURIComponent(String(recordingUrl))}/signed-url`;
+      const signingEndpoint = `${baseUrl}/recordings/calls/${id}/signed-url`;
 
       const response = await axios.get(signingEndpoint, {
         headers: {
@@ -236,11 +198,14 @@ class CallController {
       if (agent_id) filters.agentId = agent_id;
       if (start_date) filters.startDate = new Date(start_date);
 
+      // Role & capability based access control
       const user = req.user;
+      const isAdmin = user?.role === 'admin';
+      const capabilities = Array.isArray(user?.capabilities) ? user.capabilities : [];
 
-      // If user has leads_view_assigned (and is not owner/admin and has no viewAll),
-      // restrict to calls initiated by this user only.
-      if (shouldRestrictToInitiator(user)) {
+      // If user has leads_view_assigned capability and is not admin,
+      // restrict to calls initiated by this user only
+      if (!isAdmin && capabilities.includes('leads_view_assigned') && user?.id) {
         filters.userId = user.id;
       }
 
@@ -305,7 +270,10 @@ class CallController {
       if (start_date) filters.startDate = new Date(start_date);
 
       const user = req.user;
-      if (shouldRestrictToInitiator(user)) {
+      const isAdmin = user?.role === 'admin';
+      const capabilities = Array.isArray(user?.capabilities) ? user.capabilities : [];
+
+      if (!isAdmin && capabilities.includes('leads_view_assigned') && user?.id) {
         filters.userId = user.id;
       }
 
@@ -352,11 +320,15 @@ class CallController {
         });
       }
 
-      // Check if user has access to this call log.
-      // Only restrict when user has leads_view_assigned and does not have owner/admin/viewAll.
+      // Check if user has access to this call log
       const user = req.user;
-      if (shouldRestrictToInitiator(user)) {
-        if (String(callLog.initiated_by_user_id) !== String(user.id)) {
+      const isAdmin = user?.role === 'admin';
+      const capabilities = Array.isArray(user?.capabilities) ? user.capabilities : [];
+
+      // If user is not admin and has leads_view_assigned capability,
+      // verify they initiated this call
+      if (!isAdmin && capabilities.includes('leads_view_assigned') && user?.id) {
+        if (callLog.initiated_by_user_id !== user.id) {
           return res.status(403).json({
             success: false,
             error: 'You do not have permission to view this call log'
@@ -426,7 +398,7 @@ class CallController {
         });
       }
 
-      const schema = getSchemaFromRequest(req);
+      const schema = getSchema(req);
 
       const calls = await this.callModel.getBatchCallsByBatchId(schema, tenantId, batchId);
 
