@@ -45,21 +45,24 @@ function getAuthHeaders(authToken) {
  * @param {number} offsetInPage - Offset within page
  * @param {number} dailyLimit - Daily limit of leads needed
  * @param {string} authToken - Optional JWT token for authentication
+ * @param {string} tenantId - Tenant ID for multi-tenant context
  * @returns {Object} { employees, fromSource }
  */
-async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken = null) {
+async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken = null, tenantId = null) {
   logger.debug('[Lead Search] Searching database for leads', { searchParams, page, offsetInPage, dailyLimit });
   try {
     logger.debug('[Lead Search] Checking database (employees_cache)', { page });
     
     // For internal service-to-service calls, use the service directly instead of HTTP
     if (!authToken && process.env.NODE_ENV === 'production') {
-      const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+      // Use provided tenantId or fall back to default
+      const effectiveTenantId = tenantId || process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
       
       logger.info('[Lead Search] Using direct service call for internal request', { 
-        defaultTenantId, 
+        effectiveTenantId, 
+        providedTenantId: tenantId,
         env: process.env.NODE_ENV,
-        hasDefaultTenantId: !!process.env.DEFAULT_TENANT_ID 
+        usingProvidedTenant: !!tenantId
       });
       
       const ApolloLeadsService = require('../../apollo-leads/services/ApolloLeadsService');
@@ -72,16 +75,16 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
           per_page: 100
         },
         user: { 
-          tenant_id: defaultTenantId  // This matches the controller's req.user?.tenant_id check
+          tenant_id: effectiveTenantId  // This matches the controller's req.user?.tenant_id check
         },
         headers: {
-          'x-tenant-id': defaultTenantId  // Backup header for tenant context
+          'x-tenant-id': effectiveTenantId  // Backup header for tenant context
         }
       };
       
       try {
         logger.debug('[Lead Search] Calling ApolloLeadsService.searchEmployeesFromDb directly', { 
-          tenantId: defaultTenantId, 
+          tenantId: effectiveTenantId, 
           hasUser: !!mockReq.user,
           hasTenantId: !!mockReq.user?.tenant_id 
         });
@@ -122,23 +125,25 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
         logger.error('[Lead Search] Direct service call failed, falling back to HTTP', { 
           error: serviceError.message, 
           stack: serviceError.stack,
-          tenantId: defaultTenantId 
+          tenantId: effectiveTenantId 
         });
         // Fall through to HTTP call with better error handling
       }
     }
     
     // HTTP fallback call with tenant context header
-    const defaultTenantId = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    const effectiveTenantId = tenantId || process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
     const headers = {
       ...getAuthHeaders(authToken),
-      'x-tenant-id': defaultTenantId  // Add tenant context for internal calls
+      'x-tenant-id': effectiveTenantId  // Add tenant context for internal calls
     };
     
     logger.debug('[Lead Search] Making HTTP call to search-employees-from-db', {
       url: `${BACKEND_URL}/api/apollo-leads/search-employees-from-db`,
       hasAuthToken: !!authToken,
-      tenantId: defaultTenantId
+      tenantId: effectiveTenantId,
+      providedTenantId: tenantId,
+      usingProvidedTenant: !!tenantId
     });
     
     const dbResponse = await axios.post(
@@ -288,7 +293,7 @@ async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neede
  * @param {string} authToken - Optional JWT token for authentication
  * @returns {Object} { employees, fromSource }
  */
-async function searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken = null) {
+async function searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken = null, tenantId = null) {
   logger.info('[Lead Search] Starting employee search', { searchParams, page, offsetInPage, dailyLimit, backendUrl: BACKEND_URL });
   
   // STEP 1: Try to get leads from database first

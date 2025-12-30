@@ -182,7 +182,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     
     try {
       // First, try to get leads from database (employees_cache)
-      const dbSearchResult = await searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken);
+      const dbSearchResult = await searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken, tenantId);
       employees = dbSearchResult.employees || [];
       fromSource = dbSearchResult.fromSource || 'database';
       searchError = dbSearchResult.error || null;
@@ -196,7 +196,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       // If no leads from database and access is NOT denied, try Apollo API
       if (employees.length === 0 && !searchError && !accessDenied) {
         logger.debug('[Campaign Execution] STEP 2: No leads in employees_cache, calling Apollo API');
-        const apolloSearchResult = await searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken);
+        const apolloSearchResult = await searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken, tenantId);
         employees = apolloSearchResult.employees || [];
         fromSource = apolloSearchResult.fromSource || 'apollo';
         searchError = apolloSearchResult.error || null;
