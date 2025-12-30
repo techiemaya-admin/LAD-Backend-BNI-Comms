@@ -151,6 +151,11 @@ class CoreApplication {
     this.app.use('/api/apollo-leads', this.createFeatureMiddleware('apollo-leads'), apolloLeadsRoutes);
     logger.info('[App] Apollo Leads routes mounted with feature flag check');
     
+    // Voice Agent routes with feature flag check  
+    const voiceAgentRoutes = require('../features/voice-agent/routes/index');
+    this.app.use('/api/voice-agent', this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
+    logger.info('[App] Voice Agent routes mounted with feature flag check');
+    
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
       try {

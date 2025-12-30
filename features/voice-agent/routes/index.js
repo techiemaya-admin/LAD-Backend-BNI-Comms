@@ -1,53 +1,35 @@
 /**
- * Voice Agent Routes1.0
- * 
- * Registers all voice agent endpoints with proper middleware
- * Supports JWT authentication for user-specific endpoints
+ * Voice Agent Routes
+ * LAD Architecture Compliant - Express routes for voice agent management
  */
 
 const express = require('express');
+const router = express.Router();
 const { 
   VoiceAgentController, 
   CallController, 
   BatchCallController, 
   CallInitiationController 
 } = require('../controllers');
+const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
+const { pool } = require('../../../shared/database/connection');
+
+// ============================================
+// JWT-Protected Endpoints (User-Specific)  
+// ============================================
 
 /**
- * Create voice agent router
- * 
- * @param {Object} db - Database pool
- * @param {Object} options - Configuration options
- * @param {Function} options.jwtAuth - JWT authentication middleware
- * @param {Function} options.tenantMiddleware - Tenant extraction middleware
- * @returns {express.Router} Configured router
+ * GET /user/available-agents
+ * Get available agents for authenticated user
  */
-function createVoiceAgentRouter(db, options = {}) {
-  const router = express.Router();
-  
-  // Initialize controllers
-  const voiceAgentController = new VoiceAgentController(db);
-  const callController = new CallController(db);
-  const batchCallController = new BatchCallController(db);
-  const callInitiationController = new CallInitiationController(db);
-
-  // Middleware
-  const jwtAuth = options.jwtAuth || defaultJwtAuth;
-  const tenantMiddleware = options.tenantMiddleware || defaultTenantMiddleware;
-
-  // ============================================
-  // JWT-Protected Endpoints (User-Specific)
-  // ============================================
-
-  /**
-   * GET /user/available-agents
-   * Get available agents for authenticated user
-   */
-  router.get(
-    '/user/available-agents',
-    jwtAuth,
-    (req, res) => voiceAgentController.getUserAvailableAgents(req, res)
-  );
+router.get(
+  '/user/available-agents',
+  jwtAuth,
+  (req, res) => {
+    const controller = new VoiceAgentController(pool);
+    controller.getUserAvailableAgents(req, res);
+  }
+);
 
   /**
    * GET /user/available-numbers
@@ -56,7 +38,10 @@ function createVoiceAgentRouter(db, options = {}) {
   router.get(
     '/user/available-numbers',
     jwtAuth,
-    (req, res) => voiceAgentController.getUserAvailableNumbers(req, res)
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getUserAvailableNumbers(req, res);
+    }
   );
 
   /**
@@ -66,7 +51,10 @@ function createVoiceAgentRouter(db, options = {}) {
   router.get(
     '/voices/:id/sample-signed-url',
     jwtAuth,
-    (req, res) => voiceAgentController.getVoiceSampleSignedUrl(req, res)
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getVoiceSampleSignedUrl(req, res);
+    }
   );
 
   /**
@@ -76,7 +64,10 @@ function createVoiceAgentRouter(db, options = {}) {
   router.get(
     '/agents/:agentId/sample-signed-url',
     jwtAuth,
-    (req, res) => voiceAgentController.getAgentVoiceSampleSignedUrl(req, res)
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAgentVoiceSampleSignedUrl(req, res);
+    }
   );
 
   // ============================================
@@ -87,7 +78,10 @@ function createVoiceAgentRouter(db, options = {}) {
    * GET /test
    * Health check / test endpoint
    */
-  router.get('/test', (req, res) => voiceAgentController.test(req, res));
+  router.get('/test', (req, res) => {
+    const controller = new VoiceAgentController(pool);
+    controller.test(req, res);
+  });
 
   /**
    * GET /all
@@ -95,8 +89,11 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/all',
-    tenantMiddleware,
-    (req, res) => voiceAgentController.getAllAgents(req, res)
+    jwtAuth,
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAllAgents(req, res);
+    }
   );
 
   /**
@@ -105,8 +102,11 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/agent/:name',
-    tenantMiddleware,
-    (req, res) => voiceAgentController.getAgentByName(req, res)
+    jwtAuth,
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAgentByName(req, res);
+    }
   );
 
   /**
@@ -115,8 +115,11 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/voices',
-    tenantMiddleware,
-    (req, res) => voiceAgentController.getAllVoices(req, res)
+    jwtAuth,
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAllVoices(req, res);
+    }
   );
 
   /**
@@ -125,8 +128,11 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/',
-    tenantMiddleware,
-    (req, res) => voiceAgentController.getAllVoices(req, res)
+    jwtAuth,
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAllVoices(req, res);
+    }
   );
 
   /**
@@ -135,8 +141,11 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/numbers',
-    tenantMiddleware,
-    (req, res) => voiceAgentController.getAllPhoneNumbers(req, res)
+    jwtAuth,
+    (req, res) => {
+      const controller = new VoiceAgentController(pool);
+      controller.getAllPhoneNumbers(req, res);
+    }
   );
 
   // ============================================
@@ -150,7 +159,7 @@ function createVoiceAgentRouter(db, options = {}) {
   router.post(
     '/calls',
     jwtAuth,
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callInitiationController.initiateCall(req, res)
   );
 
@@ -160,7 +169,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.post(
     '/calls/batch',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => batchCallController.batchInitiateCalls(req, res)
   );
 
@@ -170,7 +179,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calllogs',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getCallLogs(req, res)
   );
 
@@ -180,7 +189,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calllogs/:call_log_id',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getCallLogById(req, res)
   );
 
@@ -190,7 +199,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calllogs/batch/:batch_id',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getBatchCallLogsByBatchId(req, res)
   );
 
@@ -200,7 +209,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.post(
     '/calls/batch',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.batchInitiateCalls(req, res)
   );
 
@@ -210,7 +219,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calls/:id/recording-signed-url',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getCallRecordingSignedUrl(req, res)
   );
 
@@ -220,7 +229,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calls/recent',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getRecentCalls(req, res)
   );
 
@@ -230,7 +239,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.get(
     '/calls/stats',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.getCallStats(req, res)
   );
 
@@ -244,7 +253,7 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.post(
     '/resolve-phones',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.resolvePhones(req, res)
   );
 
@@ -254,59 +263,8 @@ function createVoiceAgentRouter(db, options = {}) {
    */
   router.post(
     '/update-summary',
-    tenantMiddleware,
+    jwtAuth,
     (req, res) => callController.updateSalesSummary(req, res)
   );
 
-  return router;
-}
-
-/**
- * Default JWT authentication middleware
- * This should be replaced with your actual JWT middleware
- */
-function defaultJwtAuth(req, res, next) {
-  // TODO: Replace with actual JWT authentication
-  // Example:
-  // const token = req.headers.authorization?.replace('Bearer ', '');
-  // const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  // req.user = { id: decoded.userId, tenantId: decoded.tenantId };
-  
-  // JWT auth is provided by the caller, so this should not be reached
-  // But if it is, we'll check if user is already set (by upstream middleware)
-  
-  // For now, check if user is already set (by upstream middleware)
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required',
-      message: 'Please provide a valid JWT token'
-    });
-  }
-  
-  next();
-}
-
-/**
- * Default tenant middleware
- * Extracts tenant ID from request
- */
-function defaultTenantMiddleware(req, res, next) {
-  // Try to get tenantId from various sources
-  req.tenantId = req.tenantId || 
-                 req.user?.tenantId || 
-                 req.headers['x-tenant-id'] ||
-                 req.query.tenant_id;
-
-  if (!req.tenantId) {
-    return res.status(400).json({
-      success: false,
-      error: 'Tenant ID required',
-      message: 'Please provide tenant_id in headers or query params'
-    });
-  }
-
-  next();
-}
-
-module.exports = createVoiceAgentRouter;
+module.exports = router;
