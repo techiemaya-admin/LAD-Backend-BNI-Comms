@@ -11,8 +11,10 @@ const {
   PhoneNumberModel 
 } = require('../models');
 const { RecordingService } = require('../services');
-const { getSchema } = require('../../../core/utils/schemaHelper');
-const logger = require('../../../core/utils/logger');
+const { getSchemaFromRequest } = require('../utils/schemaHelper');
+const { getLogger } = require('../utils/logger');
+
+const logger = getLogger();
 
 class VoiceAgentController {
   constructor(db) {
@@ -31,7 +33,6 @@ class VoiceAgentController {
     try {
       const userId = req.user.id; // From JWT middleware
       const tenantId = req.user.tenantId; // From JWT middleware
-      const schema = getSchema(req);
 
       const agents = await this.agentModel.getAvailableAgentsForUser(schema, userId, tenantId);
 
@@ -59,7 +60,6 @@ class VoiceAgentController {
     try {
       const userId = req.user.id;
       const tenantId = req.user.tenantId;
-      const schema = getSchema(req);
 
       const numbers = await this.phoneModel.getAvailableNumbersForUser(schema, userId, tenantId);
 
@@ -144,8 +144,6 @@ class VoiceAgentController {
     try {
       const { agentId } = req.params;
       const tenantId = req.user.tenantId;
-      const schema = getSchema(req);
-      const userId = req.user.id;
       const expirationHours = parseInt(req.query.expiration_hours) || 96;
 
       // Optimize: Use getAvailableAgentsForUser which already includes voice_sample_url
@@ -178,13 +176,6 @@ class VoiceAgentController {
       );
 
       if (!result.success) {
-        logger.error('Failed to generate signed URL for agent voice sample', {
-          agentId,
-          voiceId: agent.voice_id,
-          voiceSampleUrl,
-          error: result.error
-        });
-        
         return res.status(500).json({
           success: false,
           error: result.error || 'Failed to generate signed URL',
@@ -229,7 +220,6 @@ class VoiceAgentController {
   async getAllAgents(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = getSchema(req);
 
       logger.info('[/api/voiceagent/all] request context:', {
         user: req.user,
@@ -282,7 +272,7 @@ class VoiceAgentController {
   async getAllVoices(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = getSchema(req);
+      const schema = getSchemaFromRequest(req);
 
       const voices = await this.voiceModel.getAllVoices(schema, tenantId);
 
@@ -308,7 +298,7 @@ class VoiceAgentController {
   async getAllPhoneNumbers(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = getSchema(req);
+      const schema = getSchemaFromRequest(req);
 
       const numbers = await this.phoneModel.getAllPhoneNumbers(schema, tenantId);
 

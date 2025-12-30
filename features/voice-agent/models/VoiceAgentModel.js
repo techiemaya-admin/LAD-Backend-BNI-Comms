@@ -107,7 +107,6 @@ class VoiceAgentModel {
    * Get available agents for a user
    * Uses view or joins with user permissions
    * 
-   * @param {string} schema - Database schema name
    * @param {string} userId - User ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Available agents with voice details

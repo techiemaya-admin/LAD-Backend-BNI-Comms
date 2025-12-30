@@ -1,35 +1,53 @@
 /**
- * Voice Agent Routes
- * LAD Architecture Compliant - Express routes for voice agent management
+ * Voice Agent Routes1.0
+ * 
+ * Registers all voice agent endpoints with proper middleware
+ * Supports JWT authentication for user-specific endpoints
  */
 
 const express = require('express');
-const router = express.Router();
 const { 
   VoiceAgentController, 
   CallController, 
   BatchCallController, 
   CallInitiationController 
 } = require('../controllers');
-const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
-const { pool } = require('../../../shared/database/connection');
-
-// ============================================
-// JWT-Protected Endpoints (User-Specific)  
-// ============================================
 
 /**
- * GET /user/available-agents
- * Get available agents for authenticated user
+ * Create voice agent router
+ * 
+ * @param {Object} db - Database pool
+ * @param {Object} options - Configuration options
+ * @param {Function} options.jwtAuth - JWT authentication middleware
+ * @param {Function} options.tenantMiddleware - Tenant extraction middleware
+ * @returns {express.Router} Configured router
  */
-router.get(
-  '/user/available-agents',
-  jwtAuth,
-  (req, res) => {
-    const controller = new VoiceAgentController(pool);
-    controller.getUserAvailableAgents(req, res);
-  }
-);
+function createVoiceAgentRouter(db, options = {}) {
+  const router = express.Router();
+  
+  // Initialize controllers
+  const voiceAgentController = new VoiceAgentController(db);
+  const callController = new CallController(db);
+  const batchCallController = new BatchCallController(db);
+  const callInitiationController = new CallInitiationController(db);
+
+  // Middleware
+  const jwtAuth = options.jwtAuth || defaultJwtAuth;
+  const tenantMiddleware = options.tenantMiddleware || defaultTenantMiddleware;
+
+  // ============================================
+  // JWT-Protected Endpoints (User-Specific)
+  // ============================================
+
+  /**
+   * GET /user/available-agents
+   * Get available agents for authenticated user
+   */
+  router.get(
+    '/user/available-agents',
+    jwtAuth,
+    (req, res) => voiceAgentController.getUserAvailableAgents(req, res)
+  );
 
   /**
    * GET /user/available-numbers
@@ -38,10 +56,7 @@ router.get(
   router.get(
     '/user/available-numbers',
     jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getUserAvailableNumbers(req, res);
-    }
+    (req, res) => voiceAgentController.getUserAvailableNumbers(req, res)
   );
 
   /**
@@ -51,10 +66,7 @@ router.get(
   router.get(
     '/voices/:id/sample-signed-url',
     jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getVoiceSampleSignedUrl(req, res);
-    }
+    (req, res) => voiceAgentController.getVoiceSampleSignedUrl(req, res)
   );
 
   /**
@@ -64,10 +76,7 @@ router.get(
   router.get(
     '/agents/:agentId/sample-signed-url',
     jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAgentVoiceSampleSignedUrl(req, res);
-    }
+    (req, res) => voiceAgentController.getAgentVoiceSampleSignedUrl(req, res)
   );
 
   // ============================================
@@ -78,10 +87,7 @@ router.get(
    * GET /test
    * Health check / test endpoint
    */
-  router.get('/test', (req, res) => {
-    const controller = new VoiceAgentController(pool);
-    controller.test(req, res);
-  });
+  router.get('/test', (req, res) => voiceAgentController.test(req, res));
 
   /**
    * GET /all
@@ -89,11 +95,8 @@ router.get(
    */
   router.get(
     '/all',
-    jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAllAgents(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => voiceAgentController.getAllAgents(req, res)
   );
 
   /**
@@ -102,11 +105,8 @@ router.get(
    */
   router.get(
     '/agent/:name',
-    jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAgentByName(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => voiceAgentController.getAgentByName(req, res)
   );
 
   /**
@@ -115,11 +115,8 @@ router.get(
    */
   router.get(
     '/voices',
-    jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAllVoices(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => voiceAgentController.getAllVoices(req, res)
   );
 
   /**
@@ -128,11 +125,8 @@ router.get(
    */
   router.get(
     '/',
-    jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAllVoices(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => voiceAgentController.getAllVoices(req, res)
   );
 
   /**
@@ -141,11 +135,8 @@ router.get(
    */
   router.get(
     '/numbers',
-    jwtAuth,
-    (req, res) => {
-      const controller = new VoiceAgentController(pool);
-      controller.getAllPhoneNumbers(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => voiceAgentController.getAllPhoneNumbers(req, res)
   );
 
   // ============================================
@@ -153,29 +144,13 @@ router.get(
   // ============================================
 
   /**
-   * GET /calls
-   * Get call logs with optional filters
-   */
-  router.get(
-    '/calls',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getCallLogs(req, res);
-    }
-  );
-
-  /**
    * POST /calls
    * Initiate a single voice call
    */
   router.post(
     '/calls',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallInitiationController(pool);
-      controller.initiateCall(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callInitiationController.initiateCall(req, res)
   );
 
   /**
@@ -184,11 +159,8 @@ router.get(
    */
   router.post(
     '/calls/batch',
-    jwtAuth,
-    (req, res) => {
-      const controller = new BatchCallController(pool);
-      controller.batchInitiateCalls(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => batchCallController.batchInitiateCalls(req, res)
   );
 
   /**
@@ -197,11 +169,8 @@ router.get(
    */
   router.get(
     '/calllogs',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getCallLogs(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getCallLogs(req, res)
   );
 
   /**
@@ -210,11 +179,8 @@ router.get(
    */
   router.get(
     '/calllogs/:call_log_id',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getCallLogById(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getCallLogById(req, res)
   );
 
   /**
@@ -223,11 +189,8 @@ router.get(
    */
   router.get(
     '/calllogs/batch/:batch_id',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getBatchCallLogsByBatchId(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getBatchCallLogsByBatchId(req, res)
   );
 
   /**
@@ -236,11 +199,8 @@ router.get(
    */
   router.post(
     '/calls/batch',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.batchInitiateCalls(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.batchInitiateCalls(req, res)
   );
 
   /**
@@ -249,11 +209,8 @@ router.get(
    */
   router.get(
     '/calls/:id/recording-signed-url',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getCallRecordingSignedUrl(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getCallRecordingSignedUrl(req, res)
   );
 
   /**
@@ -262,11 +219,8 @@ router.get(
    */
   router.get(
     '/calls/recent',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getRecentCalls(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getRecentCalls(req, res)
   );
 
   /**
@@ -275,11 +229,8 @@ router.get(
    */
   router.get(
     '/calls/stats',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.getCallStats(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.getCallStats(req, res)
   );
 
   // ============================================
@@ -292,11 +243,8 @@ router.get(
    */
   router.post(
     '/resolve-phones',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.resolvePhones(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.resolvePhones(req, res)
   );
 
   /**
@@ -305,11 +253,58 @@ router.get(
    */
   router.post(
     '/update-summary',
-    jwtAuth,
-    (req, res) => {
-      const controller = new CallController(pool);
-      controller.updateSalesSummary(req, res);
-    }
+    tenantMiddleware,
+    (req, res) => callController.updateSalesSummary(req, res)
   );
 
-module.exports = router;
+  return router;
+}
+
+/**
+ * Default JWT authentication middleware
+ * This should be replaced with your actual JWT middleware
+ */
+function defaultJwtAuth(req, res, next) {
+  // TODO: Replace with actual JWT authentication
+  // Example:
+  // const token = req.headers.authorization?.replace('Bearer ', '');
+  // const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  // req.user = { id: decoded.userId, tenantId: decoded.tenantId };
+  
+  console.warn('Using default JWT auth - please provide jwtAuth middleware');
+  
+  // For now, check if user is already set (by upstream middleware)
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required',
+      message: 'Please provide a valid JWT token'
+    });
+  }
+  
+  next();
+}
+
+/**
+ * Default tenant middleware
+ * Extracts tenant ID from request
+ */
+function defaultTenantMiddleware(req, res, next) {
+  // Try to get tenantId from various sources
+  req.tenantId = req.tenantId || 
+                 req.user?.tenantId || 
+                 req.headers['x-tenant-id'] ||
+                 req.query.tenant_id;
+
+  if (!req.tenantId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Tenant ID required',
+      message: 'Please provide tenant_id in headers or query params'
+    });
+  }
+
+  next();
+}
+
+module.exports = createVoiceAgentRouter;

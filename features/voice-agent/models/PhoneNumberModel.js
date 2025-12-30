@@ -22,18 +22,7 @@ class PhoneNumberModel {
    */
   async getAllPhoneNumbers(schema, tenantId) {
     const query = `
-      SELECT 
-        id,
-        tenant_id,
-        country_code,
-        base_number,
-        provider,
-        status,
-        rules,
-        default_agent_id,
-        created_at,
-        updated_at,
-        CONCAT('+', country_code, base_number) as phone_number
+      SELECT *
       FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 ORDER BY created_at DESC
     `;
@@ -85,12 +74,9 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        default_agent_id,
-        created_at,
-        updated_at,
-        CONCAT('+', country_code, base_number) as phone_number
+        number_type,
+        capabilities,
+        is_active
       FROM ${schema}.voice_agent_numbers
       WHERE country_code = $1 AND base_number = $2 AND tenant_id = $3
     `;
@@ -114,17 +100,15 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        default_agent_id,
+        number_type,
+        capabilities,
+        is_active,
+        metadata,
         created_at,
-        updated_at,
-        CONCAT('+', country_code, base_number) as phone_number,
-        status as type,
-        default_agent_id as assignedAgentId
+        updated_at
       FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
-        AND status = 'active'
+        AND is_active = true
       ORDER BY created_at DESC
     `;
 
@@ -152,9 +136,9 @@ class PhoneNumberModel {
     tenantId,
     phoneNumber,
     provider = 'custom',
-    status = 'active',
-    rules = {},
-    defaultAgentId = null
+    numberType = 'local',
+    capabilities = ['voice'],
+    metadata = {}
   }) {
     const query = `
       INSERT INTO ${schema}.voice_agent_numbers (
@@ -162,23 +146,22 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        default_agent_id,
+        number_type,
+        capabilities,
+        is_active,
+        metadata,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, NOW(), NOW())
       RETURNING 
         id,
         tenant_id,
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        default_agent_id,
-        created_at,
-        CONCAT('+', country_code, base_number) as phone_number
+        number_type,
+        capabilities,
+        created_at
     `;
 
     const values = [
@@ -186,9 +169,9 @@ class PhoneNumberModel {
       phoneNumber.countryCode,
       phoneNumber.baseNumber,
       provider,
-      status,
-      JSON.stringify(rules),
-      defaultAgentId
+      numberType,
+      JSON.stringify(capabilities),
+      JSON.stringify(metadata)
     ];
 
     const result = await this.db.query(query, values);
@@ -208,12 +191,9 @@ class PhoneNumberModel {
     const values = [numberId, tenantId];
     let paramIndex = 3;
 
-    if (updates.phoneNumber !== undefined && updates.phoneNumber.countryCode && updates.phoneNumber.baseNumber) {
+    if (updates.phoneNumber !== undefined) {
       setClauses.push(`country_code = $${paramIndex}`);
-      values.push(updates.phoneNumber.countryCode);
-      paramIndex++;
-      setClauses.push(`base_number = $${paramIndex}`);
-      values.push(updates.phoneNumber.baseNumber);
+      values.push(updates.phoneNumber);
       paramIndex++;
     }
     if (updates.provider !== undefined) {
@@ -221,19 +201,24 @@ class PhoneNumberModel {
       values.push(updates.provider);
       paramIndex++;
     }
-    if (updates.status !== undefined) {
-      setClauses.push(`status = $${paramIndex}`);
-      values.push(updates.status);
+    if (updates.numberType !== undefined) {
+      setClauses.push(`number_type = $${paramIndex}`);
+      values.push(updates.numberType);
       paramIndex++;
     }
-    if (updates.rules !== undefined) {
-      setClauses.push(`rules = $${paramIndex}`);
-      values.push(JSON.stringify(updates.rules));
+    if (updates.capabilities !== undefined) {
+      setClauses.push(`capabilities = $${paramIndex}`);
+      values.push(JSON.stringify(updates.capabilities));
       paramIndex++;
     }
-    if (updates.defaultAgentId !== undefined) {
-      setClauses.push(`default_agent_id = $${paramIndex}`);
-      values.push(updates.defaultAgentId);
+    if (updates.isActive !== undefined) {
+      setClauses.push(`is_active = $${paramIndex}`);
+      values.push(updates.isActive);
+      paramIndex++;
+    }
+    if (updates.metadata !== undefined) {
+      setClauses.push(`metadata = $${paramIndex}`);
+      values.push(JSON.stringify(updates.metadata));
       paramIndex++;
     }
 
@@ -247,14 +232,13 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        default_agent_id,
-        updated_at,
-        CONCAT('+', country_code, base_number) as phone_number
+        number_type,
+        capabilities,
+        is_active,
+        updated_at
     `;
 
-    const result = await this.db.query(query, values);
+    const result = await this.pool.query(query, values);
     return result.rows[0];
   }
 
@@ -268,11 +252,11 @@ class PhoneNumberModel {
   async deletePhoneNumber(schema, numberId, tenantId) {
     const query = `
       UPDATE ${schema}.voice_agent_numbers
-      SET status = 'inactive', updated_at = NOW()
+      SET is_active = false, updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.db.query(query, [numberId, tenantId]);
+    const result = await this.pool.query(query, [numberId, tenantId]);
     return result.rowCount > 0;
   }
 
@@ -290,13 +274,12 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        CONCAT('+', country_code, base_number) as phone_number
+        number_type,
+        capabilities
       FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
-        AND status = 'active'
-        AND (rules ? $2 OR rules = '{}'::jsonb)
+        AND is_active = true
+        AND capabilities ? $2
       ORDER BY country_code, base_number ASC
     `;
 
@@ -317,18 +300,18 @@ class PhoneNumberModel {
         country_code,
         base_number,
         provider,
-        status,
-        rules,
-        CONCAT('+', country_code, base_number) as phone_number
+        capabilities
       FROM ${schema}.voice_agent_numbers
       WHERE tenant_id = $1 
-        AND status = 'active'
-        AND (rules ? 'voice' OR rules = '{}'::jsonb)
-      ORDER BY created_at ASC
+        AND is_active = true
+        AND capabilities ? 'voice'
+      ORDER BY 
+        CASE WHEN metadata->>'is_default' = 'true' THEN 0 ELSE 1 END,
+        created_at ASC
       LIMIT 1
     `;
 
-    const result = await this.db.query(query, [tenantId]);
+    const result = await this.pool.query(query, [tenantId]);
     return result.rows[0] || null;
   }
 }

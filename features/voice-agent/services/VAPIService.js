@@ -8,7 +8,6 @@
  */
 
 const axios = require('axios');
-const logger = require('../../../core/utils/logger');
 
 class VAPIService {
   constructor(config = {}) {
@@ -17,23 +16,8 @@ class VAPIService {
     this.phoneNumberId = config.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID;
     this.apiUrl = 'https://api.vapi.ai/call';
     
-    // VAPI API key is optional - service will fail gracefully when methods are called without it
-    // This allows the router to initialize even if VAPI is not configured
-  }
-
-  /**
-   * Check if VAPI is configured
-   */
-  isConfigured() {
-    return !!this.apiKey;
-  }
-
-  /**
-   * Ensure VAPI is configured before making API calls
-   */
-  _ensureConfigured() {
-    if (!this.isConfigured()) {
-      throw new Error('VAPI API key is required. Please set VAPI_API_KEY environment variable.');
+    if (!this.apiKey) {
+      throw new Error('VAPI API key is required');
     }
   }
 
@@ -60,19 +44,6 @@ class VAPIService {
       throw new Error('Agent is not configured for VAPI routing');
     }
 
-    // Check if VAPI is properly configured
-    if (!this.isConfigured()) {
-      return {
-        success: false,
-        error: 'VAPI is not configured. Missing API key, assistant ID, or phone number ID.',
-        errorDetails: {
-          hasApiKey: !!this.apiKey,
-          hasAssistantId: !!this.assistantId,
-          hasPhoneNumberId: !!this.phoneNumberId
-        }
-      };
-    }
-
     // Generate greeting based on time of day
     const greeting = this.generateGreeting();
 
@@ -93,27 +64,18 @@ class VAPIService {
     };
 
     try {
-      // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
-      // const response = await axios.post(this.apiUrl, payload, {
-      //   headers: {
-      //     'Authorization': `Bearer ${this.apiKey}`,
-      //     'Content-Type': 'application/json'
-      //   }
-      // });
+      const response = await axios.post(this.apiUrl, payload, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-      // return {
-      //   success: true,
-      //   vapiCallId: response.data.id,
-      //   status: response.data.status,
-      //   data: response.data
-      // };
-      
-      // Mock response for now
-      logger.info('[VAPI Service] VAPI API call temporarily disabled', { phoneNumber, leadName, agentId });
       return {
-        success: false,
-        error: 'VAPI API calls temporarily disabled to prevent 500 errors',
-        temporaryDisabled: true
+        success: true,
+        vapiCallId: response.data.id,
+        status: response.data.status,
+        data: response.data
       };
     } catch (error) {
       console.error('VAPI API Error:', error.response?.data || error.message);
@@ -191,20 +153,6 @@ class VAPIService {
    */
   shouldUseVAPI(agentId) {
     // VAPI routing: agent_id === "24" or "VAPI"
-    // Also route to VAPI if BASE_URL points back to same service to prevent circular calls
-    const baseUrl = process.env.BASE_URL;
-    const backendUrl = process.env.BACKEND_URL;
-    
-    // If BASE_URL points back to this service, use VAPI instead to prevent circular calls
-    if (baseUrl && backendUrl && baseUrl.includes(backendUrl.split('://')[1])) {
-      logger.warn('[VAPI Service] Detected circular call configuration, routing to VAPI', {
-        agentId,
-        baseUrl,
-        backendUrl
-      });
-      return true;
-    }
-    
     return agentId === '24' || agentId === 'VAPI' || agentId === 24;
   }
 
@@ -254,32 +202,24 @@ class VAPIService {
    * @returns {Promise<Object>} Call status
    */
   async getCallStatus(vapiCallId) {
-    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
-    // try {
-    //   const response = await axios.get(`${this.apiUrl}/${vapiCallId}`, {
-    //     headers: {
-    //       'Authorization': `Bearer ${this.apiKey}`
-    //     }
-    //   });
+    try {
+      const response = await axios.get(`${this.apiUrl}/${vapiCallId}`, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
 
-    //   return {
-    //     success: true,
-    //     status: response.data.status,
-    //     data: response.data
-    //   };
-    // } catch (error) {
-    //   return {
-    //     success: false,
-    //     error: error.response?.data?.message || error.message
-    //   };
-    // }
-    
-    logger.info('[VAPI Service] getCallStatus temporarily disabled', { vapiCallId });
-    return {
-      success: false,
-      error: 'VAPI API calls temporarily disabled',
-      temporaryDisabled: true
-    };
+      return {
+        success: true,
+        status: response.data.status,
+        data: response.data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message
+      };
+    }
   }
 
   /**
@@ -290,36 +230,28 @@ class VAPIService {
    * @returns {Promise<Object>} Update result
    */
   async updateCall(vapiCallId, updates) {
-    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
-    // try {
-    //   const response = await axios.patch(
-    //     `${this.apiUrl}/${vapiCallId}`,
-    //     updates,
-    //     {
-    //       headers: {
-    //         'Authorization': `Bearer ${this.apiKey}`,
-    //         'Content-Type': 'application/json'
-    //       }
-    //     }
-    //   );
+    try {
+      const response = await axios.patch(
+        `${this.apiUrl}/${vapiCallId}`,
+        updates,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-    //   return {
-    //     success: true,
-    //     data: response.data
-    //   };
-    // } catch (error) {
-    //   return {
-    //     success: false,
-    //     error: error.response?.data?.message || error.message
-    //   };
-    // }
-    
-    logger.info('[VAPI Service] updateCall temporarily disabled', { vapiCallId, updates });
-    return {
-      success: false,
-      error: 'VAPI API calls temporarily disabled',
-      temporaryDisabled: true
-    };
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message
+      };
+    }
   }
 
   /**
@@ -329,31 +261,23 @@ class VAPIService {
    * @returns {Promise<Object>} End call result
    */
   async endCall(vapiCallId) {
-    // TEMPORARILY COMMENTED OUT - VAPI API calls disabled to prevent 500 errors
-    // try {
-    //   const response = await axios.delete(`${this.apiUrl}/${vapiCallId}`, {
-    //     headers: {
-    //       'Authorization': `Bearer ${this.apiKey}`
-    //     }
-    //   });
+    try {
+      const response = await axios.delete(`${this.apiUrl}/${vapiCallId}`, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
 
-    //   return {
-    //     success: true,
-    //     data: response.data
-    //   };
-    // } catch (error) {
-    //   return {
-    //     success: false,
-    //     error: error.response?.data?.message || error.message
-    //   };
-    // }
-    
-    logger.info('[VAPI Service] endCall temporarily disabled', { vapiCallId });
-    return {
-      success: false,
-      error: 'VAPI API calls temporarily disabled',
-      temporaryDisabled: true
-    };
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message
+      };
+    }
   }
 
   /**
