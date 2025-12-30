@@ -159,8 +159,10 @@ router.get(
   router.post(
     '/calls',
     jwtAuth,
-    jwtAuth,
-    (req, res) => callInitiationController.initiateCall(req, res)
+    (req, res) => {
+      const controller = new CallInitiationController(pool);
+      controller.initiateCall(req, res);
+    }
   );
 
   /**
@@ -170,7 +172,10 @@ router.get(
   router.post(
     '/calls/batch',
     jwtAuth,
-    (req, res) => batchCallController.batchInitiateCalls(req, res)
+    (req, res) => {
+      const controller = new BatchCallController(pool);
+      controller.batchInitiateCalls(req, res);
+    }
   );
 
   /**
@@ -180,7 +185,10 @@ router.get(
   router.get(
     '/calllogs',
     jwtAuth,
-    (req, res) => callController.getCallLogs(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getCallLogs(req, res);
+    }
   );
 
   /**
@@ -190,7 +198,10 @@ router.get(
   router.get(
     '/calllogs/:call_log_id',
     jwtAuth,
-    (req, res) => callController.getCallLogById(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getCallLogById(req, res);
+    }
   );
 
   /**
@@ -200,7 +211,10 @@ router.get(
   router.get(
     '/calllogs/batch/:batch_id',
     jwtAuth,
-    (req, res) => callController.getBatchCallLogsByBatchId(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getBatchCallLogsByBatchId(req, res);
+    }
   );
 
   /**
@@ -210,7 +224,10 @@ router.get(
   router.post(
     '/calls/batch',
     jwtAuth,
-    (req, res) => callController.batchInitiateCalls(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.batchInitiateCalls(req, res);
+    }
   );
 
   /**
@@ -220,7 +237,10 @@ router.get(
   router.get(
     '/calls/:id/recording-signed-url',
     jwtAuth,
-    (req, res) => callController.getCallRecordingSignedUrl(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getCallRecordingSignedUrl(req, res);
+    }
   );
 
   /**
@@ -230,7 +250,10 @@ router.get(
   router.get(
     '/calls/recent',
     jwtAuth,
-    (req, res) => callController.getRecentCalls(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getRecentCalls(req, res);
+    }
   );
 
   /**
@@ -240,7 +263,10 @@ router.get(
   router.get(
     '/calls/stats',
     jwtAuth,
-    (req, res) => callController.getCallStats(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.getCallStats(req, res);
+    }
   );
 
   // ============================================
@@ -254,7 +280,10 @@ router.get(
   router.post(
     '/resolve-phones',
     jwtAuth,
-    (req, res) => callController.resolvePhones(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.resolvePhones(req, res);
+    }
   );
 
   /**
@@ -264,7 +293,10 @@ router.get(
   router.post(
     '/update-summary',
     jwtAuth,
-    (req, res) => callController.updateSalesSummary(req, res)
+    (req, res) => {
+      const controller = new CallController(pool);
+      controller.updateSalesSummary(req, res);
+    }
   );
 
 module.exports = router;

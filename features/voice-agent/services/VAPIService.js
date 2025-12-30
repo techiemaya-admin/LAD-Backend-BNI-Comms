@@ -59,6 +59,19 @@ class VAPIService {
       throw new Error('Agent is not configured for VAPI routing');
     }
 
+    // Check if VAPI is properly configured
+    if (!this.isConfigured()) {
+      return {
+        success: false,
+        error: 'VAPI is not configured. Missing API key, assistant ID, or phone number ID.',
+        errorDetails: {
+          hasApiKey: !!this.apiKey,
+          hasAssistantId: !!this.assistantId,
+          hasPhoneNumberId: !!this.phoneNumberId
+        }
+      };
+    }
+
     // Generate greeting based on time of day
     const greeting = this.generateGreeting();
 

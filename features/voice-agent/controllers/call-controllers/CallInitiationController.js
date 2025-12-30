@@ -66,6 +66,16 @@ class CallInitiationController {
           userId
         });
 
+        // Check if VAPI call was successful
+        if (!result.success) {
+          return res.status(500).json({
+            success: false,
+            error: 'VAPI call initiation failed',
+            message: result.error,
+            details: result.errorDetails
+          });
+        }
+
         return res.json({
           success: true,
           message: 'Call initiated via VAPI',

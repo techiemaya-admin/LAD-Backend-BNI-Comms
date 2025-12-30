@@ -351,7 +351,7 @@ class VoiceCallModel {
         COUNT(CASE WHEN status = 'declined' THEN 1 END) as declined_calls,
         COUNT(DISTINCT lead_id) as unique_leads,
         COUNT(DISTINCT agent_id) as agents_used
-      FROM ${schema}.voice_calls
+      FROM ${schema}.voice_call_logs
       WHERE ${whereClauses.join(' AND ')}
     `;
 

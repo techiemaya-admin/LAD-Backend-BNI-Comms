@@ -6,6 +6,7 @@
  */
 
 const { VoiceCallModel } = require('../models');
+const { getSchema } = require('../../../core/utils/schemaHelper');
 
 class CallLoggingService {
   constructor(db) {
@@ -38,7 +39,9 @@ class CallLoggingService {
     addedContext,
     vapiResponse
   }) {
+    const schema = getSchema({ user: { tenant_id: tenantId } });
     const callLog = await this.callModel.createCallLog({
+      schema,
       tenantId,
       voiceId,
       agentId,
@@ -87,7 +90,9 @@ class CallLoggingService {
         continue;
       }
 
+      const schema = getSchema({ user: { tenant_id: tenantId } });
       const callLog = await this.callModel.createCallLog({
+        schema,
         tenantId,
         voiceId,
         agentId,
@@ -122,7 +127,9 @@ class CallLoggingService {
       updates.endedAt = new Date(vapiData.endedAt);
     }
 
+    const schema = getSchema({ user: { tenant_id: tenantId } });
     return this.callModel.updateCallStatus(
+      schema,
       callId,
       tenantId,
       vapiData.status,
@@ -138,7 +145,8 @@ class CallLoggingService {
    * @returns {Promise<Object>} Call log
    */
   async getCallLog(callId, tenantId) {
-    return this.callModel.getCallById(callId, tenantId);
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    return this.callModel.getCallById(schema, callId, tenantId);
   }
 
   /**
@@ -149,7 +157,8 @@ class CallLoggingService {
    * @returns {Promise<Array>} Call logs
    */
   async getCallsForLead(leadId, tenantId) {
-    return this.callModel.getCallsForLead(leadId, tenantId);
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    return this.callModel.getCallsForLead(schema, leadId, tenantId);
   }
 
   /**
@@ -160,11 +169,13 @@ class CallLoggingService {
    * @returns {Promise<Array>} Call logs
    */
   async getRecentCalls(tenantId, filters = {}) {
-    return this.callModel.getRecentCalls(tenantId, 50, filters);
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    return this.callModel.getRecentCalls(schema, tenantId, 50, filters);
   }
 
   async getCallLogs(tenantId, filters = {}, limit = 50) {
-    return this.callModel.getCallLogs(tenantId, filters, limit);
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    return this.callModel.getCallLogs(schema, tenantId, filters, limit);
   }
 
   /**
@@ -175,7 +186,8 @@ class CallLoggingService {
    * @returns {Promise<Object>} Statistics
    */
   async getCallStats(tenantId, dateRange = {}) {
-    return this.callModel.getCallStats(tenantId, dateRange);
+    const schema = getSchema({ user: { tenant_id: tenantId } });
+    return this.callModel.getCallStats(schema, tenantId, dateRange);
   }
 }
 
