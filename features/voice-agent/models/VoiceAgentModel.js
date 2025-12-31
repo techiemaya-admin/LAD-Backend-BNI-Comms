@@ -122,17 +122,25 @@ WHERE vac.tenant_id = $1;
   async getAvailableAgentsForUser(schema, userId, tenantId) {
     const query = `
       SELECT 
-        vac.*,
-        vav.*
-      FROM ${schema}.voice_agent_config_view vac
-      JOIN ${schema}.voice_agent_voices vav
-        ON vav.id = vac.voice_id
-      WHERE vac.tenant_id = $1 
-      ORDER BY vac.name ASC
+        va.id as agent_id,
+        va.name as agent_name,
+        va.language as agent_language,
+        va.gender,
+        va.agent_instructions,
+        va.system_instructions,
+        va.voice_id,
+        vav.description,
+        vav.gender as voice_gender,
+        vav.accent,
+        vav.provider,
+        vav.voice_sample_url,
+        vav.provider_voice_id
+      FROM ${schema}.voice_agents va
+      LEFT JOIN ${schema}.voice_agent_voices vav
+        ON vav.id = va.voice_id
+      WHERE va.tenant_id = $1 
+      ORDER BY va.name ASC
     `;
-
-    // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
-    // For now, all active agents are available to all users in the tenant
 
     const result = await this.db.query(query, [tenantId]);
     return result.rows;

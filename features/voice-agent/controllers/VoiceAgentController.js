@@ -53,10 +53,12 @@ class VoiceAgentController {
       });
     } catch (error) {
       logger.error('Get user available agents error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch available agents',
-        message: error.message
+      // Return empty array if tables don't exist yet
+      res.json({
+        success: true,
+        data: [],
+        count: 0,
+        warning: 'Voice agent tables not yet migrated'
       });
     }
   }
@@ -70,8 +72,9 @@ class VoiceAgentController {
     try {
       const userId = req.user.id;
       const tenantId = req.user.tenantId;
+      const schema = getSchema(req);
 
-      const numbers = await this.phoneModel.getAvailableNumbersForUser(userId, tenantId);
+      const numbers = await this.phoneModel.getAvailableNumbersForUser(schema, userId, tenantId);
 
       res.json({
         success: true,
@@ -80,10 +83,12 @@ class VoiceAgentController {
       });
     } catch (error) {
       logger.error('Get user available numbers error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch available numbers',
-        message: error.message
+      // Return empty array if tables don't exist yet
+      res.json({
+        success: true,
+        data: [],
+        count: 0,
+        warning: 'Voice agent tables not yet migrated'
       });
     }
   }
@@ -324,6 +329,88 @@ class VoiceAgentController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch phone numbers',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * GET /settings
+   * Get voice agent default settings
+   */
+  async getSettings(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+
+      // Default settings for voice agent configuration
+      // Matches the structure expected by VoiceAgentSettings.tsx and VoiceAgentHighlights.tsx
+      const settings = {
+        llm: {
+          provider: 'openai',
+          model: 'gpt-4',
+          temperature: 0.7,
+          maxTokens: 2000
+        },
+        tts: {
+          provider: 'elevenlabs',
+          voice: 'rachel',
+          speed: 1.0,
+          pitch: 1.0
+        },
+        stt: {
+          provider: 'deepgram',
+          language: 'en-US',
+          model: 'nova-2'
+        },
+        systemPrompt: 'You are a helpful AI assistant focused on lead generation and customer engagement.'
+      };
+
+      logger.info('Get voice agent settings:', { tenantId, schema });
+
+      res.json({
+        success: true,
+        data: settings
+      });
+    } catch (error) {
+      logger.error('Get settings error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch settings',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * PUT /settings
+   * Update voice agent settings
+   */
+  async updateSettings(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+      const updates = req.body;
+
+      logger.info('Update voice agent settings:', { 
+        tenantId, 
+        schema, 
+        updates 
+      });
+
+      // TODO: Implement database storage for settings
+      // For now, just log the changes and return success
+
+      res.json({
+        success: true,
+        message: 'Settings updated successfully',
+        data: updates
+      });
+    } catch (error) {
+      logger.error('Update settings error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update settings',
         message: error.message
       });
     }

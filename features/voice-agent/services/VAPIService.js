@@ -23,8 +23,12 @@ class VAPIService {
     this.phoneNumberId = config.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID;
     this.apiUrl = 'https://api.vapi.ai/call';
     
+    // Make VAPI optional - warn but don't throw if missing
     if (!this.apiKey) {
-      throw new Error('VAPI API key is required');
+      logger.warn('[VAPIService] VAPI_API_KEY not configured - VAPI calls will not work');
+      this.enabled = false;
+    } else {
+      this.enabled = true;
     }
   }
 

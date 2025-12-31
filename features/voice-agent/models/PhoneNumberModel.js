@@ -101,18 +101,15 @@ class PhoneNumberModel {
         id,
         country_code,
         base_number,
+        CONCAT('+', country_code, base_number) as phone_number,
         status,
         provider,
-        number_type,
-        capabilities
+        default_agent_id,
+        created_at
       FROM ${schema}.voice_agent_numbers
-      WHERE tenant_id = $1 
-        AND is_active = true
-      ORDER BY phone_number ASC
+      WHERE tenant_id = $1
+      ORDER BY created_at DESC
     `;
-
-    // Note: If you have user-specific number permissions, add a JOIN to user_number_permissions table
-    // For now, all active numbers are available to all users in the tenant
 
     const result = await this.db.query(query, [tenantId]);
     return result.rows;
