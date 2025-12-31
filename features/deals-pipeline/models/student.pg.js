@@ -2,7 +2,7 @@
  * Student PG Model
  */
 
-const { query } = require('../shared/database/connection');
+const { query } = require('../../../shared/database/connection');
 
 // 🔹 Base SELECT (joined)
 const BASE_SELECT = `
@@ -245,4 +245,33 @@ exports.createLeadAndStudent = async (user, data) => {
     await query('ROLLBACK');
     throw err;
   }
+};
+
+// Get all counsellors
+exports.getAllCounsellors = async (tenantId) => {
+  console.log(`[student.model] getAllCounsellors - tenantId: ${tenantId}`);
+  
+  const sql = `
+    SELECT 
+      ec.id,
+      ec.user_id,
+      ec.name,
+      ec.email,
+      ec.phone,
+      ec.specialization,
+      ec.availability,
+      ec.created_at,
+      ec.updated_at
+    FROM lad_dev.education_counsellors ec
+    WHERE ec.tenant_id = $1
+    ORDER BY ec.name ASC
+  `;
+  
+  console.log('[student.model] Executing SQL:', sql);
+  console.log('[student.model] With params:', [tenantId]);
+  
+  const result = await query(sql, [tenantId]);
+  console.log(`[student.model] Query returned ${result.rows.length} counsellors`);
+  
+  return result.rows;
 };

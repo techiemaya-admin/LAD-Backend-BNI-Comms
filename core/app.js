@@ -156,6 +156,11 @@ class CoreApplication {
     this.app.use('/api/voice-agent', this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
     logger.info('[App] Voice Agent routes mounted with feature flag check');
     
+    // Deals Pipeline routes with feature flag check
+    const dealsPipelineRoutes = require('../features/deals-pipeline/routes/index');
+    this.app.use('/api/deal-pipeline', this.createFeatureMiddleware('deals-pipeline'), dealsPipelineRoutes);
+    logger.info('[App] Deals Pipeline routes mounted with feature flag check');
+    
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
       try {

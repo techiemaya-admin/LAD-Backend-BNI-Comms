@@ -264,3 +264,26 @@ exports.assignCounsellor = async (req, res) => {
   }
 };
 
+exports.getAllCounsellors = async (req, res) => {
+  try {
+    console.log('[student.controller] getAllCounsellors - user:', {
+      id: req.user.id,
+      tenantId: req.user.tenantId
+    });
+    
+    const studentModel = require('../models/student.pg');
+    const counsellors = await studentModel.getAllCounsellors(req.user.tenantId);
+    
+    console.log(`[student.controller] Returning ${counsellors.length} counsellors`);
+    res.json({ 
+      success: true,
+      counsellors: counsellors 
+    });
+  } catch (err) {
+    console.error('[Student Controller] getAllCounsellors error:', err);
+    res.status(500).json({ 
+      error: 'Failed to fetch counsellors',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
