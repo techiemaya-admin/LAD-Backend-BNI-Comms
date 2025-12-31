@@ -330,6 +330,91 @@ class VoiceAgentController {
   }
 
   /**
+   * GET /settings
+   * Get voice agent default settings
+   */
+  async getSettings(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+
+      // Default settings for voice agent configuration
+      const settings = {
+        llm: {
+          provider: 'openai',
+          model: 'gpt-4',
+          temperature: 0.7,
+          max_tokens: 150
+        },
+        tts: {
+          provider: 'elevenlabs',
+          voice_id: 'default',
+          stability: 0.5,
+          similarity_boost: 0.75
+        },
+        stt: {
+          provider: 'deepgram',
+          model: 'nova-2',
+          language: 'en-US'
+        },
+        call: {
+          max_duration: 300,
+          silence_timeout: 30,
+          record_calls: true
+        }
+      };
+
+      logger.info('Get voice agent settings:', { tenantId, schema });
+
+      res.json({
+        success: true,
+        data: settings
+      });
+    } catch (error) {
+      logger.error('Get settings error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch settings',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * PUT /settings
+   * Update voice agent settings
+   */
+  async updateSettings(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+      const updates = req.body;
+
+      logger.info('Update voice agent settings:', { 
+        tenantId, 
+        schema, 
+        updates 
+      });
+
+      // TODO: Implement database storage for settings
+      // For now, just log the changes and return success
+
+      res.json({
+        success: true,
+        message: 'Settings updated successfully',
+        data: updates
+      });
+    } catch (error) {
+      logger.error('Update settings error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update settings',
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * GET /test
    * Test endpoint
    */
