@@ -1,8 +1,13 @@
 const axios = require('axios');
 const { VAPIService } = require('../../services');
 const { VoiceAgentModel } = require('../../models');
-const { getSchema } = require('../../../../core/utils/schemaHelper');
-const logger = require('../../../../core/utils/logger');
+let logger;
+try {
+  logger = require('../../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
 
 class CallInitiationController {
   constructor(db) {
@@ -90,7 +95,7 @@ class CallInitiationController {
           });
         }
       }
-
+      
       // Legacy call handling (also used as fallback when VAPI is disabled)
       const baseUrl = process.env.BASE_URL;
       const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
@@ -118,8 +123,7 @@ class CallInitiationController {
         initiated_by: userId,
         agent_id: parseInt(agentId, 10),
         lead_name: leadName || null,
-        lead_id: leadId || null,
-        voice_id: 'default'
+        voice_id: "default"
       };
 
       // Only add from_number if provided
@@ -130,6 +134,7 @@ class CallInitiationController {
       try {
         logger.info('Forwarding call to remote API', {
           url: `${baseUrl}/calls`,
+          payload: callPayload,
           agentId: callPayload.agent_id,
           leadId: callPayload.lead_id
         });
@@ -155,7 +160,8 @@ class CallInitiationController {
         logger.error('Error forwarding call data to remote API', {
           error: forwardError.message,
           status: forwardError.response?.status,
-          responseData: forwardError.response?.data
+          responseData: forwardError.response?.data,
+          fullDetails: JSON.stringify(forwardError.response?.data, null, 2)
         });
 
         return res.status(502).json({
@@ -169,7 +175,7 @@ class CallInitiationController {
         error: error.message,
         stack: error.stack
       });
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: 'Failed to initiate call',
         message: error.message

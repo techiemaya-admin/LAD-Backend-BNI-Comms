@@ -17,18 +17,27 @@ class VoiceModel {
   /**
    * Get all voices for a tenant
    * 
+   * @param {string} schema - Schema name
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Voice profiles
    */
   async getAllVoices(schema, tenantId) {
     const query = `
-      SELECT DISTINCT
-        vav.*
-      FROM ${schema}.voice_agent_config_view vac
-      JOIN ${schema}.voice_agent_voices vav
-        ON vav.id = vac.voice_id
-      WHERE vac.tenant_id = $1
-      ORDER BY vav.id ASC
+      SELECT 
+        id,
+        tenant_id,
+        voice_name,
+        description,
+        voice_sample_url,
+        provider,
+        language,
+        gender,
+        is_active,
+        created_at,
+        updated_at
+      FROM ${schema}.voice_agent_voices
+      WHERE tenant_id = $1 AND is_active = true
+      ORDER BY voice_name ASC
     `;
 
     const result = await this.db.query(query, [tenantId]);
@@ -40,6 +49,7 @@ class VoiceModel {
   /**
    * Get voice by ID (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} voiceId - Voice ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Voice profile or null
@@ -70,6 +80,7 @@ class VoiceModel {
   /**
    * Get voice sample URL (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} voiceId - Voice ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<string|null>} Voice sample URL (gs:// format) or null
@@ -100,7 +111,6 @@ class VoiceModel {
    * @returns {Promise<Object>} Created voice profile
    */
   async createVoice({
-    schema,
     tenantId,
     voiceName,
     description,
@@ -108,10 +118,10 @@ class VoiceModel {
     provider = 'custom',
     language = 'en',
     gender = 'neutral',
-    metadata = {},
+    metadata = {}
   }) {
     const query = `
-      INSERT INTO ${schema}.voices (
+      INSERT INTO voices (
         tenant_id,
         voice_name,
         description,
@@ -159,7 +169,7 @@ class VoiceModel {
    * @param {Object} updates - Fields to update
    * @returns {Promise<Object>} Updated voice profile
    */
-  async updateVoice(schema, voiceId, tenantId, updates) {
+  async updateVoice(voiceId, tenantId, updates) {
     const setClauses = ['updated_at = NOW()'];
     const values = [voiceId, tenantId];
     let paramIndex = 3;
@@ -191,7 +201,7 @@ class VoiceModel {
     }
 
     const query = `
-      UPDATE ${schema}.voices
+      UPDATE ${schema}.voice_agent_voices
       SET ${setClauses.join(', ')}
       WHERE id = $1 AND tenant_id = $2
       RETURNING 
@@ -214,13 +224,14 @@ class VoiceModel {
   /**
    * Delete voice (soft delete - sets is_active = false)
    * 
+   * @param {string} schema - Schema name
    * @param {string} voiceId - Voice ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<boolean>} Success
    */
   async deleteVoice(schema, voiceId, tenantId) {
     const query = `
-      UPDATE ${schema}.voices
+      UPDATE ${schema}.voice_agent_voices
       SET is_active = false, updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2
     `;
@@ -232,6 +243,7 @@ class VoiceModel {
   /**
    * Search voices by criteria (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} tenantId - Tenant ID for isolation
    * @param {Object} criteria - Search criteria
    * @returns {Promise<Array>} Matching voices

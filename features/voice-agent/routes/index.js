@@ -1,5 +1,5 @@
 /**
- * Voice Agent Routes1.0
+ * Voice Agent Routes 1.0
  * 
  * Registers all voice agent endpoints with proper middleware
  * Supports JWT authentication for user-specific endpoints
@@ -181,16 +181,6 @@ function createVoiceAgentRouter(db, options = {}) {
     '/calllogs/:call_log_id',
     tenantMiddleware,
     (req, res) => callController.getCallLogById(req, res)
-  );
-
-  /**
-   * GET /calllogs/batch/:batch_id
-   * Get call logs for a specific batch
-   */
-  router.get(
-    '/calllogs/batch/:batch_id',
-    tenantMiddleware,
-    (req, res) => callController.getBatchCallLogsByBatchId(req, res)
   );
 
   /**

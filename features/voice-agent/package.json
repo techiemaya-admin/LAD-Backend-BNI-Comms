@@ -5,7 +5,9 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "dev": "node server.js"
+    "dev": "node index.js",
+    "test": "node test-server.js",
+    "start": "node test-server.js"
   },
   "keywords": [
     "voice",
@@ -16,7 +18,8 @@
     "telephony"
   ],
   "dependencies": {
-    "axios": "^1.6.0",
+    "@tanstack/react-query": "^5.90.16",
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.0",

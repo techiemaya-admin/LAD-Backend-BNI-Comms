@@ -6,6 +6,13 @@
  */
 
 const axios = require('axios');
+let logger;
+try {
+  logger = require('../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
 
 class RecordingService {
   constructor(config = {}) {
@@ -44,7 +51,7 @@ class RecordingService {
         expirationHours: hours
       };
     } catch (error) {
-      console.error('Recording signed URL error:', error.message);
+      logger.error('Recording signed URL error:', error.message);
       
       return {
         success: false,

@@ -1,10 +1,15 @@
-// const { VAPIService } = require('../../services');
-const axios = require('axios');
+const { VAPIService } = require('../../services');
+let logger;
+try {
+  logger = require('../../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
 
 class BatchCallController {
   constructor(db) {
-    // VAPI disabled: keep code commented for future re-enable.
-    // this.vapiService = new VAPIService();
+    this.vapiService = new VAPIService();
     this.db = db;
   }
 
@@ -41,28 +46,27 @@ class BatchCallController {
       }
 
       // VAPI agents use VAPI batch API; others forward to legacy BASE_URL /calls/batch
-      // VAPI disabled: always use legacy forwarding for now.
-      //
-      // if (this.vapiService.shouldUseVAPI(agentId)) {
-      //   const vapiResults = await this.vapiService.batchInitiateCalls({
-      //     entries,
-      //     globalContext,
-      //     agentId,
-      //     assistantOverrides,
-      //     tenantId,
-      //     userId
-      //   });
-      //
-      //   return res.json({
-      //     success: true,
-      //     message: 'Batch calls initiated via VAPI',
-      //     data: vapiResults
-      //   });
-      // } else {
+      if (this.vapiService.shouldUseVAPI(agentId)) {
+        // Initiate batch calls via VAPI
+        const vapiResults = await this.vapiService.batchInitiateCalls({
+          entries,
+          globalContext,
+          agentId,
+          assistantOverrides,
+          tenantId,
+          userId
+        });
+
+        return res.json({
+          success: true,
+          message: 'Batch calls initiated via VAPI',
+          data: vapiResults
+        });
+      } else {
         // Legacy batch call handling
         const baseUrl = process.env.BASE_URL;
-        const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
-        const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY;
+        const frontendHeader = req.headers['x-frontend-id'];
+        const frontendApiKey = process.env.FRONTEND_API_KEY;
 
         if (!baseUrl) {
           return res.status(500).json({
@@ -95,7 +99,7 @@ class BatchCallController {
             data: response.data
           });
         } catch (forwardError) {
-          console.error('Error forwarding batch call data to remote API:', forwardError.message);
+          logger.error('Error forwarding batch call data to remote API:', forwardError.message);
           
           return res.status(502).json({
             success: false,
@@ -103,9 +107,9 @@ class BatchCallController {
             details: forwardError.response?.data || forwardError.message
           });
         }
-      // }
+      }
     } catch (error) {
-      console.error('Batch initiate calls error:', error);
+      logger.error('Batch initiate calls error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to initiate batch calls',

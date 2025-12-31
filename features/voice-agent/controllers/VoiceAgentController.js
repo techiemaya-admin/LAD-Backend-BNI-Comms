@@ -11,8 +11,19 @@ const {
   PhoneNumberModel 
 } = require('../models');
 const { RecordingService } = require('../services');
-const { getSchema } = require('../../../core/utils/schemaHelper');
-const logger = require('../../../core/utils/logger');
+let logger;
+try {
+  logger = require('../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
+let getSchema;
+try {
+  ({ getSchema } = require('../../../core/utils/schemaHelper'));
+} catch (e) {
+  ({ getSchema } = require('../utils/schemaHelper'));
+}
 
 class VoiceAgentController {
   constructor(db) {
@@ -59,9 +70,8 @@ class VoiceAgentController {
     try {
       const userId = req.user.id;
       const tenantId = req.user.tenantId;
-      const schema = getSchema(req);
 
-      const numbers = await this.phoneModel.getAvailableNumbersForUser(schema, userId, tenantId);
+      const numbers = await this.phoneModel.getAvailableNumbersForUser(userId, tenantId);
 
       res.json({
         success: true,
@@ -88,9 +98,10 @@ class VoiceAgentController {
       const { id } = req.params;
       const tenantId = req.user.tenantId;
       const expirationHours = parseInt(req.query.expiration_hours) || 96;
+      const schema = getSchema(req);
 
       // Get voice details
-      const voice = await this.voiceModel.getVoiceById(id, tenantId);
+      const voice = await this.voiceModel.getVoiceById(schema, id, tenantId);
       
       if (!voice) {
         return res.status(404).json({
@@ -136,22 +147,16 @@ class VoiceAgentController {
    * GET /agents/:agentId/sample-signed-url
    * Get signed URL for agent's voice sample
    * JWT Auth Required
-   * 
-   * Optimized: Uses getAvailableAgentsForUser which already includes voice_sample_url
-   * to avoid multiple database queries
    */
   async getAgentVoiceSampleSignedUrl(req, res) {
     try {
       const { agentId } = req.params;
       const tenantId = req.user.tenantId;
-      const schema = getSchema(req);
-      const userId = req.user.id;
       const expirationHours = parseInt(req.query.expiration_hours) || 96;
+      const schema = getSchema(req);
 
-      // Optimize: Use getAvailableAgentsForUser which already includes voice_sample_url
-      // This avoids multiple database queries (getAgentById + getVoiceSampleUrl)
-      const agents = await this.agentModel.getAvailableAgentsForUser(schema, userId, tenantId);
-      const agent = agents.find(a => String(a.agent_id) === String(agentId));
+      // Get agent details
+      const agent = await this.agentModel.getAgentById(schema, agentId, tenantId);
       
       if (!agent) {
         return res.status(404).json({
@@ -160,8 +165,8 @@ class VoiceAgentController {
         });
       }
 
-      // Use voice_sample_url directly from agent (already loaded from view)
-      const voiceSampleUrl = agent.voice_sample_url;
+      // Get voice sample URL for this agent's voice
+      const voiceSampleUrl = await this.voiceModel.getVoiceSampleUrl(schema, agent.voice_id, tenantId);
 
       if (!voiceSampleUrl) {
         return res.status(404).json({
@@ -178,31 +183,14 @@ class VoiceAgentController {
       );
 
       if (!result.success) {
-        logger.error('Failed to generate signed URL for agent voice sample', {
-          agentId,
-          voiceId: agent.voice_id,
-          voiceSampleUrl,
-          error: result.error
-        });
-        
         return res.status(500).json({
           success: false,
-          error: result.error || 'Failed to generate signed URL',
-          message: result.error
+          error: result.error
         });
       }
 
-      // LAD Standard: Return snake_case for API/HTTP response
-      // Frontend expects signed_url at top level
-      // Add cache headers for signed URLs (valid for 96 hours, cache for 1 hour)
-      res.set({
-        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-        'Expires': new Date(Date.now() + 3600000).toUTCString()
-      });
-      
       res.json({
         success: true,
-        signed_url: result.signedUrl,  // Top-level for frontend compatibility
         data: {
           agent_id: agentId,
           agent_name: agent.agent_name,
@@ -216,7 +204,7 @@ class VoiceAgentController {
       logger.error('Get agent voice sample signed URL error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get voice sample signed URL',
+        error: 'Failed to generate signed URL',
         message: error.message
       });
     }
@@ -259,6 +247,20 @@ class VoiceAgentController {
   /**
    * GET /agent/:name
    * Get agent by name
+   */
+  async getAgentByName(req, res) {
+    try {
+      const { name } = req.params;
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+
+      const agent = await this.agentModel.getAgentByName(schema, name, tenantId);
+
+      if (!agent) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agent not found'
+        });
       }
 
       res.json({

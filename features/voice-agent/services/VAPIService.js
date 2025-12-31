@@ -8,6 +8,13 @@
  */
 
 const axios = require('axios');
+let logger;
+try {
+  logger = require('../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
 
 class VAPIService {
   constructor(config = {}) {
@@ -78,7 +85,7 @@ class VAPIService {
         data: response.data
       };
     } catch (error) {
-      console.error('VAPI API Error:', error.response?.data || error.message);
+      logger.error('VAPI API Error:', error.response?.data || error.message);
       
       return {
         success: false,

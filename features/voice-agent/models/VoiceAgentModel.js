@@ -17,18 +17,22 @@ class VoiceAgentModel {
   /**
    * Get all agents for a tenant
    * 
+   * @param {string} schema - Schema name
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Voice agents
    */
   async getAllAgents(schema, tenantId) {
     const query = `
-      SELECT
-        vac.*,
-        vav.*
-      FROM ${schema}.voice_agent_config_view vac
-      JOIN ${schema}.voice_agent_voices vav
-        ON vav.id = vac.voice_id
-      WHERE vac.tenant_id = $1
+
+
+SELECT
+    vac.*,
+    vav.*
+FROM ${schema}.voice_agent_config_view vac
+JOIN ${schema}.voice_agent_voices vav
+  ON vav.id = vac.voice_id
+WHERE vac.tenant_id = $1;
+
     `;
 
     const result = await this.db.query(query, [tenantId]);
@@ -38,6 +42,7 @@ class VoiceAgentModel {
   /**
    * Get agent by ID (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} agentId - Agent ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Voice agent or null
@@ -63,6 +68,7 @@ class VoiceAgentModel {
   /**
    * Get agent by name (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} agentName - Agent name
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Object|null>} Voice agent or null
@@ -88,6 +94,7 @@ class VoiceAgentModel {
   /**
    * Get voice ID for an agent (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} agentId - Agent ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<string|null>} Voice ID or null
@@ -107,27 +114,21 @@ class VoiceAgentModel {
    * Get available agents for a user
    * Uses view or joins with user permissions
    * 
+   * @param {string} schema - Schema name
    * @param {string} userId - User ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<Array>} Available agents with voice details
    */
   async getAvailableAgentsForUser(schema, userId, tenantId) {
     const query = `
-      SELECT
-        vac.agent_id,
-        vac.agent_name,
-        vac.agent_language,
-        vac.voice_id,
-        vav.description,
-        vav.voice_sample_url,
-        vav.gender,
-        vav.accent,
-        vav.provider
+      SELECT 
+        vac.*,
+        vav.*
       FROM ${schema}.voice_agent_config_view vac
       JOIN ${schema}.voice_agent_voices vav
         ON vav.id = vac.voice_id
-      WHERE vac.tenant_id = $1
-      ORDER BY vac.agent_name ASC
+      WHERE vac.tenant_id = $1 
+      ORDER BY vac.name ASC
     `;
 
     // Note: If you have user-specific permissions, add a JOIN to user_agent_permissions table
@@ -141,6 +142,7 @@ class VoiceAgentModel {
    * Create a new agent (tenant-isolated)
    * 
    * @param {Object} params - Agent parameters
+   * @param {string} params.schema - Schema name
    * @param {string} params.tenantId - Tenant ID
    * @param {string} params.agentName - Agent name
    * @param {string} params.agentLanguage - Language code (e.g., 'en', 'es')
@@ -154,7 +156,7 @@ class VoiceAgentModel {
     agentName,
     agentLanguage = 'en',
     voiceId,
-    metadata = {},
+    metadata = {}
   }) {
     const query = `
       INSERT INTO ${schema}.voice_agents (
@@ -193,6 +195,7 @@ class VoiceAgentModel {
   /**
    * Update agent (tenant-isolated)
    * 
+   * @param {string} schema - Schema name
    * @param {string} agentId - Agent ID
    * @param {string} tenantId - Tenant ID for isolation
    * @param {Object} updates - Fields to update
@@ -238,6 +241,7 @@ class VoiceAgentModel {
   /**
    * Delete agent (soft delete - sets is_active = false)
    * 
+   * @param {string} schema - Schema name
    * @param {string} agentId - Agent ID
    * @param {string} tenantId - Tenant ID for isolation
    * @returns {Promise<boolean>} Success

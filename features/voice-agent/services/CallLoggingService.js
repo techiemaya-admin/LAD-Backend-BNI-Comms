@@ -6,7 +6,12 @@
  */
 
 const { VoiceCallModel } = require('../models');
-const { getSchema } = require('../../../core/utils/schemaHelper');
+let getSchema;
+try {
+  ({ getSchema } = require('../../../core/utils/schemaHelper'));
+} catch (e) {
+  ({ getSchema } = require('../utils/schemaHelper'));
+}
 
 class CallLoggingService {
   constructor(db) {
@@ -18,42 +23,52 @@ class CallLoggingService {
    * 
    * @param {Object} params - Call log parameters
    * @param {string} params.tenantId - Tenant ID
-   * @param {string} params.voiceId - Voice ID
+   * @param {string} params.voiceId - Voice ID (deprecated - not used in schema)
    * @param {number} params.agentId - Agent ID
-   * @param {string} params.fromNumber - From number
-   * @param {string} params.toNumber - To number
+   * @param {string} params.fromNumber - From number (deprecated)
+   * @param {string} params.fromNumberId - From number ID (UUID)
+   * @param {string} params.toNumber - To number (will be parsed)
    * @param {string} params.leadId - Lead ID
-   * @param {string} params.initiatedBy - User who initiated
-   * @param {string} params.addedContext - Context
+   * @param {string} params.initiatedBy - User who initiated (deprecated)
+   * @param {string} params.initiatedByUserId - User ID who initiated
+   * @param {string} params.addedContext - Context (deprecated)
    * @param {Object} params.vapiResponse - VAPI API response
    * @returns {Promise<Object>} Created call log
    */
   async createCallLog({
     tenantId,
-    voiceId,
+    voiceId, // deprecated
     agentId,
-    fromNumber,
+    fromNumber, // deprecated
+    fromNumberId,
     toNumber,
     leadId,
-    initiatedBy,
-    addedContext,
+    initiatedBy, // deprecated
+    initiatedByUserId,
+    addedContext, // deprecated
     vapiResponse
   }) {
     const schema = getSchema({ user: { tenant_id: tenantId } });
+    
+    // Parse phone number into country code and base number
+    // Format: +12345678900 -> country_code: +1, base_number: 2345678900
+    const phoneMatch = toNumber.match(/^(\+\d{1,4})(\d+)$/);
+    const toCountryCode = phoneMatch ? phoneMatch[1] : '+1';
+    const toBaseNumber = phoneMatch ? phoneMatch[2] : toNumber.replace(/\D/g, '');
+    
     const callLog = await this.callModel.createCallLog({
       schema,
       tenantId,
-      voiceId,
       agentId,
-      fromNumber,
-      toNumber,
+      fromNumberId: fromNumberId || null,
+      toCountryCode,
+      toBaseNumber,
       status: vapiResponse?.status || 'calling',
-      addedContext,
       leadId,
-      initiatedBy,
-      recordingUrl: null // Will be updated later
+      initiatedByUserId: initiatedByUserId || initiatedBy || null,
+      recordingUrl: null, // Will be updated later
+      direction: 'outbound'
     });
-
     return callLog;
   }
 
@@ -65,9 +80,11 @@ class CallLoggingService {
    * @param {Array} params.entries - Call entries
    * @param {Array} params.vapiResults - VAPI batch results
    * @param {string} params.agentId - Agent ID
-   * @param {string} params.voiceId - Voice ID
-   * @param {string} params.fromNumber - From number
-   * @param {string} params.initiatedBy - User who initiated
+   * @param {string} params.voiceId - Voice ID (deprecated)
+   * @param {string} params.fromNumber - From number (deprecated)
+   * @param {string} params.fromNumberId - From number ID (UUID)
+   * @param {string} params.initiatedBy - User who initiated (deprecated)
+   * @param {string} params.initiatedByUserId - User ID who initiated
    * @returns {Promise<Array>} Created call logs
    */
   async createBatchCallLogs({
@@ -75,38 +92,41 @@ class CallLoggingService {
     entries,
     vapiResults,
     agentId,
-    voiceId,
-    fromNumber,
-    initiatedBy
+    voiceId, // deprecated
+    fromNumber, // deprecated
+    fromNumberId,
+    initiatedBy, // deprecated
+    initiatedByUserId
   }) {
     const callLogs = [];
-
+    const schema = getSchema({ user: { tenant_id: tenantId } });
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       const vapiResult = vapiResults[i];
-
       if (!vapiResult.success) {
         // Log failed calls too
         continue;
       }
-
-      const schema = getSchema({ user: { tenant_id: tenantId } });
+      
+      // Parse phone number
+      const phoneMatch = entry.phoneNumber.match(/^(\+\d{1,4})(\d+)$/);
+      const toCountryCode = phoneMatch ? phoneMatch[1] : '+1';
+      const toBaseNumber = phoneMatch ? phoneMatch[2] : entry.phoneNumber.replace(/\D/g, '');
+      
       const callLog = await this.callModel.createCallLog({
         schema,
         tenantId,
-        voiceId,
         agentId,
-        fromNumber,
-        toNumber: entry.phoneNumber,
+        fromNumberId: fromNumberId || null,
+        toCountryCode,
+        toBaseNumber,
         status: 'calling',
-        addedContext: entry.added_context || entry.summary,
         leadId: entry.leadId,
-        initiatedBy
+        initiatedByUserId: initiatedByUserId || initiatedBy || null,
+        direction: 'outbound'
       });
-
       callLogs.push(callLog);
     }
-
     return callLogs;
   }
 
@@ -122,11 +142,9 @@ class CallLoggingService {
     const updates = {
       recordingUrl: vapiData.recordingUrl
     };
-
     if (vapiData.endedAt) {
       updates.endedAt = new Date(vapiData.endedAt);
     }
-
     const schema = getSchema({ user: { tenant_id: tenantId } });
     return this.callModel.updateCallStatus(
       schema,
@@ -170,7 +188,7 @@ class CallLoggingService {
    */
   async getRecentCalls(tenantId, filters = {}) {
     const schema = getSchema({ user: { tenant_id: tenantId } });
-    return this.callModel.getRecentCalls(schema, tenantId, 50, filters);
+    return this.callModel.getCallLogs(schema, tenantId, filters, 50);
   }
 
   async getCallLogs(tenantId, filters = {}, limit = 50) {
@@ -188,6 +206,82 @@ class CallLoggingService {
   async getCallStats(tenantId, dateRange = {}) {
     const schema = getSchema({ user: { tenant_id: tenantId } });
     return this.callModel.getCallStats(schema, tenantId, dateRange);
+  }
+
+  /**
+   * Parse capabilities from various formats
+   * 
+   * @private
+   * @param {*} value - Capabilities value (array, string, etc.)
+   * @returns {Array<string>} Parsed capabilities
+   */
+  _parseCapabilities(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  /**
+   * Get user permission keys (capabilities + tenant features)
+   * 
+   * @param {Object} user - User object
+   * @returns {Array<string>} Merged permission keys
+   */
+  getUserPermissionKeys(user) {
+    // Some APIs call these "capabilities", others return tenant feature keys
+    // in "tenantFeatures" (or similar). We merge them so access logic works
+    // regardless of which shape the caller provides.
+    const merged = [
+      ...this._parseCapabilities(user?.capabilities),
+      ...this._parseCapabilities(user?.tenantFeatures),
+      ...this._parseCapabilities(user?.tenant_features),
+      ...this._parseCapabilities(user?.tenantFeatureKeys),
+    ];
+
+    return Array.from(new Set(merged.filter(Boolean)));
+  }
+
+  /**
+   * Check if user can view all call logs
+   * 
+   * @param {Object} user - User object with role and capabilities
+   * @returns {boolean} True if user can view all logs
+   */
+  canViewAllCallLogs(user) {
+    const keys = this.getUserPermissionKeys(user);
+
+    // Explicit "view all" permissions always win.
+    if (keys.includes('viewAll') || keys.includes('leads_view_all')) return true;
+
+    // If the user is assigned-only, do NOT treat owner/admin as view-all.
+    // This matches: "even if owner, if leads_view_assigned then only show initiated_by_user_id".
+    if (keys.includes('leads_view_assigned')) return false;
+
+    const role = String(user?.role || '').toLowerCase();
+    return role === 'admin' || role === 'owner';
+  }
+
+  /**
+   * Check if call logs should be restricted to initiator only
+   * 
+   * @param {Object} user - User object with id and capabilities
+   * @returns {boolean} True if logs should be restricted to initiator
+   */
+  shouldRestrictToInitiator(user) {
+    if (!user?.id) return false;
+    const keys = this.getUserPermissionKeys(user);
+
+    // If user can view all, never restrict.
+    if (keys.includes('viewAll') || keys.includes('leads_view_all')) return false;
+
+    // Restrict whenever the user is assigned-only, regardless of role.
+    return keys.includes('leads_view_assigned');
   }
 }
 
