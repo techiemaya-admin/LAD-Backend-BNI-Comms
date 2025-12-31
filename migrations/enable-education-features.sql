@@ -3,7 +3,7 @@
 -- Tenant ID: 926070b5-189b-4682-9279-ea10ca090b84
 
 -- Enable education-students feature for education tenant
-INSERT INTO feature_flags (
+INSERT INTO lad_dev.feature_flags (
   id,
   tenant_id,
   feature_key,
@@ -26,7 +26,7 @@ DO UPDATE SET
   updated_at = NOW();
 
 -- Enable education-counsellors feature for education tenant
-INSERT INTO feature_flags (
+INSERT INTO lad_dev.feature_flags (
   id,
   tenant_id,
   feature_key,
@@ -54,6 +54,6 @@ SELECT
   is_enabled,
   config,
   created_at
-FROM feature_flags
+FROM lad_dev.feature_flags
 WHERE tenant_id = '926070b5-189b-4682-9279-ea10ca090b84'::uuid
   AND feature_key IN ('education-students', 'education-counsellors');
