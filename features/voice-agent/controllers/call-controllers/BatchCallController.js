@@ -61,8 +61,8 @@ class BatchCallController {
       // } else {
         // Legacy batch call handling
         const baseUrl = process.env.BASE_URL;
-        const frontendHeader = req.headers['x-frontend-id'];
-        const frontendApiKey = process.env.FRONTEND_API_KEY;
+        const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
+        const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY;
 
         if (!baseUrl) {
           return res.status(500).json({

@@ -247,7 +247,8 @@ class VoiceCallModel {
   }
 
   async getCallLogs(schema, tenantId, filters = {}, limit = 50) {
-    const whereClauses = ['tenant_id = $1'];
+    // Qualify tenant_id to avoid ambiguity when joining other tenant-scoped tables
+    const whereClauses = ['vcl.tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
 
