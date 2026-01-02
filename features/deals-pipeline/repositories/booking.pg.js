@@ -1,5 +1,15 @@
-// src/models/booking.pg.js
+// Booking Model - LAD Architecture Compliant
 const { pool } = require("../../../shared/database/connection");
+
+// Try core paths first, fallback to local shared
+let DEFAULT_SCHEMA, logger;
+try {
+  ({ DEFAULT_SCHEMA } = require('../../../../core/utils/schemaHelper'));
+  logger = require('../../../../core/utils/logger');
+} catch (e) {
+  ({ DEFAULT_SCHEMA } = require('../../../shared/utils/schemaHelper'));
+  logger = require('../../../shared/utils/logger');
+}
 
 const CALL_MIN = 5;
 const BUFFER_MIN = 5;
@@ -10,7 +20,7 @@ class BookingModel {
   /**
    * Create a booking with buffer safety window
    */
-  async createBooking(data) {
+  async createBooking(data, schema = DEFAULT_SCHEMA) {
     const {
       tenant_id,
       lead_id,
@@ -23,6 +33,10 @@ class BookingModel {
       notes,
       metadata
     } = data;
+
+    if (!tenant_id) {
+      throw new Error('tenant_id is required for createBooking');
+    }
 
     const scheduledAt = new Date(scheduled_at);
     if (isNaN(scheduledAt.getTime())) {
@@ -41,7 +55,7 @@ class BookingModel {
      */
     const conflictQuery = `
       SELECT 1
-      FROM lad_dev.lead_bookings
+      FROM ${schema}.lead_bookings
       WHERE
         tenant_id = $1
         AND assigned_user_id = $2
@@ -66,7 +80,7 @@ class BookingModel {
      * INSERT BOOKING
      */
     const insertQuery = `
-      INSERT INTO lad_dev.lead_bookings (
+      INSERT INTO ${schema}.lead_bookings (
         tenant_id,
         lead_id,
         assigned_user_id,
@@ -107,58 +121,72 @@ class BookingModel {
   /**
    * Mark booking completed (buffer expires naturally)
    */
-  async markCompleted(bookingId) {
+  async markCompleted(bookingId, tenant_id, schema = DEFAULT_SCHEMA) {
+    if (!tenant_id) {
+      throw new Error('tenant_id is required for markCompleted');
+    }
+
     const query = `
-      UPDATE lad_dev.lead_bookings
+      UPDATE ${schema}.lead_bookings
       SET
         status = 'completed',
         updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND tenant_id = $2
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [bookingId]);
+    const { rows } = await pool.query(query, [bookingId, tenant_id]);
     return rows[0];
   }
 
   /**
    * Fail / Miss / Cancel booking → RELEASE BUFFER IMMEDIATELY
    */
-  async markFailed(bookingId, status) {
+  async markFailed(bookingId, status, tenant_id, schema = DEFAULT_SCHEMA) {
+    if (!tenant_id) {
+      throw new Error('tenant_id is required for markFailed');
+    }
+
     const allowed = ['missed', 'failed', 'cancelled'];
     if (!allowed.includes(status)) {
       throw new Error("Invalid failure status");
     }
 
     const query = `
-      UPDATE lad_dev.lead_bookings
+      UPDATE ${schema}.lead_bookings
       SET
         status = $2,
         buffer_until = NOW(),
         updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND tenant_id = $3
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [bookingId, status]);
+    const { rows } = await pool.query(query, [bookingId, status, tenant_id]);
     return rows[0];
   }
 
   /**
    * Get unavailable slots for calendar
    */
-  async getBlockedSlots(assigned_user_id, dayStart, dayEnd) {
+  async getBlockedSlots(assigned_user_id, tenant_id, dayStart, dayEnd, schema = DEFAULT_SCHEMA) {
+    if (!tenant_id) {
+      throw new Error('tenant_id is required for getBlockedSlots');
+    }
+
     const query = `
       SELECT scheduled_at, buffer_until
-      FROM lad_dev.lead_bookings
+      FROM ${schema}.lead_bookings
       WHERE
-        assigned_user_id = $1
+        tenant_id = $1
+        AND assigned_user_id = $2
         AND is_deleted = false
         AND status IN ('scheduled', 'in_progress')
-        AND scheduled_at < $3
-        AND buffer_until > $2
+        AND scheduled_at < $4
+        AND buffer_until > $3
       ORDER BY scheduled_at;
     `;
 
     const { rows } = await pool.query(query, [
+      tenant_id,
       assigned_user_id,
       dayStart,
       dayEnd

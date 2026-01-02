@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { validateLeadCreate, validateLeadUpdate, validateUUIDParam, validatePagination } = require('../middleware/validators');
+const { validateLeadCreate, validateLeadUpdate } = require('../validators/lead.validator');
+const { validateUUIDParam, validatePagination } = require('../validators/common.validator');
 const leadController = require('../controllers/lead.controller');
 
 // GET /api/deals-pipeline/leads/stats - Must come before /:id

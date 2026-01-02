@@ -191,8 +191,8 @@ const validateStageCreate = (req, res, next) => {
   }
 
   // Optional color validation (hex format)
-  if (color && !/^#[0-9A-F]{6}$/i.test(color)) {
-    errors.push('Color must be a valid hex color code (e.g., #FF5733)');
+  if (color && !/^#?[0-9A-F]{6}$/i.test(color)) {
+    errors.push('Color must be a valid hex color code (e.g., #FF5733 or FF5733)');
   }
 
   // Optional display_order validation
@@ -212,9 +212,11 @@ const validateStageCreate = (req, res, next) => {
   }
 
   // Sanitize inputs
-  req.body.key = sanitizeString(key.toLowerCase());
-  req.body.label = sanitizeString(label);
-  if (color) req.body.color = color.toUpperCase();
+  req.body.key = sanitizeString(key.trim().toLowerCase());
+  req.body.label = sanitizeString(label); // Keep label as-is (can have spaces, uppercase, etc)
+  if (color) {
+    req.body.color = color.startsWith('#') ? color.toUpperCase() : '#' + color.toUpperCase();
+  }
 
   next();
 };

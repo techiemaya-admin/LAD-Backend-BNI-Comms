@@ -1,9 +1,20 @@
 const bookingService = require('../services/booking.service');
 
+// Try core paths first, fallback to local shared
+let getTenantContext, logger;
+try {
+  ({ getTenantContext } = require('../../../../core/utils/schemaHelper'));
+  logger = require('../../../../core/utils/logger');
+} catch (e) {
+  ({ getTenantContext } = require('../../../shared/utils/schemaHelper'));
+  logger = require('../../../shared/utils/logger');
+}
+
 exports.create = async (req, res) => {
   try {
+    const { tenant_id, schema } = getTenantContext(req);
+    
     const {
-      tenant_id,
       lead_id,
       assigned_user_id,
       booking_type,
@@ -21,6 +32,7 @@ exports.create = async (req, res) => {
 
     const booking = await bookingService.create({
       tenant_id,
+      schema,
       lead_id,
       assigned_user_id,
       booking_type,
@@ -34,7 +46,10 @@ exports.create = async (req, res) => {
 
     res.status(201).json(booking);
   } catch (error) {
-    console.error('[Booking Controller] Error creating booking:', error);
+    logger.error('Error creating booking', error, { leadId: req.body.lead_id });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(400).json({
       error: 'Failed to create booking',
       details: error.message
@@ -45,10 +60,15 @@ exports.create = async (req, res) => {
 
 exports.listByCounsellor = async (req, res) => {
   try {
-    const bookings = await bookingService.getByCounsellor(req.params.counsellorId);
+    const { tenant_id, schema } = getTenantContext(req);
+    
+    const bookings = await bookingService.getByCounsellor(req.params.counsellorId, tenant_id, schema);
     res.json(bookings);
   } catch (error) {
-    console.error('[Booking Controller] Error listing counsellor bookings:', error);
+    logger.error('Error listing counsellor bookings', error, { counsellorId: req.params.counsellorId });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({
       error: 'Failed to fetch bookings',
       details: error.message,
@@ -58,10 +78,15 @@ exports.listByCounsellor = async (req, res) => {
 
 exports.listByStudent = async (req, res) => {
   try {
-    const bookings = await bookingService.getByStudent(req.params.studentId);
+    const { tenant_id, schema } = getTenantContext(req);
+    
+    const bookings = await bookingService.getByStudent(req.params.studentId, tenant_id, schema);
     res.json(bookings);
   } catch (error) {
-    console.error('[Booking Controller] Error listing student bookings:', error);
+    logger.error('Error listing student bookings', error, { studentId: req.params.studentId });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({
       error: 'Failed to fetch bookings',
       details: error.message,
@@ -71,6 +96,7 @@ exports.listByStudent = async (req, res) => {
 
 exports.listInRange = async (req, res) => {
   try {
+    const { tenant_id, schema } = getTenantContext(req);
     const { dayStart, dayEnd } = req.query;
 
     if (!dayStart || !dayEnd) {
@@ -81,12 +107,17 @@ exports.listInRange = async (req, res) => {
 
     const bookings = await bookingService.getInRange(
       new Date(dayStart),
-      new Date(dayEnd)
+      new Date(dayEnd),
+      tenant_id,
+      schema
     );
 
     res.json(bookings);
   } catch (error) {
-    console.error('[Booking Controller] Error listing bookings in range:', error);
+    logger.error('Error listing bookings in range', error, { dayStart: req.query.dayStart, dayEnd: req.query.dayEnd });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({
       error: 'Failed to fetch bookings',
       details: error.message,
@@ -96,6 +127,7 @@ exports.listInRange = async (req, res) => {
 
 exports.getAvailability = async (req, res) => {
   try {
+    const { tenant_id, schema } = getTenantContext(req);
     const { userId, dayStart, dayEnd, slotMinutes = 5 } = req.query;
 
     if (!userId || !dayStart || !dayEnd) {
@@ -108,12 +140,17 @@ exports.getAvailability = async (req, res) => {
       userId,
       dayStart: new Date(dayStart),
       dayEnd: new Date(dayEnd),
-      slotMinutes: Number(slotMinutes)
+      slotMinutes: Number(slotMinutes),
+      tenant_id,
+      schema
     });
 
     res.json(slots);
   } catch (error) {
-    console.error('[Booking Controller] Availability error:', error);
+    logger.error('Availability error', error, { userId: req.query.userId });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({
       error: 'Failed to fetch availability',
       details: error.message

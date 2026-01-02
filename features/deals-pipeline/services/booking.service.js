@@ -1,20 +1,38 @@
-const BookingModel = require('../models/booking.pg');
+const BookingModel = require('../repositories/booking.pg');
 
 exports.create = async (data) => {
-  return await BookingModel.createBooking(data);
+  const { tenant_id, schema } = data;
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for create booking');
+  }
+  return await BookingModel.createBooking(data, schema);
 };
 
-exports.getByCounsellor = async (counsellorId) => {
-  return await BookingsModel.getBookingsByCounsellor(counsellorId);
+exports.getByCounsellor = async (counsellorId, tenant_id, schema) => {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getByCounsellor');
+  }
+  return await BookingModel.getBookingsByCounsellor(counsellorId, tenant_id, schema);
 };
 
-exports.getByStudent = async (studentId) => {
-  return await BookingsModel.getStudentBookings(studentId);
+exports.getByStudent = async (studentId, tenant_id, schema) => {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getByStudent');
+  }
+  return await BookingModel.getStudentBookings(studentId, tenant_id, schema);
 };
 
-exports.getInRange = async (dayStart, dayEnd) => {
-  return await BookingsModel.getAllBookingsInRange(dayStart, dayEnd);
+exports.getInRange = async (dayStart, dayEnd, tenant_id, schema) => {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getInRange');
+  }
+  return await BookingModel.getAllBookingsInRange(dayStart, dayEnd, tenant_id, schema);
 };
+
 exports.getAvailability = async (params) => {
-  return await BookingModel.calculateAvailability(params);
+  const { tenant_id, schema } = params;
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getAvailability');
+  }
+  return await BookingModel.calculateAvailability(params, schema);
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { validateBookingCreate, validateUUIDParam } = require('../middleware/validators');
+const { validateBookingCreate } = require('../validators/booking.validator');
+const { validateUUIDParam } = require('../validators/common.validator');
 const bookingController = require('../controllers/booking.controller');
 
 // POST /api/deals-pipeline/bookings

@@ -1,10 +1,20 @@
 /**
- * Stage Controller
+ * Stage Controller - LAD Architecture Compliant
  * Handles HTTP requests for pipeline stage operations
  * Routes → Controllers → Services → Models
  */
 
 const stageService = require('../services/stage.service');
+
+// Try core paths first, fallback to local shared
+let getTenantContext, logger;
+try {
+  ({ getTenantContext } = require('../../../../core/utils/schemaHelper'));
+  logger = require('../../../../core/utils/logger');
+} catch (e) {
+  ({ getTenantContext } = require('../../../shared/utils/schemaHelper'));
+  logger = require('../../../shared/utils/logger');
+}
 
 /**
  * List all stages
@@ -12,22 +22,42 @@ const stageService = require('../services/stage.service');
  */
 exports.list = async (req, res) => {
   try {
-    const organizationId =
-      (req.tenant && req.tenant.id) ||
-      (req.user && req.user.tenant_id) ||
-      null;
-
-    const stages = await stageService.list(organizationId);
+    const { tenant_id, schema } = getTenantContext(req);
+    const stages = await stageService.list(tenant_id, schema);
     res.json(stages);
   } catch (error) {
-    console.error('[Stage Controller] Error listing stages:', error);
-    res.status(500).json({
-      error: 'Failed to fetch stages',
-      details: error.message
-    });
+    logger.error('Error listing stages', error, { path: req.path });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch stages', details: error.message });
   }
 };
 
+/**
+ * Get a single stage by key
+ * GET /api/deals-pipeline/stages/:key
+ */
+exports.getByKey = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const stage = await stageService.getByKey(req.params.key, tenant_id, schema);
+    if (!stage) {
+      return res.status(404).json({ error: 'Stage not found' });
+    }
+    res.json(stage);
+  } catch (error) {
+    logger.error('Error getting stage', error, { stageKey: req.params.key });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch stage', details: error.message });
+  }
+};
 
 /**
  * Create a new stage
@@ -35,20 +65,17 @@ exports.list = async (req, res) => {
  */
 exports.create = async (req, res) => {
   try {
-    const tenantId =
-      (req.tenant && req.tenant.id) ||
-      (req.user && req.user.tenant_id) ||
-      null;
-
-    const stagePayload = {
-      ...req.body,
-      tenant_id: tenantId
-    };
-
-    const stage = await stageService.create(stagePayload);
+    const { tenant_id, schema } = getTenantContext(req);
+    const stagePayload = { ...req.body, tenant_id };
+    const stage = await stageService.create(stagePayload, schema);
     res.status(201).json(stage);
   } catch (error) {
-    console.error('[Stage Controller] Error creating stage:', error);
+    logger.error('Error creating stage', error, { body: req.body });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: 'Failed to create stage', details: error.message });
   }
 };
@@ -59,13 +86,19 @@ exports.create = async (req, res) => {
  */
 exports.update = async (req, res) => {
   try {
-    const stage = await stageService.update(req.params.key, req.body);
+    const { tenant_id, schema } = getTenantContext(req);
+    const stage = await stageService.update(req.params.key, tenant_id, req.body, schema);
     if (!stage) {
       return res.status(404).json({ error: 'Stage not found' });
     }
     res.json(stage);
   } catch (error) {
-    console.error('[Stage Controller] Error updating stage:', error);
+    logger.error('Error updating stage', error, { stageKey: req.params.key });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: 'Failed to update stage', details: error.message });
   }
 };
@@ -76,10 +109,16 @@ exports.update = async (req, res) => {
  */
 exports.remove = async (req, res) => {
   try {
-    await stageService.remove(req.params.key);
+    const { tenant_id, schema } = getTenantContext(req);
+    await stageService.remove(req.params.key, tenant_id, schema);
     res.status(204).send();
   } catch (error) {
-    console.error('[Stage Controller] Error deleting stage:', error);
+    logger.error('Error deleting stage', error, { stageKey: req.params.key });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: 'Failed to delete stage', details: error.message });
   }
 };
@@ -90,10 +129,16 @@ exports.remove = async (req, res) => {
  */
 exports.reorder = async (req, res) => {
   try {
-    const stages = await stageService.reorder(req.body.stages);
+    const { tenant_id, schema } = getTenantContext(req);
+    const stages = await stageService.reorder(req.body.stages, tenant_id, schema);
     res.json(stages);
   } catch (error) {
-    console.error('[Stage Controller] Error reordering stages:', error);
+    logger.error('Error reordering stages', error, { count: req.body.stages?.length });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: 'Failed to reorder stages', details: error.message });
   }
 };

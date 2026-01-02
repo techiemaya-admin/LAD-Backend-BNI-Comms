@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { validateStudentCreate, validateUUIDParam, validatePagination } = require('../middleware/validators');
+const { validateStudentCreate } = require('../validators/student.validator');
+const { validateUUIDParam, validatePagination } = require('../validators/common.validator');
 const studentController = require('../controllers/student.controller');
 
 // LIST
