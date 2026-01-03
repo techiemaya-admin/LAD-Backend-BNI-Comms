@@ -6,15 +6,9 @@
 
 const referenceService = require('../services/reference.service');
 
-// Try core paths first, fallback to local shared
-let getTenantContext, logger;
-try {
-  ({ getTenantContext } = require('../../../../core/utils/schemaHelper'));
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  ({ getTenantContext } = require('../../../shared/utils/schemaHelper'));
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const { getTenantContext } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
 
 /**
  * Get all lead statuses
@@ -85,7 +79,7 @@ exports.getStatuses = async (req, res) => {
     const statuses = await referenceService.getStatuses();
     res.json(statuses);
   } catch (error) {
-    console.error('[Reference Controller] Error getting statuses:', error);
+    logger.error('[Reference Controller] Error getting statuses', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to fetch statuses', details: error.message });
   }
 };
@@ -99,7 +93,7 @@ exports.getSources = async (req, res) => {
     const sources = referenceService.getSources();
     res.json(sources);
   } catch (error) {
-    console.error('[Reference Controller] Error getting sources:', error);
+    logger.error('[Reference Controller] Error getting sources', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to fetch sources', details: error.message });
   }
 };
@@ -113,7 +107,7 @@ exports.getPriorities = async (req, res) => {
     const priorities = referenceService.getPriorities();
     res.json(priorities);
   } catch (error) {
-    console.error('[Reference Controller] Error getting priorities:', error);
+    logger.error('[Reference Controller] Error getting priorities', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to fetch priorities', details: error.message });
   }
 };

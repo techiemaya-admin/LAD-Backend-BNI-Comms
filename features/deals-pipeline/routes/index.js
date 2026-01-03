@@ -16,6 +16,7 @@ const referenceRoutes = require('./reference.routes');
 const attachmentsRoutes = require('./attachments.routes');
 const bookingRoutes = require('./booking.routes');
 const studentRoutes = require('./student.routes');
+const settingsRoutes = require('./settings.routes');
 const { requireCounsellorsFeature } = require('../middleware/educationTenantCheck');
 
 // Mount route modules
@@ -26,6 +27,7 @@ router.use('/reference', referenceRoutes);
 router.use('/leads/:id', attachmentsRoutes);
 router.use('/bookings', bookingRoutes);
 router.use('/students', studentRoutes);
+router.use('/settings', settingsRoutes);
 
 // Counsellors endpoint (requires 'education-counsellors' feature flag)
 router.get('/counsellors', requireCounsellorsFeature, async (req, res) => {
@@ -33,7 +35,8 @@ router.get('/counsellors', requireCounsellorsFeature, async (req, res) => {
     const studentController = require('../controllers/student.controller');
     await studentController.getAllCounsellors(req, res);
   } catch (err) {
-    console.error('[deals-pipeline] counsellors route error:', err);
+    const logger = require('../../../core/utils/logger');
+    logger.error('[deals-pipeline] counsellors route error', { error: err.message, stack: err.stack });
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch counsellors' 

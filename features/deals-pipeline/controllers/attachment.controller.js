@@ -7,14 +7,9 @@
 const attachmentService = require('../services/attachment.service');
 
 // Try core paths first, fallback to local shared
-let getTenantContext, logger;
-try {
-  ({ getTenantContext } = require('../../../../core/utils/schemaHelper'));
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  ({ getTenantContext } = require('../../../shared/utils/schemaHelper'));
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const { getTenantContext } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
 
 const gcpStorage = require('../utils/gcp-storage');
 const path = require('path');

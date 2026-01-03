@@ -182,6 +182,127 @@ class CallInitiationController {
       });
     }
   }
+
+  /**
+   * V2: Initiate a single voice call with UUID support
+   * POST /calls/start-call
+   */
+  async initiateCallV2(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const userId = req.user?.id;
+
+      logger.info('[CallInitiationController] V2 initiateCall called', {
+        tenantId,
+        userId,
+        body: req.body
+      });
+
+      // V2 API payload structure
+      const {
+        voice_id,
+        to_number,
+        from_number,
+        added_context,
+        llm_provider,
+        llm_model,
+        initiated_by,   // UUID string (V2 change)
+        agent_id,
+        lead_name,
+        lead_id,        // UUID string (V2 change)
+        knowledge_base_store_ids
+      } = req.body;
+
+      // Validate required fields
+      if (!to_number) {
+        return res.status(400).json({
+          success: false,
+          error: 'to_number is required'
+        });
+      }
+
+      if (!voice_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'voice_id is required'
+        });
+      }
+
+      // Validate E.164 format for phone number
+      const e164Regex = /^\+[1-9]\d{1,14}$/;
+      if (!e164Regex.test(to_number)) {
+        return res.status(400).json({
+          success: false,
+          error: 'to_number must be in E.164 format (e.g., +1234567890)'
+        });
+      }
+
+      // Build payload for downstream service (maintaining V1 internal structure for now)
+      const callPayload = {
+        to_number,
+        agent_id: agent_id || 'default',
+        from_number: from_number || null,
+        lead_name: lead_name || null,
+        lead_id: lead_id || null, // Now supports UUID string
+        voice_id,
+        added_context: added_context || null,
+        llm_provider: llm_provider || null,
+        llm_model: llm_model || null,
+        initiated_by: initiated_by || null, // Now supports UUID string
+        knowledge_base_store_ids: knowledge_base_store_ids || null,
+        tenant_id: tenantId,
+        user_id: userId
+      };
+
+      logger.info('[CallInitiationController] V2 payload prepared', { callPayload });
+
+      // Use existing VAPI service or forward to external service
+      if (this.vapiService.shouldUseVAPI(agent_id)) {
+        const result = await this.vapiService.initiateCall(callPayload);
+        return res.json({
+          success: true,
+          result,
+          message: 'Call initiated successfully via VAPI'
+        });
+      } else {
+        // Forward to external voice agent service
+        const baseUrl = process.env.BASE_URL;
+        if (!baseUrl) {
+          return res.status(500).json({
+            success: false,
+            error: 'External voice agent service not configured'
+          });
+        }
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'X-Frontend-ID': process.env.BASE_URL_FRONTEND_HEADER || 'dev',
+          'X-API-Key': process.env.BASE_URL_FRONTEND_APIKEY || ''
+        };
+
+        const response = await axios.post(`${baseUrl}/calls/start-call`, callPayload, { headers });
+        
+        return res.json({
+          success: true,
+          result: response.data,
+          message: 'Call initiated successfully via external service'
+        });
+      }
+
+    } catch (error) {
+      logger.error('[CallInitiationController] V2 initiateCall failed', { 
+        error: error.message, 
+        stack: error.stack,
+        body: req.body 
+      });
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to initiate call',
+        message: error.message
+      });
+    }
+  }
 }
 
 module.exports = CallInitiationController;

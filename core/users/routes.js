@@ -124,7 +124,7 @@ router.get('/settings', async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // Get user settings
+    // Get user settings (general app settings, not pipeline-specific)
     const settings = {
       notifications: true,
       theme: 'light',

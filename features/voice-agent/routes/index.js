@@ -276,4 +276,58 @@ router.post(
   (req, res) => callController.updateSalesSummary(req, res)
 );
 
+// ============================================
+// V2 API Endpoints
+// ============================================
+
+/**
+ * POST /calls/start-call (V2)
+ * Initiate a single voice call - V2 endpoint with UUID support
+ */
+router.post(
+  '/calls/start-call',
+  tenantMiddleware,
+  (req, res) => callInitiationController.initiateCallV2(req, res)
+);
+
+/**
+ * POST /batch/trigger-batch-call (V2)
+ * Initiate batch voice calls - V2 endpoint
+ */
+router.post(
+  '/batch/trigger-batch-call',
+  tenantMiddleware,
+  (req, res) => batchCallController.batchInitiateCallsV2(req, res)
+);
+
+/**
+ * GET /calls/job/:job_id (V2)
+ * Get call log by job ID - V2 endpoint
+ */
+router.get(
+  '/calls/job/:job_id',
+  tenantMiddleware,
+  (req, res) => callController.getCallLogByJobId(req, res)
+);
+
+/**
+ * GET /batch/batch-status/:id (V2)
+ * Get batch status - V2 endpoint
+ */
+router.get(
+  '/batch/batch-status/:id',
+  tenantMiddleware,
+  (req, res) => batchCallController.getBatchStatusV2(req, res)
+);
+
+/**
+ * POST /batch/batch-cancel/:id (V2)
+ * Cancel batch - V2 endpoint
+ */
+router.post(
+  '/batch/batch-cancel/:id',
+  tenantMiddleware,
+  (req, res) => batchCallController.cancelBatchV2(req, res)
+);
+
 module.exports = router;

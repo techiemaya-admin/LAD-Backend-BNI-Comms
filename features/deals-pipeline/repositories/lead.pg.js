@@ -2,15 +2,9 @@
 const { query } = require('../../../shared/database/connection');
 const leadDTO = require('../dtos/lead.dto');
 
-// Try core paths first, fallback to local shared
-let DEFAULT_SCHEMA, logger;
-try {
-  ({ DEFAULT_SCHEMA } = require('../../../../core/utils/schemaHelper'));
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  ({ DEFAULT_SCHEMA } = require('../../../shared/utils/schemaHelper'));
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const { DEFAULT_SCHEMA } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
 
 // Use DTO functions for field mapping
 const mapFieldsToDB = leadDTO.toDatabase;

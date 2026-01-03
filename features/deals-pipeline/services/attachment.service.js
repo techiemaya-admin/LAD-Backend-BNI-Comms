@@ -7,12 +7,8 @@
 const attachmentRepository = require('../repositories/attachment.repository');
 
 // Try core paths first, fallback to local shared
-let logger;
-try {
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const logger = require('../../../core/utils/logger');
 
 const DEFAULT_SCHEMA = process.env.DB_SCHEMA || 'lad_dev';
 

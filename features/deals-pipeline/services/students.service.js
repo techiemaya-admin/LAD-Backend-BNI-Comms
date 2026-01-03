@@ -3,16 +3,12 @@
  * LAD-Compliant: Business logic for student management in education vertical
  */
 
-const studentModel = require('../repositories/student.pg');
+const StudentRepository = require('../repositories/StudentRepository');
 const { requireEducationTenant, isEducationTenant } = require('../utils/tenantHelpers');
 
 // Try core paths first, fallback to local shared
-let logger;
-try {
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const logger = require('../../../core/utils/logger');
 
 /**
  * List students with role-based access control
@@ -31,27 +27,24 @@ exports.listStudents = async ({ tenant_id, schema, userId, role, capabilities = 
   
   // Development mode: allow full access
   if (process.env.NODE_ENV === 'development') {
-    logger.debug('Development mode - returning all students for tenant');
-    return studentModel.getStudentsByTenant(tenant_id, schema);
+    return StudentRepository.getStudentsByTenant(tenant_id, schema);
   }
   
   // Owners/admins can always see all students regardless of capabilities
   if (role === 'owner' || role === 'admin') {
-    logger.debug('Role is owner/admin - returning all students for tenant');
-    return studentModel.getStudentsByTenant(tenant_id, schema);
+    return StudentRepository.getStudentsByTenant(tenant_id, schema);
   }
 
   const canViewAll = capabilities.includes('canViewAll');
   const canViewAssigned = capabilities.includes('leads.view_assigned');
 
   if (canViewAll) {
-    logger.debug('User has canViewAll capability - returning all students');
-    return studentModel.getStudentsByTenant(tenant_id, schema);
+    return StudentRepository.getStudentsByTenant(tenant_id, schema);
   }
   
   if (canViewAssigned || role === 'counsellor') {
     logger.debug('User has leads.view_assigned or is counsellor - returning assigned students');
-    return studentModel.getStudentsByUser(tenant_id, userId, schema);
+    return StudentRepository.getStudentsByUser(tenant_id, userId, schema);
   }
 
   logger.debug('No access - returning empty array');
@@ -74,7 +67,7 @@ exports.getStudentById = async (studentId, tenant_id, schema, user) => {
   // Validate tenant has education vertical enabled
   await requireEducationTenant(tenant_id, schema);
   
-  const student = await studentModel.getStudentById(studentId, tenant_id, schema, user);
+  const student = await StudentRepository.getStudentById(studentId, tenant_id, user?.id, user?.role, schema);
   
   if (!student) {
     const error = new Error('Student not found');
@@ -108,7 +101,7 @@ exports.createStudent = async (tenant_id, schema, user, data) => {
     // Ensure user object has tenantId for repository
     const userWithTenant = { ...user, tenantId: tenant_id };
     
-    const student = await studentModel.createLeadAndStudent(userWithTenant, data, schema);
+    const student = await StudentRepository.createStudent(data, tenant_id, schema);
     
     logger.info('Student created successfully', { 
       tenant_id, 
@@ -148,7 +141,7 @@ exports.updateStudent = async (studentId, tenant_id, schema, user, data) => {
   logger.info('Updating student', { tenant_id, userId: user.id, studentId });
   
   try {
-    const student = await studentModel.updateStudent(studentId, tenant_id, schema, user, data);
+    const student = await StudentRepository.updateStudent(studentId, data, tenant_id, schema);
     
     if (!student) {
       const error = new Error('Student not found or access denied');
@@ -190,7 +183,7 @@ exports.deleteStudent = async (studentId, tenant_id, schema, user) => {
   logger.info('Deleting student', { tenant_id, userId: user.id, studentId });
   
   try {
-    const result = await studentModel.softDeleteStudent(studentId, tenant_id, schema, user);
+    const result = await StudentRepository.deleteStudent(studentId, tenant_id, schema);
     
     if (!result) {
       const error = new Error('Student not found or access denied');
@@ -241,11 +234,11 @@ exports.assignCounsellor = async ({ studentId, counsellorId, tenant_id, schema, 
   });
   
   try {
-    const student = await studentModel.assignCounsellor(
+    const student = await StudentRepository.assignCounsellorToStudent(
       studentId,
+      counsellorId,
       tenant_id,
-      schema,
-      counsellorId
+      schema
     );
     
     if (!student) {

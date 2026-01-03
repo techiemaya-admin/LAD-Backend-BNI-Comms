@@ -4,7 +4,7 @@
  * Controllers → Services → Models
  */
 
-const LeadStatus = require('../repositories/leadStatus.pg');
+const ReferenceRepository = require('../repositories/ReferenceRepository');
 
 /**
  * Get all lead statuses
@@ -13,7 +13,7 @@ exports.getStatuses = async (tenant_id, schema) => {
   if (!tenant_id) {
     throw new Error('tenant_id is required for getStatuses');
   }
-  return await LeadStatus.getAllLeadStatuses(tenant_id, schema);
+  return await ReferenceRepository.getPipelineStatuses(tenant_id, schema);
 };
 
 /**

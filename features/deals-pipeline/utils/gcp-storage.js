@@ -8,13 +8,8 @@ const { Storage } = require('@google-cloud/storage');
 const path = require('path');
 const fs = require('fs');
 
-// Try core paths first, fallback to local shared
-let logger;
-try {
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const logger = require('../../../core/utils/logger');
 
 // Check if GCP is configured
 const USE_GCP = process.env.GCP_BUCKET_NAME && process.env.GCP_PROJECT_ID;

@@ -7,15 +7,9 @@ const studentService = require('../services/students.service');
 const { validateCreate, validateUpdate, validateCounsellorAssign } = require('../validators/student.validator');
 const { studentToApi } = require('../dtos/studentDto');
 
-// Try core paths first, fallback to local shared
-let getTenantContext, logger;
-try {
-  ({ getTenantContext } = require('../../../../core/utils/schemaHelper'));
-  logger = require('../../../../core/utils/logger');
-} catch (e) {
-  ({ getTenantContext } = require('../../../shared/utils/schemaHelper'));
-  logger = require('../../../shared/utils/logger');
-}
+// Use core utils in LAD architecture
+const { getTenantContext } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
 
 /**
  * List all students for tenant (respects counsellor scoping)
@@ -266,21 +260,23 @@ exports.assignCounsellor = async (req, res) => {
 
 exports.getAllCounsellors = async (req, res) => {
   try {
-    console.log('[student.controller] getAllCounsellors - user:', {
-      id: req.user.id,
-      tenantId: req.user.tenantId
+    const { tenant_id, schema } = getTenantContext(req);
+    
+    logger.debug('[student.controller] getAllCounsellors request', {
+      userId: req.user.id,
+      tenantId: tenant_id
     });
     
-    const studentModel = require('../models/student.pg');
-    const counsellors = await studentModel.getAllCounsellors(req.user.tenantId);
+    const StudentRepository = require('../repositories/StudentRepository');
+    const counsellors = await StudentRepository.getAllCounsellors(tenant_id, schema);
     
-    console.log(`[student.controller] Returning ${counsellors.length} counsellors`);
+    logger.info(`[student.controller] Returning ${counsellors.length} counsellors`);
     res.json({ 
       success: true,
       counsellors: counsellors 
     });
   } catch (err) {
-    console.error('[Student Controller] getAllCounsellors error:', err);
+    logger.error('[Student Controller] getAllCounsellors error', { error: err.message, stack: err.stack });
     res.status(500).json({ 
       error: 'Failed to fetch counsellors',
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
