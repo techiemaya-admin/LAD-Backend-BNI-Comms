@@ -3,7 +3,7 @@
  * Handles account management operations
  */
 
-const { pool } = require('../utils/dbConnection');
+const { pool } = require('../../../shared/database/connection');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const UnipileBaseService = require('./UnipileBaseService');
 const axios = require('axios');
@@ -26,6 +26,7 @@ class LinkedInAccountService {
     try {
       logger.info('[LinkedIn Account] Disconnecting account', { unipileAccountId, tenantId });
       
+      const schema = tenantId ? getSchema({ user: { tenant_id: tenantId } }) : getSchema(null);
       // Try TDD schema first (${schema}.linkedin_accounts)
       const accountResult = await findAccountByUnipileId(tenantId, unipileAccountId);
       
@@ -34,7 +35,7 @@ class LinkedInAccountService {
       }
       
       const account = accountResult.account;
-      const schema = accountResult.schema || (tenantId ? getSchema({ user: { tenant_id: tenantId } }) : getSchema(null));
+      const schema = accountResult.schema;
       
       // Try to delete from Unipile using SDK (don't fail if it errors)
       if (this.baseService.isConfigured()) {
@@ -89,7 +90,7 @@ class LinkedInAccountService {
         logger.info('[LinkedIn Account] Account disconnected (TDD schema)', { accountId: unipileAccountId });
       } else {
         await pool.query(
-          `UPDATE voice_agent.user_integrations_voiceagent
+          `UPDATE ${schema}.user_integrations_voiceagent
            SET is_connected = FALSE,
            updated_at = CURRENT_TIMESTAMP
            WHERE id = $1`,
@@ -130,7 +131,7 @@ class LinkedInAccountService {
     try {
       const query = `
         SELECT user_id, credentials, is_connected
-        FROM voice_agent.user_integrations_voiceagent
+        FROM ${schema}.user_integrations_voiceagent
         WHERE provider = 'linkedin'
         AND is_connected = TRUE
         ORDER BY connected_at DESC
@@ -197,7 +198,7 @@ class LinkedInAccountService {
       if (userId) {
         const integrationQuery = await pool.query(
           `SELECT id, credentials
-           FROM voice_agent.user_integrations_voiceagent
+           FROM ${schema}.user_integrations_voiceagent
            WHERE user_id = $1 
            AND provider = 'linkedin'
            AND (credentials->>'unipile_account_id' = $2 OR credentials->>'account_id' = $2)
@@ -213,7 +214,7 @@ class LinkedInAccountService {
           creds.lastSyncedAt = new Date().toISOString();
           
           await pool.query(
-            `UPDATE voice_agent.user_integrations_voiceagent
+            `UPDATE ${schema}.user_integrations_voiceagent
              SET credentials = $1::jsonb, updated_at = CURRENT_TIMESTAMP
              WHERE id = $2`,
             [JSON.stringify(creds), integrationQuery.rows[0].id]
@@ -262,7 +263,7 @@ class LinkedInAccountService {
       // Update credentials with latest info
       const integrationQuery = await pool.query(
         `SELECT id, credentials, user_id
-         FROM voice_agent.user_integrations_voiceagent
+         FROM ${schema}.user_integrations_voiceagent
          WHERE (credentials->>'unipile_account_id' = $1 OR credentials->>'account_id' = $1)
          AND provider = 'linkedin'
          LIMIT 1`,
@@ -280,7 +281,7 @@ class LinkedInAccountService {
         creds.email = accountDetails.email || creds.email;
         
         await pool.query(
-          `UPDATE voice_agent.user_integrations_voiceagent
+          `UPDATE ${schema}.user_integrations_voiceagent
            SET credentials = $1::jsonb, updated_at = CURRENT_TIMESTAMP
            WHERE id = $2`,
           [JSON.stringify(creds), integrationQuery.rows[0].id]
