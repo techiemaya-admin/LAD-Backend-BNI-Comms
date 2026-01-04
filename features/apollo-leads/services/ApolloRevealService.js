@@ -8,9 +8,9 @@
 const axios = require('axios');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const { requireTenantId } = require('../../../core/utils/tenantHelper');
-const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../models/constants');
-const { pool } = require('../../../shared/database/connection');
+const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../constants/constants');
 const logger = require('../../../core/utils/logger');
+const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
 
 class ApolloRevealService {
   constructor(apiKey, baseURL) {
@@ -30,308 +30,216 @@ class ApolloRevealService {
 
   /**
    * Reveal email - checks database cache first, then calls Apollo API
-   * LAD Architecture: Uses tenant scoping and dynamic schema
+   * LAD Architecture: Uses tenant scoping and delegates SQL to repository
    */
   async revealEmail(personId, employeeName = null, req = null) {
-    let client;
-    
     try {
       const tenantId = requireTenantId(null, req, 'revealEmail');
       const schema = getSchema(req);
       
       // STEP 1: Check employees_cache table first (0 credits)
       if (personId || employeeName) {
+        let cachedEmployee;
+        
         try {
-          client = await pool.connect();
-          
-          let cacheQuery;
-          let queryParams;
-          
           if (personId) {
-            cacheQuery = `
-              SELECT employee_email, employee_name
-              FROM ${schema}.employees_cache
-              WHERE apollo_person_id = $1 AND tenant_id = $2
-                AND employee_email IS NOT NULL AND employee_email != ''
-              LIMIT 1
-            `;
-            queryParams = [String(personId), tenantId];
+            // LAD Architecture: Use repository for SQL operations
+            cachedEmployee = await ApolloEmployeesCacheRepository.findByPersonId(personId, tenantId, schema);
           } else if (employeeName) {
-            cacheQuery = `
-              SELECT employee_email, employee_name
-              FROM ${schema}.employees_cache
-              WHERE employee_name = $1 AND tenant_id = $2
-                AND employee_email IS NOT NULL AND employee_email != ''
-              LIMIT 1
-            `;
-            queryParams = [employeeName, tenantId];
+            // LAD Architecture: Use repository for SQL operations
+            cachedEmployee = await ApolloEmployeesCacheRepository.findByName(employeeName, tenantId, schema);
           }
           
-          if (cacheQuery) {
-            const cacheResult = await client.query(cacheQuery, queryParams);
+          if (cachedEmployee?.employee_email && !this._isFakeEmail(cachedEmployee.employee_email)) {
+            const cachedEmail = cachedEmployee.employee_email;
+            logger.info('[Apollo Reveal] Real email found in cache', { from_cache: true, credits_used: 0 });
             
-            if (cacheResult.rows.length > 0) {
-              const cachedEmail = cacheResult.rows[0].employee_email;
-              
-              if (!this._isFakeEmail(cachedEmail)) {
-                logger.info('[Apollo Reveal] Real email found in cache', { from_cache: true, credits_used: 0 });
-                client.release();
-                return { email: cachedEmail, from_cache: true, credits_used: 0 };
-              }
-            }
+            return { email: cachedEmail, from_cache: true, credits_used: 0 };
           }
-          
-          client.release();
-          client = null;
-        } catch (dbError) {
-          logger.warn('[Apollo Reveal] Cache check error', { error: dbError.message });
-          if (client) client.release();
+        } catch (cacheError) {
+          logger.warn('[Apollo Reveal] Error checking cache', { error: cacheError.message });
         }
       }
       
-      // STEP 2: Call Apollo API to reveal email (1 credit)
-      if (!personId) {
-        throw new Error('Apollo person ID is required to reveal email');
-      }
+      // STEP 2: If no cached email, call Apollo API (1 credit)
       if (!this.apiKey) {
-        throw new Error('Apollo API key not configured');
+        throw new Error('Apollo API key is not configured');
       }
       
-      logger.info('[Apollo Reveal] Calling Apollo API to reveal email', { personId });
-      const apolloEndpoint = `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.PEOPLE_BULK_MATCH}`;
+      // Apollo API v1 endpoint for email reveal - using people/match with reveal flag
+      const apolloUrl = `${this.baseURL || APOLLO_CONFIG.DEFAULT_BASE_URL}/people/match`;
       
-      const response = await axios.post(apolloEndpoint, {
-        details: [{ id: personId }],
-        reveal_personal_emails: true,
-        reveal_phone_number: false
-      }, {
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': this.apiKey }
+      if (!personId) {
+        return { email: null, from_cache: false, credits_used: 0, error: 'Person ID is required for email reveal' };
+      }
+      
+      const apolloRequest = {
+        id: personId,
+        reveal_personal_emails: true
+      };
+      
+      logger.debug('[Apollo Reveal] Email reveal request', { 
+        url: apolloUrl, 
+        body: apolloRequest,
+        personId 
       });
-
-      const person = response.data?.matches?.[0];
-      // Apollo returns email in multiple places:
-      // 1. person.email - work/corporate email
-      // 2. person.personal_emails array - personal emails revealed with credits
-      const workEmail = person?.email;
-      const personalEmails = person?.personal_emails || [];
       
-      // Prefer work email, fallback to first personal email
-      let email = workEmail;
-      if (!email || this._isFakeEmail(email)) {
-        email = personalEmails.find(e => e && !this._isFakeEmail(e)) || null;
-      }
+      const apolloResponse = await axios.post(apolloUrl, apolloRequest, {
+        headers: {
+          'X-Api-Key': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
       
+      const person = apolloResponse.data?.person;
+      const email = person?.email || apolloResponse.data?.email;
       if (!email || this._isFakeEmail(email)) {
-        logger.warn('[Apollo Reveal] Apollo returned fake/placeholder email or no email', {
-          email_status: person?.email_status,
-          has_work_email: !!workEmail,
-          personal_emails_count: personalEmails.length
-        });
+        logger.warn('[Apollo Reveal] Real email not available from Apollo API');
         return { email: null, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL, error: 'Real email not available for this person' };
       }
       
       logger.info('[Apollo Reveal] Email revealed successfully from Apollo', { credits_used: CREDIT_COSTS.EMAIL_REVEAL });
       
       // STEP 3: Update cache with real email
-      // Note: personId is guaranteed to be truthy here (validated at line 93-95)
       try {
-        if (!client) client = await pool.connect();
-        
-        await client.query(`
-            UPDATE ${schema}.employees_cache
-            SET employee_email = $1, updated_at = NOW()
-            WHERE apollo_person_id = $2 AND tenant_id = $3
-          `, [email, String(personId), tenantId]);
-        
+        // LAD Architecture: Use repository for SQL operations
+        await ApolloEmployeesCacheRepository.updateEmail(personId, email, tenantId, schema);
         logger.debug('[Apollo Reveal] Real email saved to employees_cache');
-        client.release();
-        client = null;
       } catch (cacheError) {
         logger.warn('[Apollo Reveal] Error caching email', { error: cacheError.message });
-        if (client) client.release();
       }
       
       return { email, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL };
     } catch (error) {
-      logger.error('[Apollo Reveal] Reveal email error', { error: error.message, stack: error.stack });
-      if (client) client.release();
+      logger.error('[Apollo Reveal] Reveal email error', { 
+        error: error.message, 
+        stack: error.stack,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data
+      });
       
-      if (error.response) {
-        const status = error.response.status;
-        const errorData = error.response.data;
-        
-        if (status === 404) {
-          throw new Error(`Person ID not found in Apollo database. The person ID "${personId}" may be invalid or no longer exists.`);
-        } else if (status === 401) {
-          throw new Error('Invalid Apollo API key. Please check your APOLLO_API_KEY configuration.');
-        } else if (status === 403) {
-          throw new Error('Access forbidden. Your Apollo plan may not include email reveals.');
-        } else if (status === 429) {
-          throw new Error('Apollo API rate limit exceeded. Please try again later.');
-        } else {
-          throw new Error(`Apollo API error (${status}): ${errorData?.message || error.message}`);
-        }
-      }
+      // Only charge credits if it was a server error, not a client error
+      const creditsUsed = error.response?.status >= 500 ? CREDIT_COSTS.EMAIL_REVEAL : 0;
       
-      throw new Error(`Email reveal failed: ${error.message}`);
+      return { 
+        email: null, 
+        from_cache: false, 
+        credits_used: creditsUsed, 
+        error: `${error.message}${error.response?.data ? ` - ${JSON.stringify(error.response.data)}` : ''}` 
+      };
     }
   }
 
   /**
    * Reveal phone - checks database cache first, then calls Apollo API
-   * LAD Architecture: Uses tenant scoping and dynamic schema
+   * LAD Architecture: Uses tenant scoping and delegates SQL to repository
    */
   async revealPhone(personId, employeeName = null, req = null) {
-    let client;
-    
     try {
       const tenantId = requireTenantId(null, req, 'revealPhone');
       const schema = getSchema(req);
       
       // STEP 1: Check employees_cache table first (0 credits)
       if (personId || employeeName) {
+        let cachedEmployee;
+        
         try {
-          client = await pool.connect();
-          
-          let cacheQuery;
-          let queryParams;
-          
           if (personId) {
-            cacheQuery = `
-              SELECT employee_phone, employee_name
-              FROM ${schema}.employees_cache
-              WHERE apollo_person_id = $1 AND tenant_id = $2
-                AND employee_phone IS NOT NULL AND employee_phone != ''
-              LIMIT 1
-            `;
-            queryParams = [String(personId), tenantId];
+            // LAD Architecture: Use repository for SQL operations
+            cachedEmployee = await ApolloEmployeesCacheRepository.findByPersonId(personId, tenantId, schema);
           } else if (employeeName) {
-            cacheQuery = `
-              SELECT employee_phone, employee_name
-              FROM ${schema}.employees_cache
-              WHERE employee_name = $1 AND tenant_id = $2
-                AND employee_phone IS NOT NULL AND employee_phone != ''
-              LIMIT 1
-            `;
-            queryParams = [employeeName, tenantId];
+            // LAD Architecture: Use repository for SQL operations  
+            cachedEmployee = await ApolloEmployeesCacheRepository.findByName(employeeName, tenantId, schema);
           }
           
-          if (cacheQuery) {
-            const cacheResult = await client.query(cacheQuery, queryParams);
+          if (cachedEmployee?.employee_phone && cachedEmployee.employee_phone.trim() !== '') {
+            const cachedPhone = cachedEmployee.employee_phone;
+            logger.info('[Apollo Reveal] Real phone found in cache', { from_cache: true, credits_used: 0 });
             
-            if (cacheResult.rows.length > 0) {
-              const cachedPhone = cacheResult.rows[0].employee_phone;
-              logger.info('[Apollo Reveal] Phone found in cache', { from_cache: true, credits_used: 0 });
-              client.release();
-              return { phone: cachedPhone, from_cache: true, credits_used: 0 };
-            }
+            return { phone: cachedPhone, from_cache: true, credits_used: 0 };
           }
-          
-          client.release();
-          client = null;
-        } catch (dbError) {
-          logger.warn('[Apollo Reveal] Cache check error', { error: dbError.message });
-          if (client) client.release();
+        } catch (cacheError) {
+          logger.warn('[Apollo Reveal] Error checking cache', { error: cacheError.message });
         }
       }
       
-      // STEP 2: Call Apollo API to reveal phone (8 credits)
-      if (!personId) {
-        throw new Error('Apollo person ID is required to reveal phone');
-      }
+      // STEP 2: If no cached phone, call Apollo API (8 credits)
       if (!this.apiKey) {
-        throw new Error('Apollo API key not configured');
+        throw new Error('Apollo API key is not configured');
       }
       
-      logger.info('[Apollo Reveal] Calling Apollo API to reveal phone', { personId });
-      const apolloEndpoint = `${this.baseURL}${APOLLO_CONFIG.ENDPOINTS.PEOPLE_BULK_MATCH}`;
+      // Apollo API v1 endpoint for phone reveal - using people/match with reveal flag
+      const apolloUrl = `${this.baseURL || APOLLO_CONFIG.DEFAULT_BASE_URL}/people/match`;
       
-      const webhookUrl = process.env.APOLLO_WEBHOOK_URL || process.env.CLOUD_RUN_WEBHOOK_URL;
-      const requestBody = {
-        details: [{ id: personId }],
-        reveal_personal_emails: false,
-        reveal_phone_number: true
+      if (!personId) {
+        return { phone: null, from_cache: false, credits_used: 0, error: 'Person ID is required for phone reveal' };
+      }
+      
+      const apolloRequest = {
+        id: personId,
+        reveal_phone_number: true,
+        webhook_url: process.env.APOLLO_WEBHOOK_URL
       };
       
-      if (webhookUrl) {
-        requestBody.webhook_url = webhookUrl;
-      }
-      
-      const response = await axios.post(apolloEndpoint, requestBody, {
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': this.apiKey }
+      logger.debug('[Apollo Reveal] Phone reveal request', { 
+        url: apolloUrl, 
+        body: apolloRequest,
+        personId 
       });
-
-      const person = response.data?.matches?.[0];
-      const phone = person?.phone_numbers?.[0]?.raw_number || null;
       
-      if (webhookUrl) {
-        logger.info('[Apollo Reveal] Phone reveal request accepted, will be delivered via webhook', { credits_used: CREDIT_COSTS.PHONE_REVEAL });
-        return {
-          phone: null,
-          from_cache: false,
-          credits_used: CREDIT_COSTS.PHONE_REVEAL,
-          processing: true,
-          message: 'Phone reveal request sent. Apollo will deliver the phone number via webhook in 2-5 minutes.'
+      // Apollo phone reveals are asynchronous - result comes via webhook
+      const apolloResponse = await axios.post(apolloUrl, apolloRequest, {
+        headers: {
+          'X-Api-Key': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      
+      // For phone reveals, Apollo returns success but phone comes via webhook later
+      if (apolloResponse.data?.success !== false) {
+        logger.info('[Apollo Reveal] Phone reveal request submitted successfully - result will come via webhook', { 
+          credits_used: CREDIT_COSTS.PHONE_REVEAL 
+        });
+        
+        return { 
+          phone: null, 
+          from_cache: false, 
+          credits_used: CREDIT_COSTS.PHONE_REVEAL, 
+          status: 'pending',
+          message: 'Phone reveal request submitted. Result will be delivered via webhook.'
+        };
+      } else {
+        logger.warn('[Apollo Reveal] Phone reveal request failed');
+        return { 
+          phone: null, 
+          from_cache: false, 
+          credits_used: 0, 
+          error: 'Phone reveal request failed' 
         };
       }
-      
-      if (!phone) {
-        logger.warn('[Apollo Reveal] Apollo returned no phone number and no webhook configured');
-        return {
-          phone: null,
-          from_cache: false,
-          credits_used: CREDIT_COSTS.PHONE_REVEAL,
-          error: 'Phone number not available. Phone reveals require a webhook URL for asynchronous delivery.'
-        };
-      }
-      
-      logger.info('[Apollo Reveal] Phone revealed successfully from Apollo (immediate response)', { credits_used: CREDIT_COSTS.PHONE_REVEAL });
-      
-      // STEP 3: Update cache with real phone
-      // Note: personId is guaranteed to be truthy here (validated at line 224-226)
-      try {
-        if (!client) client = await pool.connect();
-        
-        await client.query(`
-            UPDATE ${schema}.employees_cache
-            SET employee_phone = $1, updated_at = NOW()
-            WHERE apollo_person_id = $2 AND tenant_id = $3
-          `, [phone, String(personId), tenantId]);
-        
-        logger.debug('[Apollo Reveal] Real phone saved to employees_cache');
-        client.release();
-        client = null;
-      } catch (cacheError) {
-        logger.warn('[Apollo Reveal] Error caching phone', { error: cacheError.message });
-        if (client) client.release();
-      }
-      
-      return { phone, from_cache: false, credits_used: CREDIT_COSTS.PHONE_REVEAL };
     } catch (error) {
-      logger.error('[Apollo Reveal] Reveal phone error', { error: error.message, stack: error.stack });
-      if (client) client.release();
+      logger.error('[Apollo Reveal] Reveal phone error', { 
+        error: error.message, 
+        stack: error.stack,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data
+      });
       
-      if (error.response) {
-        const status = error.response.status;
-        const errorData = error.response.data;
-        
-        if (status === 404) {
-          throw new Error(`Person ID not found in Apollo database. The person ID "${personId}" may be invalid or no longer exists.`);
-        } else if (status === 401) {
-          throw new Error('Invalid Apollo API key. Please check your APOLLO_API_KEY configuration.');
-        } else if (status === 403) {
-          throw new Error('Access forbidden. Your Apollo plan may not include phone reveals.');
-        } else if (status === 429) {
-          throw new Error('Apollo API rate limit exceeded. Please try again later.');
-        } else {
-          throw new Error(`Apollo API error (${status}): ${errorData?.message || error.message}`);
-        }
-      }
+      // Only charge credits if it was a server error, not a client error
+      const creditsUsed = error.response?.status >= 500 ? CREDIT_COSTS.PHONE_REVEAL : 0;
       
-      throw new Error(`Phone reveal failed: ${error.message}`);
+      return { 
+        phone: null, 
+        from_cache: false, 
+        credits_used: creditsUsed, 
+        error: `${error.message}${error.response?.data ? ` - ${JSON.stringify(error.response.data)}` : ''}` 
+      };
     }
   }
 }
 
 module.exports = ApolloRevealService;
-

@@ -64,6 +64,192 @@ class ApolloEmployeesCacheRepository {
       row: result.rows[0]
     };
   }
+
+  /**
+   * Search employees from cache with filters
+   * LAD Architecture: SQL only, uses dynamic schema and tenant scoping
+   */
+  async searchEmployees(searchParams, schema, tenantId) {
+    const {
+      person_titles = [],
+      organization_locations = [],
+      organization_industries = [],
+      per_page = 100,
+      page = 1
+    } = searchParams;
+
+    // Build query to search employees_cache
+    // NOTE: When using SELECT DISTINCT, ORDER BY columns must be in SELECT list (created_at is included)
+    let dbQuery = `
+      SELECT DISTINCT
+        ec.apollo_person_id as id,
+        ec.employee_name as name,
+        ec.employee_title as title,
+        ec.employee_email as email,
+        ec.employee_phone as phone,
+        ec.employee_linkedin_url as linkedin_url,
+        ec.employee_photo_url as photo_url,
+        ec.employee_headline as headline,
+        ec.employee_city as city,
+        ec.employee_state as state,
+        ec.employee_country as country,
+        ec.company_id,
+        ec.company_name,
+        ec.company_domain,
+        ec.employee_data->'organization'->>'linkedin_url' as company_linkedin_url,
+        ec.employee_data->'organization'->>'website_url' as company_website_url,
+        ec.employee_data->'organization'->>'website' as company_website_url_alt,
+        ec.created_at,
+        ec.employee_data
+      FROM ${schema}.employees_cache ec
+      WHERE ec.is_deleted = false
+    `;
+    
+    const queryParams = [];
+    let paramIndex = 1;
+    
+    // Add tenant scoping to prevent data leakage
+    if (tenantId) {
+      dbQuery += ` AND ec.tenant_id = $${paramIndex}`;
+      queryParams.push(tenantId);
+      paramIndex++;
+    }
+    
+    // Filter by job titles (case-insensitive, partial match)
+    if (person_titles.length > 0) {
+      const titleConditions = person_titles.map(title => {
+        const titlePattern = `%${title.toLowerCase()}%`;
+        queryParams.push(titlePattern);
+        const titleParam = paramIndex++;
+        queryParams.push(titlePattern);
+        const dataTitleParam = paramIndex++;
+        return `(LOWER(ec.employee_title) LIKE $${titleParam} OR LOWER(ec.employee_data->>'title') LIKE $${dataTitleParam})`;
+      });
+      dbQuery += ` AND (${titleConditions.join(' OR ')})`;
+    }
+    
+    // Filter by organization locations
+    if (organization_locations && organization_locations.length > 0) {
+      const locationConditions = organization_locations.map(location => {
+        queryParams.push(`%${location.toLowerCase()}%`);
+        const cityParam = paramIndex++;
+        queryParams.push(`%${location.toLowerCase()}%`);
+        const stateParam = paramIndex++;
+        queryParams.push(`%${location.toLowerCase()}%`);
+        const countryParam = paramIndex++;
+        queryParams.push(`%${location.toLowerCase()}%`);
+        const orgLocationParam = paramIndex++;
+        
+        return `(
+              LOWER(COALESCE(ec.employee_city, '')) LIKE $${cityParam}
+              OR LOWER(COALESCE(ec.employee_state, '')) LIKE $${stateParam}
+              OR LOWER(COALESCE(ec.employee_country, '')) LIKE $${countryParam}
+              OR LOWER(COALESCE(ec.employee_data->'organization'->>'location', '')) LIKE $${orgLocationParam}
+        )`;
+      });
+      dbQuery += ` AND (${locationConditions.join(' OR ')})`;
+    }
+    
+    // Filter by industry/company keywords
+    if (organization_industries && organization_industries.length > 0) {
+      const industryConditions = organization_industries.map(industry => {
+        const industryPattern = `%${industry.toLowerCase()}%`;
+        
+        queryParams.push(industryPattern);
+        const orgIndustryParam = paramIndex++;
+        queryParams.push(industryPattern);
+        const companyNameParam = paramIndex++;
+        queryParams.push(industryPattern);
+        const orgNameParam = paramIndex++;
+        queryParams.push(industryPattern);
+        const orgKeywordsParam = paramIndex++;
+        queryParams.push(industryPattern);
+        const orgDescParam = paramIndex++;
+        
+        return `(
+              LOWER(COALESCE(ec.employee_data->'organization'->>'industry', '')) LIKE $${orgIndustryParam}
+              OR LOWER(ec.company_name) LIKE $${companyNameParam}
+              OR LOWER(COALESCE(ec.employee_data->'organization'->>'name', '')) LIKE $${orgNameParam}
+              OR LOWER(COALESCE(ec.employee_data->'organization'->>'keywords', '')) LIKE $${orgKeywordsParam}
+              OR LOWER(COALESCE(ec.employee_data->'organization'->>'description', '')) LIKE $${orgDescParam}
+            )`;
+      });
+      dbQuery += ` AND (${industryConditions.join(' OR ')})`;
+    }
+    
+    // Add pagination
+    const offset = (page - 1) * per_page;
+    dbQuery += ` ORDER BY ec.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    queryParams.push(per_page);
+    queryParams.push(offset);
+    
+    const result = await pool.query(dbQuery, queryParams);
+    return result.rows;
+  }
+
+  /**
+   * Find employee by person ID and tenant
+   * LAD Architecture: SQL only, tenant-scoped query
+   */
+  async findByPersonId(personId, tenantId, schema) {
+    const query = `
+      SELECT employee_email, employee_name, employee_phone
+      FROM ${schema}.employees_cache
+      WHERE apollo_person_id = $1 AND tenant_id = $2
+        AND (employee_email IS NOT NULL AND employee_email != '' AND employee_phone IS NOT NULL AND employee_phone != '')
+      LIMIT 1
+    `;
+    
+    const result = await pool.query(query, [String(personId), tenantId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find employee by name and tenant
+   * LAD Architecture: SQL only, tenant-scoped query
+   */
+  async findByName(employeeName, tenantId, schema) {
+    const query = `
+      SELECT employee_email, employee_name, employee_phone
+      FROM ${schema}.employees_cache
+      WHERE employee_name = $1 AND tenant_id = $2
+        AND (employee_email IS NOT NULL AND employee_email != '' AND employee_phone IS NOT NULL AND employee_phone != '')
+      LIMIT 1
+    `;
+    
+    const result = await pool.query(query, [employeeName, tenantId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update employee email
+   * LAD Architecture: SQL only, tenant-scoped update
+   */
+  async updateEmail(personId, email, tenantId, schema) {
+    const query = `
+      UPDATE ${schema}.employees_cache
+      SET employee_email = $1, updated_at = NOW()
+      WHERE apollo_person_id = $2 AND tenant_id = $3
+    `;
+    
+    const result = await pool.query(query, [email, String(personId), tenantId]);
+    return result.rowCount > 0;
+  }
+
+  /**
+   * Update employee phone
+   * LAD Architecture: SQL only, tenant-scoped update
+   */
+  async updatePhone(personId, phone, tenantId, schema) {
+    const query = `
+      UPDATE ${schema}.employees_cache
+      SET employee_phone = $1, updated_at = NOW()
+      WHERE apollo_person_id = $2 AND tenant_id = $3
+    `;
+    
+    const result = await pool.query(query, [phone, String(personId), tenantId]);
+    return result.rowCount > 0;
+  }
 }
 
 module.exports = new ApolloEmployeesCacheRepository();

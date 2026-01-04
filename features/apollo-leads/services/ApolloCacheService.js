@@ -4,11 +4,11 @@
  * LAD Architecture Compliant
  */
 
-const { pool } = require('../../../shared/database/connection');
 const { searchEmployeesFromApollo } = require('./ApolloApiService');
 const { saveEmployeesToCache, formatApolloEmployees } = require('./ApolloCacheSaveService');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const logger = require('../../../core/utils/logger');
+const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
 
 /**
  * Search employees from database cache (employees_cache table)
@@ -27,8 +27,6 @@ async function searchEmployeesFromDb(searchParams, req = null) {
     page = 1
   } = searchParams;
 
-  let client;
-  
   try {
     // LAD Architecture: Extract tenant context from request
     const tenantId = req?.user?.tenant_id || req?.tenant?.id || req?.headers?.['x-tenant-id'];
@@ -65,132 +63,32 @@ async function searchEmployeesFromDb(searchParams, req = null) {
       throw new Error('At least one search criteria is required (person_titles, organization_industries, or organization_locations)');
     }
     
-    // Get database connection
-    client = await pool.connect();
     logger.debug('[Apollo Cache] Database connection established');
     
-    // Build query to search employees_cache
-    // LAD Architecture: Use dynamic schema and tenant scoping
-    // NOTE: When using SELECT DISTINCT, ORDER BY columns must be in SELECT list (created_at is included)
-    let dbQuery = `
-      SELECT DISTINCT
-        ec.apollo_person_id as id,
-        ec.employee_name as name,
-        ec.employee_title as title,
-        ec.employee_email as email,
-        ec.employee_phone as phone,
-        ec.employee_linkedin_url as linkedin_url,
-        ec.employee_photo_url as photo_url,
-        ec.employee_headline as headline,
-        ec.employee_city as city,
-        ec.employee_state as state,
-        ec.employee_country as country,
-        ec.company_id,
-        ec.company_name,
-        ec.company_domain,
-        ec.employee_data->'organization'->>'linkedin_url' as company_linkedin_url,
-        ec.employee_data->'organization'->>'website_url' as company_website_url,
-        ec.employee_data->'organization'->>'website' as company_website_url_alt,
-        ec.created_at,
-        ec.employee_data
-      FROM ${schema}.employees_cache ec
-      WHERE ec.is_deleted = false
-    `;
-    
-    const queryParams = [];
-    let paramIndex = 1;
-    
-    // LAD Architecture: CRITICAL - Add tenant scoping to prevent data leakage
-    if (tenantId) {
-      dbQuery += ` AND ec.tenant_id = $${paramIndex}`;
-      queryParams.push(tenantId);
-      paramIndex++;
-    }
-    
-    // Filter by job titles (case-insensitive, partial match)
-    if (person_titles.length > 0) {
-      const titleConditions = person_titles.map(title => {
-        const titlePattern = `%${title.toLowerCase()}%`;
-        queryParams.push(titlePattern);
-        const titleParam = paramIndex++;
-        queryParams.push(titlePattern);
-        const dataTitleParam = paramIndex++;
-        return `(LOWER(ec.employee_title) LIKE $${titleParam} OR LOWER(ec.employee_data->>'title') LIKE $${dataTitleParam})`;
-      });
-      dbQuery += ` AND (${titleConditions.join(' OR ')})`;
-    }
-    
-    // Filter by organization locations
-    if (organization_locations && organization_locations.length > 0) {
-      const locationConditions = organization_locations.map(location => {
-        queryParams.push(`%${location.toLowerCase()}%`);
-        const cityParam = paramIndex++;
-        queryParams.push(`%${location.toLowerCase()}%`);
-        const stateParam = paramIndex++;
-        queryParams.push(`%${location.toLowerCase()}%`);
-        const countryParam = paramIndex++;
-        queryParams.push(`%${location.toLowerCase()}%`);
-        const orgLocationParam = paramIndex++;
-        
-        return `(
-              LOWER(COALESCE(ec.employee_city, '')) LIKE $${cityParam}
-              OR LOWER(COALESCE(ec.employee_state, '')) LIKE $${stateParam}
-              OR LOWER(COALESCE(ec.employee_country, '')) LIKE $${countryParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'location', '')) LIKE $${orgLocationParam}
-        )`;
-      });
-      dbQuery += ` AND (${locationConditions.join(' OR ')})`;
-    }
-    
-    // Filter by industry/company keywords
-    if (organization_industries && organization_industries.length > 0) {
-      const industryConditions = organization_industries.map(industry => {
-        const industryPattern = `%${industry.toLowerCase()}%`;
-        
-        queryParams.push(industryPattern);
-        const orgIndustryParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const companyNameParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const orgNameParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const orgKeywordsParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const orgDescParam = paramIndex++;
-        
-        return `(
-              LOWER(COALESCE(ec.employee_data->'organization'->>'industry', '')) LIKE $${orgIndustryParam}
-              OR LOWER(ec.company_name) LIKE $${companyNameParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'name', '')) LIKE $${orgNameParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'keywords', '')) LIKE $${orgKeywordsParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'description', '')) LIKE $${orgDescParam}
-            )`;
-      });
-      dbQuery += ` AND (${industryConditions.join(' OR ')})`;
-    }
-    
-    // Add pagination
-    const offset = (page - 1) * limitedPerPage;
-    dbQuery += ` ORDER BY ec.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    queryParams.push(limitedPerPage);
-    queryParams.push(offset);
-    
-    logger.debug('[Apollo Cache] Executing database query');
     const queryStartTime = Date.now();
-    const dbResult = await client.query(dbQuery, queryParams);
+    
+    // LAD Architecture: Use repository for SQL operations
+    const dbRows = await ApolloEmployeesCacheRepository.searchEmployees({
+      person_titles,
+      organization_locations,
+      organization_industries,
+      per_page: limitedPerPage,
+      page
+    }, schema, tenantId);
+    
     const queryDuration = Date.now() - queryStartTime;
     
     logger.info('[Apollo Cache] Query executed', {
       duration: `${queryDuration}ms`,
-      resultsCount: dbResult.rows.length
+      resultsCount: dbRows.length
     });
     
     let employees = [];
     
     // STEP 1: If database has results, use them
-    if (dbResult.rows.length > 0) {
-      logger.info('[Apollo Cache] Found employees in database cache', { count: dbResult.rows.length });
-      employees = dbResult.rows.map(row => {
+    if (dbRows.length > 0) {
+      logger.info('[Apollo Cache] Found employees in database cache', { count: dbRows.length });
+      employees = dbRows.map(row => {
         let employeeData = {};
         try {
           employeeData = row.employee_data ? 
@@ -224,8 +122,6 @@ async function searchEmployeesFromDb(searchParams, req = null) {
     } else {
       // STEP 2: If database has 0 results, call Apollo API
       logger.info('[Apollo Cache] No employees found in database cache, calling Apollo API');
-      
-      client.release();
       
       try {
         const apolloResult = await searchEmployeesFromApollo({
@@ -292,10 +188,6 @@ async function searchEmployeesFromDb(searchParams, req = null) {
       message: error.message,
       stack: error.stack
     });
-    
-    if (client) {
-      client.release();
-    }
     
     throw error;
   }
