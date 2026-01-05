@@ -321,10 +321,12 @@ class VoiceCallModel {
         vcl.metadata,
         l.first_name AS lead_first_name,
         l.last_name AS lead_last_name,
-        vca.analysis
+        vca.analysis,
+        vcbe.batch_id
       FROM ${schema}.voice_call_logs vcl
       LEFT JOIN ${schema}.leads l ON l.id = vcl.lead_id
       LEFT JOIN ${schema}.voice_agents va ON va.id = vcl.agent_id AND va.tenant_id = vcl.tenant_id
+      LEFT JOIN ${schema}.voice_call_batch_entries vcbe ON vcbe.call_log_id = vcl.id AND vcbe.is_deleted = false
       LEFT JOIN LATERAL (
         SELECT row_to_json(vca_row) AS analysis
         FROM ${schema}.voice_call_analysis vca_row
