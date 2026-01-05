@@ -301,11 +301,10 @@ class BatchCallController {
                   'id', vce.id,
                   'lead_id', vce.lead_id,
                   'call_log_id', vce.call_log_id,
-                  'phone_number', vce.phone_number,
+                  'to_phone', vce.to_phone,
                   'status', vce.status,
-                  'scheduled_at', vce.scheduled_at,
-                  'completed_at', vce.completed_at,
-                  'error_message', vce.error_message
+                  'last_error', vce.last_error,
+                  'created_at', vce.created_at
                 )
               )
               FROM ${schema}.voice_call_batch_entries vce
@@ -317,7 +316,7 @@ class BatchCallController {
           WHERE vcb.id = $1::uuid AND vcb.is_deleted = false
         `;
 
-        const result = await this.pool.query(query, [id]);
+        const result = await this.db.query(query, [id]);
 
         if (result.rows.length > 0) {
           const batch = result.rows[0];
