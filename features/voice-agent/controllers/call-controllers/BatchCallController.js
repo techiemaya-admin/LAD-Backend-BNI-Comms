@@ -258,13 +258,15 @@ class BatchCallController {
   /**
    * V2: Get batch status
    * GET /batch/batch-status/:id
+   * Queries local database first, then falls back to external service
    */
   async getBatchStatusV2(req, res) {
     try {
       const { id } = req.params;
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = req.schema || process.env.POSTGRES_SCHEMA || 'lad_dev';
 
-      logger.info('[BatchCallController] V2 getBatchStatus called', { id, tenantId });
+      logger.info('[BatchCallController] V2 getBatchStatus called', { id, tenantId, schema });
 
       if (!id) {
         return res.status(400).json({
@@ -273,12 +275,94 @@ class BatchCallController {
         });
       }
 
-      // Forward to external service
+      // First, try to get from local database
+      try {
+        const query = `
+          SELECT 
+            vcb.id,
+            vcb.tenant_id,
+            vcb.status,
+            vcb.total_calls,
+            vcb.completed_calls,
+            vcb.failed_calls,
+            vcb.initiated_by_user_id,
+            vcb.agent_id,
+            vcb.scheduled_at,
+            vcb.started_at,
+            vcb.finished_at,
+            vcb.metadata,
+            vcb.created_at,
+            vcb.updated_at,
+            va.name as agent_name,
+            u.email as initiated_by_email,
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'id', vce.id,
+                  'lead_id', vce.lead_id,
+                  'call_log_id', vce.call_log_id,
+                  'phone_number', vce.phone_number,
+                  'status', vce.status,
+                  'scheduled_at', vce.scheduled_at,
+                  'completed_at', vce.completed_at,
+                  'error_message', vce.error_message
+                )
+              )
+              FROM ${schema}.voice_call_batch_entries vce
+              WHERE vce.batch_id = vcb.id AND vce.is_deleted = false
+            ) as entries
+          FROM ${schema}.voice_call_batches vcb
+          LEFT JOIN ${schema}.voice_agents va ON va.id = vcb.agent_id
+          LEFT JOIN ${schema}.users u ON u.id = vcb.initiated_by_user_id
+          WHERE vcb.id = $1::uuid AND vcb.is_deleted = false
+        `;
+
+        const result = await this.pool.query(query, [id]);
+
+        if (result.rows.length > 0) {
+          const batch = result.rows[0];
+          logger.info('[BatchCallController] Found batch in local database', { 
+            id, 
+            status: batch.status,
+            totalCalls: batch.total_calls
+          });
+
+          return res.json({
+            success: true,
+            batch: {
+              id: batch.id,
+              tenantId: batch.tenant_id,
+              status: batch.status,
+              totalCalls: batch.total_calls,
+              completedCalls: batch.completed_calls,
+              failedCalls: batch.failed_calls,
+              initiatedBy: batch.initiated_by_email,
+              agentName: batch.agent_name,
+              scheduledAt: batch.scheduled_at,
+              startedAt: batch.started_at,
+              finishedAt: batch.finished_at,
+              metadata: batch.metadata,
+              entries: batch.entries || [],
+              createdAt: batch.created_at,
+              updatedAt: batch.updated_at
+            },
+            message: 'Batch status retrieved from database'
+          });
+        }
+
+        logger.info('[BatchCallController] Batch not found in local database, checking external service', { id });
+      } catch (dbError) {
+        logger.warn('[BatchCallController] Database query failed, falling back to external service', { 
+          error: dbError.message 
+        });
+      }
+
+      // If not found in database, forward to external service
       const baseUrl = process.env.BASE_URL;
       if (!baseUrl) {
-        return res.status(500).json({
+        return res.status(404).json({
           success: false,
-          error: 'External voice agent service not configured'
+          error: 'Batch not found in database and external service not configured'
         });
       }
 
@@ -288,24 +372,37 @@ class BatchCallController {
         'X-API-Key': process.env.BASE_URL_FRONTEND_APIKEY || ''
       };
 
+      logger.info('[BatchCallController] Calling external service', { 
+        url: `${baseUrl}/batch/batch-status/${id}`,
+        headers: { ...headers, 'X-API-Key': '***' }
+      });
+
       const response = await axios.get(`${baseUrl}/batch/batch-status/${id}`, { headers });
       
+      logger.info('[BatchCallController] External service response received', { 
+        status: response.status,
+        hasData: !!response.data
+      });
+
       return res.json({
         success: true,
         batch: response.data,
-        message: 'Batch status retrieved successfully'
+        message: 'Batch status retrieved from external service'
       });
 
     } catch (error) {
       logger.error('[BatchCallController] V2 getBatchStatus failed', { 
-        error: error.message, 
-        batchId: req.params.id 
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        batchId: req.params.id,
+        url: error.config?.url
       });
       
       return res.status(500).json({
         success: false,
         error: 'Failed to get batch status',
-        message: error.message
+        message: error.response?.data?.message || error.message
       });
     }
   }
