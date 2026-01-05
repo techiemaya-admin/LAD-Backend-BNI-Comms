@@ -95,8 +95,10 @@ router.post('/login', async (req, res) => {
     const capabilitiesResult = await query(`
       SELECT capability_key
       FROM user_capabilities
-      WHERE user_id = $1
-    `, [user.id]);
+      WHERE user_id = $1 
+        AND tenant_id = $2
+        AND enabled = true
+    `, [user.id, user.primary_tenant_id]);
     
     const capabilities = capabilitiesResult.rows.map(r => r.capability_key);
     
@@ -304,8 +306,10 @@ router.get('/me', async (req, res) => {
     const capabilitiesResult = await query(`
       SELECT capability_key
       FROM user_capabilities
-      WHERE user_id = $1
-    `, [user.id]);
+      WHERE user_id = $1 
+        AND tenant_id = $2
+        AND enabled = true
+    `, [user.id, user.primary_tenant_id]);
     
     const capabilities = capabilitiesResult.rows.map(r => r.capability_key);
     
