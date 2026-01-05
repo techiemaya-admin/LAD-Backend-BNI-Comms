@@ -8,6 +8,8 @@
  * Schema: Multi-tenant with tenant_id on every row
  */
 
+const logger = require('../../../core/utils/logger');
+
 class VoiceCallModel {
   constructor(db) {
     this.pool = db;
@@ -96,6 +98,22 @@ class VoiceCallModel {
    * @returns {Promise<Object|null>} Call log or null
    */
   async getCallById(schema, callId, tenantId) {
+    // First, get transcripts separately to avoid truncation in large row
+    const transcriptsQuery = `
+      SELECT transcripts
+      FROM ${schema}.voice_call_logs
+      WHERE id = $1 AND tenant_id = $2
+    `;
+    
+    const transcriptsResult = await this.pool.query(transcriptsQuery, [callId, tenantId]);
+    const transcripts = transcriptsResult.rows[0]?.transcripts;
+    
+    logger.debug('[VoiceCallModel] Transcripts query returned segments', { 
+      callId, 
+      segmentCount: transcripts?.segments?.length || 0 
+    });
+    
+    // Then get the rest of the data
     const query = `
       SELECT 
         vcl.id AS call_log_id,
@@ -124,7 +142,7 @@ class VoiceCallModel {
       FROM ${schema}.voice_call_logs vcl
       LEFT JOIN ${schema}.leads l ON l.id = vcl.lead_id
       LEFT JOIN ${schema}.voice_agents va ON va.id = vcl.agent_id AND va.tenant_id = vcl.tenant_id
-      LEFT JOIN LATERAL (c
+      LEFT JOIN LATERAL (
         SELECT row_to_json(vca_row) AS analysis
         FROM ${schema}.voice_call_analysis vca_row
         WHERE vca_row.call_log_id = vcl.id
@@ -135,7 +153,14 @@ class VoiceCallModel {
     `;
 
     const result = await this.pool.query(query, [callId, tenantId]);
-    return result.rows[0] || null;
+    const row = result.rows[0];
+    
+    if (!row) return null;
+    
+    // Add transcripts from separate query
+    row.transcripts = transcripts;
+    
+    return row;
   }
 
   /**

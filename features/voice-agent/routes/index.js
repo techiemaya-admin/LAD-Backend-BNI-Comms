@@ -218,7 +218,7 @@ router.get(
  */
 router.get(
   '/calllogs/:call_log_id',
-  tenantMiddleware,
+  jwtAuth,
   (req, res) => callController.getCallLogById(req, res)
 );
 

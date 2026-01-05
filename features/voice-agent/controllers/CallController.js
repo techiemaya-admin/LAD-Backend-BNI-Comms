@@ -330,6 +330,10 @@ class CallController {
         });
       }
 
+      logger.info(`[CallController] Call log fetched for ${call_log_id}`);
+      logger.info(`[CallController] Transcripts segments in DB result: ${callLog.transcripts?.segments?.length || 0}`);
+      logger.info(`[CallController] Full transcripts object keys: ${callLog.transcripts ? Object.keys(callLog.transcripts).join(', ') : 'none'}`);
+      
       // Check if user has access to this call log
       const user = req.user;
       const isAdmin = user?.role === 'admin';
@@ -369,6 +373,8 @@ class CallController {
           // The client can still try to access the recording URL directly if needed
         }
       }
+
+      logger.info(`[CallController] Sending response for call ${call_log_id}: transcripts segments=${callLog.transcripts?.segments?.length || 0}`);
 
       return res.json({
         success: true,

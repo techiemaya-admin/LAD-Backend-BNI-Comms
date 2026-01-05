@@ -33,13 +33,14 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       stepConfig = JSON.parse(stepConfig);
     }
     
+    // LAD Architecture: Use dynamic schema resolution
+    const schema = getSchema(null); // No req available, will use default
+    
     // Get campaign to access config (leads_per_day, lead_gen_offset)
     // First try to get config from campaigns table (if config column exists)
     let campaignConfig = {};
     let configColumnExists = false;
     try {
-      // LAD Architecture: Use dynamic schema resolution
-      const schema = getSchema(null); // No req available, will use default
       const campaignResult = await pool.query(
         `SELECT config FROM ${schema}.campaigns WHERE id = $1 AND tenant_id = $2`,
         [campaignId, tenantId]
@@ -310,15 +311,19 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     
     const employeesList = employees || [];
     
-    // Get tenant_id from campaign
+    // Verify tenant_id from campaign matches the provided tenantId
     const campaignQuery = await pool.query(
       `SELECT tenant_id FROM ${schema}.campaigns WHERE id = $1 AND is_deleted = FALSE`,
       [campaignId]
     );
-    const tenantId = campaignQuery.rows[0]?.tenant_id;
+    const campaignTenantId = campaignQuery.rows[0]?.tenant_id;
     
-    if (!tenantId) {
+    if (!campaignTenantId) {
       throw new Error(`Campaign ${campaignId} not found or missing tenant_id`);
+    }
+    
+    if (campaignTenantId !== tenantId) {
+      throw new Error(`Tenant ID mismatch for campaign ${campaignId}`);
     }
       
     // Save leads to campaign_leads table (only the daily limit)
