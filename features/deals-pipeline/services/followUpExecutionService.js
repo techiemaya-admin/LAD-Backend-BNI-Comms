@@ -270,7 +270,7 @@ class FollowUpExecutionService {
       }
 
       // Build additional context
-      const addedContext = `This is an automated follow-up call for a scheduled booking at ${booking.scheduled_at}.`;
+      const addedContext = `This is a follow-up call for a scheduled booking at ${booking.scheduled_at}, try to access earlier conversation for student's response and don't ask any answered repeated questions`;
 
       // Use phone number as fallback if no name available
       const leadName = lead.first_name || lead.last_name || phoneNumber || 'there';

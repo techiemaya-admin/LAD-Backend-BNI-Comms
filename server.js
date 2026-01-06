@@ -8,6 +8,7 @@
 require('dotenv').config();
 const CoreApplication = require('./core/app');
 const logger = require('./core/utils/logger');
+const { getListener } = require('./features/deals-pipeline/services/bookingNotificationListener');
 
 const PORT = process.env.PORT || 3004;
 
@@ -22,6 +23,17 @@ async function startServer() {
     
     const app = new CoreApplication();
     await app.start(PORT);
+    
+    // Start booking notification listener for Cloud Task scheduling
+    try {
+      const listener = getListener();
+      await listener.start();
+      logger.info('Booking notification listener started');
+    } catch (error) {
+      logger.error('Failed to start booking listener (non-fatal):', {
+        error: error.message
+      });
+    }
     
     logger.info('Server successfully started', {
       port: PORT,
@@ -46,13 +58,31 @@ async function startServer() {
 }
 
 // Handle graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
+  
+  // Stop the booking listener
+  try {
+    const listener = getListener();
+    await listener.stop();
+  } catch (error) {
+    logger.error('Error stopping booking listener:', { error: error.message });
+  }
+  
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
+  
+  // Stop the booking listener
+  try {
+    const listener = getListener();
+    await listener.stop();
+  } catch (error) {
+    logger.error('Error stopping booking listener:', { error: error.message });
+  }
+  
   process.exit(0);
 });
 
