@@ -73,42 +73,47 @@ async function initSocket(server) {
       });
     });
 
-    // Setup dedicated client for LISTEN/NOTIFY
-    const client = await pool.connect();
+    // Setup dedicated client for LISTEN/NOTIFY (optional - log error but don't fail)
+    try {
+      const client = await pool.connect();
 
-    client.on('notification', (msg) => {
-      try {
-        logger.info('[Socket] Received DB notification', { channel: msg.channel, payload: msg.payload });
+      client.on('notification', (msg) => {
+        try {
+          logger.info('[Socket] Received DB notification', { channel: msg.channel, payload: msg.payload });
 
-        // Expect payload to be JSON with tenant_id and resource id
-        let payload = null;
-        try { payload = JSON.parse(msg.payload); } catch (e) { payload = { raw: msg.payload }; }
+          // Expect payload to be JSON with tenant_id and resource id
+          let payload = null;
+          try { payload = JSON.parse(msg.payload); } catch (e) { payload = { raw: msg.payload }; }
 
-        const tenantId = payload && (payload.tenant_id || payload.tenantId || payload.client_id || payload.clientId);
-        if (!tenantId) {
-          // If tenant not present, log and skip broadcasting to avoid cross-tenant leaks
-          logger.warn('[Socket] Notification missing tenant_id, skipping emit', { payload });
-          return;
+          const tenantId = payload && (payload.tenant_id || payload.tenantId || payload.client_id || payload.clientId);
+          if (!tenantId) {
+            // If tenant not present, log and skip broadcasting to avoid cross-tenant leaks
+            logger.warn('[Socket] Notification missing tenant_id, skipping emit', { payload });
+            return;
+          }
+
+          // Emit only to the tenant room
+          io.to(`tenant:${tenantId}`).emit('calllogs:update', { channel: msg.channel, payload });
+        } catch (err) {
+          logger.error('[Socket] Error emitting notification', { error: err.message });
         }
+      });
 
-        // Emit only to the tenant room
-        io.to(`tenant:${tenantId}`).emit('calllogs:update', { channel: msg.channel, payload });
-      } catch (err) {
-        logger.error('[Socket] Error emitting notification', { error: err.message });
-      }
-    });
+      client.on('error', (err) => {
+        logger.error('[Socket] Postgres client error', { error: err.message });
+      });
 
-    client.on('error', (err) => {
-      logger.error('[Socket] Postgres client error', { error: err.message });
-    });
+      client.on('end', () => {
+        logger.warn('[Socket] Postgres listener client ended connection');
+      });
 
-    client.on('end', () => {
-      logger.warn('[Socket] Postgres listener client ended connection');
-    });
-
-    // Start listening on the channel
-    await client.query('LISTEN calllogs_channel');
-    logger.info('[Socket] Listening for Postgres notifications on calllogs_channel');
+      // Start listening on the channel
+      await client.query('LISTEN calllogs_channel');
+      logger.info('[Socket] Listening for Postgres notifications on calllogs_channel');
+    } catch (err) {
+      logger.error('[Socket] Failed to setup Postgres LISTEN - notifications disabled', { error: err.message });
+      // Continue without DB notifications - Socket.IO will still work for manual refresh
+    }
 
     return io;
   } catch (error) {
