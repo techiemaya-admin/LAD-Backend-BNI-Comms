@@ -31,7 +31,6 @@
  */
 
 const express = require('express');
-const http = require('http');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { FeatureRegistry } = require('./feature_registry');
@@ -278,20 +277,14 @@ class CoreApplication {
   async start(port = 3000) {
     await this.registerFeatures();
 
-    // Create an HTTP server from the Express app so callers can attach WS servers
-    this.server = http.createServer(this.app);
-
-    await new Promise((resolve, reject) => {
-      this.server.listen(port, (err) => {
+    return new Promise((resolve, reject) => {
+      const server = this.app.listen(port, (err) => {
         if (err) return reject(err);
         logger.info(`Core Platform running on port ${port}`);
         logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
-        resolve();
+        resolve(server);
       });
     });
-
-    // Return the server so external modules (Socket.IO) can attach
-    return this.server;
   }
 }
 
