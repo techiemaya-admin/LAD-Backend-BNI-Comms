@@ -26,6 +26,8 @@ router.use('/pipeline', pipelineRoutes);
 router.use('/reference', referenceRoutes);
 router.use('/leads/:id', attachmentsRoutes);
 router.use('/bookings', bookingRoutes);
+// Legacy singular booking route alias
+router.use('/booking', bookingRoutes);
 router.use('/students', studentRoutes);
 router.use('/settings', settingsRoutes);
 

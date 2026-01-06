@@ -1,0 +1,26 @@
+{
+  "name": "@lad/deals-pipeline-followup",
+  "version": "1.0.0",
+  "description": "Follow-up calls system with GCP Cloud Tasks integration",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "follow-up",
+    "cloud-tasks",
+    "voice-calls",
+    "scheduling"
+  ],
+  "dependencies": {
+    "@google-cloud/tasks": "^5.0.0",
+    "axios": "^1.6.0",
+    "express": "^4.18.2"
+  },
+  "peerDependencies": {
+    "pg": "^8.11.0"
+  },
+  "author": "LAD Platform",
+  "license": "UNLICENSED",
+  "private": true
+}

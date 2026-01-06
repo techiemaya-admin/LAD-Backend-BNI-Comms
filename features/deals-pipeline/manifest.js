@@ -55,10 +55,19 @@ module.exports = {
 
     // Bookings
     '/bookings',
+    '/bookings/:id',
     '/bookings/counsellor/:counsellorId',
     '/bookings/student/:studentId',
     '/bookings/range',
     '/bookings/availability',
+    
+    // Legacy booking routes (singular)
+    '/booking',
+    '/booking/:id',
+    '/booking/counsellor/:counsellorId',
+    '/booking/student/:studentId', 
+    '/booking/range',
+    '/booking/availability',
 
     // Students
     '/students',
@@ -67,7 +76,7 @@ module.exports = {
   
   // Database schema
   database: {
-    schema: 'lad_dev',
+    schema: process.env.POSTGRES_SCHEMA || 'lad_dev',
     tables: [
       'leads',
       'lead_stages',

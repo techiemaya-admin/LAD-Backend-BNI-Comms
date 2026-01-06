@@ -95,6 +95,13 @@ class CoreApplication {
    */
   createFeatureMiddleware(featureKey) {
     return async (req, res, next) => {
+      // Skip feature check for Cloud Tasks endpoints (they have their own auth)
+      if ((req.url && req.url.includes('/execute-followup')) || 
+          (req.originalUrl && req.originalUrl.includes('/execute-followup')) ||
+          (req.path && req.path.includes('/execute-followup'))) {
+        return next();
+      }
+
       // Skip feature check for non-authenticated requests (will be caught by auth middleware)
       if (!req.user) {
         return next();
@@ -156,7 +163,12 @@ class CoreApplication {
     this.app.use('/api/voice-agent', this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
     logger.info('[App] Voice Agent routes mounted with feature flag check');
     
-    // Deals Pipeline routes with feature flag check
+    // Deals Pipeline public routes FIRST (Cloud Tasks endpoints - no feature flag check)
+    const dealsPipelinePublicRoutes = require('../features/deals-pipeline/routes/public.routes');
+    this.app.use('/api/deal-pipeline', dealsPipelinePublicRoutes);
+    logger.info('[App] Deals Pipeline public routes mounted (no feature check)');
+    
+    // Deals Pipeline protected routes AFTER (with feature flag check)
     const dealsPipelineRoutes = require('../features/deals-pipeline/routes/index');
     this.app.use('/api/deal-pipeline', this.createFeatureMiddleware('deals-pipeline'), dealsPipelineRoutes);
     logger.info('[App] Deals Pipeline routes mounted with feature flag check');

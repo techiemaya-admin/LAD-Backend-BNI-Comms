@@ -14,7 +14,7 @@ const pool = new Pool({
   password: process.env.POSTGRES_PASSWORD,
 });
 
-const schema = process.env.POSTGRES_SCHEMA || 'lad_dev';
+const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
 const tenantId = '734cd516-e252-4728-9c52-4663ee552653';
 const email = 'admin@sasyaspaces.com';
 const password = 'TechieMaya';

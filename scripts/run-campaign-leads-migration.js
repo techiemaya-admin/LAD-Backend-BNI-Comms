@@ -27,7 +27,7 @@ async function runMigration() {
     console.log(`📍 Schema: ${process.env.POSTGRES_SCHEMA || 'lad_dev'}\n`);
     
     // Set search_path to correct schema
-    const schema = process.env.POSTGRES_SCHEMA || 'lad_dev';
+    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
     await client.query(`SET search_path TO ${schema}`);
     
     // Read migration file

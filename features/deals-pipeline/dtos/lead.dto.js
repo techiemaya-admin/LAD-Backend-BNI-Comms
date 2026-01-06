@@ -44,8 +44,11 @@ function fromDatabase(data) {
   const mapped = { ...data };
   
   // Combine first_name and last_name into name
+  // If no name available, fallback to phone number
   if (data.first_name || data.last_name) {
     mapped.name = [data.first_name, data.last_name].filter(Boolean).join(' ');
+  } else if (data.phone) {
+    mapped.name = data.phone;
   }
   
   // Map company_name → company

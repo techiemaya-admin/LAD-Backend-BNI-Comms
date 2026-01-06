@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const logger = require('../../../core/utils/logger');
 
 class WebsiteScraperService {
   constructor() {
@@ -14,12 +15,12 @@ class WebsiteScraperService {
    */
   async scrapeWebsite(url) {
     if (!url || !url.startsWith('http')) {
-      console.log(`Invalid URL: ${url}`);
+      logger.warn('WebsiteScraperService invalid URL', { url });
       return null;
     }
 
     try {
-      console.log(`Scraping website: ${url}`);
+      logger.debug('WebsiteScraperService scraping website', { url });
       
       const response = await axios.get(url, {
         headers: {
@@ -73,7 +74,10 @@ class WebsiteScraperService {
       };
 
     } catch (error) {
-      console.error(`Error scraping ${url}:`, error.message);
+      logger.error('WebsiteScraperService error scraping website', {
+        url,
+        error: error.message
+      });
       return null;
     }
   }
@@ -98,7 +102,10 @@ class WebsiteScraperService {
         if (result.status === 'fulfilled' && result.value) {
           results.push(result.value);
         } else {
-          console.log(`Failed to scrape: ${batch[index]}`);
+          logger.warn('WebsiteScraperService failed to scrape URL', {
+            url: batch[index],
+            reason: result.reason?.message
+          });
         }
       });
       

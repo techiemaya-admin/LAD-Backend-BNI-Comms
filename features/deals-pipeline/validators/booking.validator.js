@@ -9,35 +9,44 @@ const { isValidUUID } = require('./common.validator');
  * Validate booking creation payload
  */
 const validateBookingCreate = (req, res, next) => {
-  const { student_id, counsellor_id, booking_date, booking_time, duration_minutes, status } = req.body;
+  const { 
+    lead_id, 
+    assigned_user_id, 
+    scheduled_at,
+    booking_type, 
+    booking_source,
+    created_by 
+  } = req.body;
   const errors = [];
 
   // Required fields
-  if (!student_id || !isValidUUID(student_id)) {
-    errors.push('Valid student_id (UUID) is required');
+  if (!lead_id || !isValidUUID(lead_id)) {
+    errors.push('Valid lead_id (UUID) is required');
   }
 
-  if (!counsellor_id || !isValidUUID(counsellor_id)) {
-    errors.push('Valid counsellor_id (UUID) is required');
+  if (!assigned_user_id || !isValidUUID(assigned_user_id)) {
+    errors.push('Valid assigned_user_id (UUID) is required');
   }
 
-  if (!booking_date || !/^\d{4}-\d{2}-\d{2}$/.test(booking_date)) {
-    errors.push('booking_date is required in YYYY-MM-DD format');
-  }
-
-  if (!booking_time || !/^\d{2}:\d{2}$/.test(booking_time)) {
-    errors.push('booking_time is required in HH:MM format');
-  }
-
-  if (duration_minutes !== undefined) {
-    const duration = Number(duration_minutes);
-    if (isNaN(duration) || duration <= 0 || duration > 480) {
-      errors.push('duration_minutes must be between 1 and 480 (8 hours)');
+  if (!scheduled_at) {
+    errors.push('scheduled_at is required in ISO format (e.g., 2026-01-05T14:30:00Z)');
+  } else {
+    const scheduledDate = new Date(scheduled_at);
+    if (isNaN(scheduledDate.getTime())) {
+      errors.push('scheduled_at must be a valid ISO datetime string');
     }
   }
 
-  if (status && !['scheduled', 'completed', 'cancelled'].includes(status)) {
-    errors.push('status must be one of: scheduled, completed, cancelled');
+  if (!created_by || !isValidUUID(created_by)) {
+    errors.push('Valid created_by (UUID) is required');
+  }
+
+  if (booking_type && typeof booking_type !== 'string') {
+    errors.push('booking_type must be a string');
+  }
+
+  if (booking_source && typeof booking_source !== 'string') {
+    errors.push('booking_source must be a string');
   }
 
   if (errors.length > 0) {

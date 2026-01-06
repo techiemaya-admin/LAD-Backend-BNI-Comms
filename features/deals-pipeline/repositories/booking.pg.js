@@ -10,6 +10,27 @@ const CALL_MIN = 5;
 const BUFFER_MIN = 5;
 const SAFETY_MIN = 15;
 
+// Helper function to get timezone offset in hours
+function getTimezoneOffset(timezone) {
+  const timezoneOffsets = {
+    'UTC': 0,
+    'GMT': 0,
+    'EST': -5,
+    'PST': -8,
+    'CST': -6,
+    'MST': -7,
+    'GST': 4,    // Gulf Standard Time (UTC+4)
+    'UAE': 4,    // UAE Time (UTC+4)
+    'AST': 4,    // Arabia Standard Time (UTC+4)
+    'IST': 5.5,  // India Standard Time (UTC+5:30)
+    'JST': 9,    // Japan Standard Time (UTC+9)
+    'CET': 1,    // Central European Time (UTC+1)
+    'BST': 1,    // British Summer Time (UTC+1)
+  };
+  
+  return timezoneOffsets[timezone.toUpperCase()] || 0;
+}
+
 class BookingModel {
 
   /**
@@ -197,23 +218,68 @@ async calculateAvailability({
   userId,
   dayStart,
   dayEnd,
-  slotMinutes
-}) {
+  slotMinutes,
+  timezone,
+  tenant_id
+}, schema = DEFAULT_SCHEMA) {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for calculateAvailability');
+  }
+
+  logger.info('BookingRepository calculateAvailability called', {
+    userId,
+    dayStart: dayStart.toISOString(),
+    dayEnd: dayEnd.toISOString(),
+    slotMinutes,
+    currentTime: new Date().toISOString()
+  });
+
   // 1️⃣ Fetch blocked ranges
   const blocked = await this.getBlockedSlots(
     userId,
+    tenant_id,
     dayStart,
-    dayEnd
+    dayEnd,
+    schema
   );
 
   const slots = [];
   const slotMs = slotMinutes * 60 * 1000;
+  
+  // Get current time in the specified timezone
+  const now = new Date();
+  let bufferTime;
+  
+  if (timezone && timezone !== 'UTC') {
+    // Convert current time to the specified timezone
+    const timezoneOffset = getTimezoneOffset(timezone);
+    bufferTime = new Date(now.getTime() + (15 * 60 * 1000) + (timezoneOffset * 60 * 60 * 1000));
+    logger.debug('BookingRepository timezone calculations', {
+      timezone,
+      offset: timezoneOffset + ' hours',
+      currentTimeUTC: now.toISOString(),
+      bufferTimeWithTimezone: bufferTime.toISOString()
+    });
+  } else {
+    // Add 15 minute buffer to prevent booking slots too close to current time
+    bufferTime = new Date(now.getTime() + (15 * 60 * 1000));
+    logger.debug('BookingRepository using UTC timezone', {
+      currentTimeUTC: now.toISOString(),
+      bufferTimeUTC: bufferTime.toISOString()
+    });
+  }
 
   let cursor = new Date(dayStart);
 
   while (cursor.getTime() + slotMs <= dayEnd.getTime()) {
     const slotStart = new Date(cursor);
     const slotEnd = new Date(cursor.getTime() + slotMs);
+
+    // Skip slots that are in the past or too close to current time
+    if (slotStart <= bufferTime) {
+      cursor = new Date(cursor.getTime() + slotMs);
+      continue;
+    }
 
     const overlaps = blocked.some(b =>
       slotStart < new Date(b.buffer_until) &&
@@ -230,7 +296,60 @@ async calculateAvailability({
     cursor = new Date(cursor.getTime() + slotMs);
   }
 
+  logger.debug('BookingRepository generated slots', {
+    totalSlots: slots.length,
+    firstSlot: slots.length > 0 ? slots[0].start.toISOString() : null,
+    lastSlot: slots.length > 0 ? slots[slots.length - 1].start.toISOString() : null
+  });
+
   return slots;
+}
+
+async getBookingById(bookingId, tenant_id, schema = DEFAULT_SCHEMA) {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getBookingById');
+  }
+
+  const query = `
+    SELECT * FROM ${schema}.lead_bookings
+    WHERE tenant_id = $1 AND id = $2 AND is_deleted = false;
+  `;
+  const { rows } = await pool.query(query, [tenant_id, bookingId]);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+async getLeadBookings(leadId, tenant_id, schema = DEFAULT_SCHEMA) {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getLeadBookings');
+  }
+
+  const query = `
+    SELECT * FROM ${schema}.lead_bookings
+    WHERE tenant_id = $1 AND lead_id = $2 AND is_deleted = false
+    ORDER BY scheduled_at DESC;
+  `;
+  const { rows } = await pool.query(query, [tenant_id, leadId]);
+  return rows;
+}
+
+async getLeadBookingsByDate(leadId, date, tenant_id, schema = DEFAULT_SCHEMA) {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getLeadBookingsByDate');
+  }
+
+  // Convert date to start/end of day
+  const dayStart = new Date(`${date}T00:00:00Z`);
+  const dayEnd = new Date(`${date}T23:59:59Z`);
+
+  const query = `
+    SELECT * FROM ${schema}.lead_bookings
+    WHERE tenant_id = $1 AND lead_id = $2 
+    AND scheduled_at >= $3 AND scheduled_at <= $4
+    AND is_deleted = false
+    ORDER BY scheduled_at ASC;
+  `;
+  const { rows } = await pool.query(query, [tenant_id, leadId, dayStart, dayEnd]);
+  return rows;
 }
 
 }

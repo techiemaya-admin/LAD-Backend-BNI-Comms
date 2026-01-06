@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../../../core/utils/logger');
 
 class CompanyAnalysisService {
   constructor() {
@@ -7,7 +8,7 @@ class CompanyAnalysisService {
     this.model = process.env.AI_MODEL || 'gpt-4o-mini';
     
     if (!this.apiKey) {
-      console.warn('⚠️ AI API key not configured for company analysis');
+      logger.warn('CompanyAnalysisService AI API key not configured');
     }
   }
 
@@ -34,7 +35,10 @@ class CompanyAnalysisService {
       const response = await this.callAI(prompt);
       return this.parseAnalysisResponse(response);
     } catch (error) {
-      console.error('AI analysis error:', error.message);
+      logger.error('CompanyAnalysisService AI analysis error', {
+        error: error.message,
+        company: company.name || company.domain
+      });
       return {
         isRelevant: null,
         confidence: 0,
@@ -125,7 +129,10 @@ Keep it concise but actionable - focus on insights that help close deals.`;
       return posts || [];
     }
 
-    console.log(`Filtering ${posts.length} posts for topic: '${topic.substring(0, 100)}...'`);
+    logger.info('CompanyAnalysisService filtering posts by topic', {
+      postsCount: posts.length,
+      topic: topic.substring(0, 100)
+    });
 
     const systemPrompt = `You are an AI data filter. The user is searching for posts related to the following keywords and concepts: '${topic}'.
 
@@ -153,7 +160,10 @@ Your response: [1, 3]`;
       }));
 
       const userPrompt = `Data:\n${JSON.stringify(simplifiedChunk, null, 2)}`;
-      console.log(`  - Filtering chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(posts.length / chunkSize)}...`);
+      logger.debug('CompanyAnalysisService filtering chunk', {
+        chunkNumber: Math.floor(i / chunkSize) + 1,
+        totalChunks: Math.ceil(posts.length / chunkSize)
+      });
 
       try {
         const response = await this.callAIFlexible(userPrompt, systemPrompt, 0.0);
@@ -170,12 +180,18 @@ Your response: [1, 3]`;
           }
         }
       } catch (error) {
-        console.error(`Error filtering chunk: ${error.message}`);
+        logger.error('CompanyAnalysisService error filtering chunk', {
+          error: error.message,
+          chunkIndex: Math.floor(i / chunkSize)
+        });
       }
     }
 
     const relevantPosts = posts.filter(post => relevantPostIds.has(post.id));
-    console.log(`  ✅ Filtered to ${relevantPosts.length} relevant posts`);
+    logger.info('CompanyAnalysisService filtered posts complete', {
+      originalCount: posts.length,
+      relevantCount: relevantPosts.length
+    });
     
     return relevantPosts;
   }
@@ -434,7 +450,9 @@ Analyze if this company is a good fit for the target profile. Consider:
    */
   async checkCompanyTopicRelation(websiteUrl, websiteContent, topic) {
     if (!websiteContent || !websiteContent.trim()) {
-      console.log(`No website content to analyze for ${websiteUrl}`);
+      logger.warn('CompanyAnalysisService no website content to analyze', {
+        websiteUrl
+      });
       return false;
     }
 

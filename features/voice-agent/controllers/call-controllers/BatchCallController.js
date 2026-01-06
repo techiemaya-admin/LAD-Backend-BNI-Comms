@@ -264,7 +264,7 @@ class BatchCallController {
     try {
       const { id } = req.params;
       const tenantId = req.tenantId || req.user?.tenantId;
-      const schema = req.schema || process.env.POSTGRES_SCHEMA || 'lad_dev';
+      const schema = req.schema || process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
 
       logger.info('[BatchCallController] V2 getBatchStatus called', { id, tenantId, schema });
 

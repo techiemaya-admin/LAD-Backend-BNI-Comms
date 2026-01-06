@@ -51,6 +51,11 @@ const authenticateToken = (req, res, next) => {
     return next();
   }
 
+  // Skip auth for Cloud Tasks endpoints (they have their own auth via headers)
+  if (req.path.includes('/execute-followup')) {
+    return next();
+  }
+
   // Try to get token from Authorization header first, then from cookies
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
