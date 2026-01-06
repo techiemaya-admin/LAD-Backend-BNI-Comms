@@ -62,23 +62,15 @@ class CoreApplication {
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
+    logger.info('[CORS] Allowed origins:', { allowedOrigins });
+
     this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) !== -1) {
-          callback(null, true);
-        } else {
-          logger.warn('[CORS] Blocked origin', { origin, allowedOrigins });
-          callback(null, false); // Reject but don't throw error
-        }
-      },
-      credentials: true, // Allow cookies to be sent
+      origin: allowedOrigins, // Simplified - let cors module handle the checking
+      credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
-      preflightContinue: false, // Let cors handle preflight
-      optionsSuccessStatus: 204 // Success status for preflight
+      preflightContinue: false,
+      optionsSuccessStatus: 204
     }));
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
