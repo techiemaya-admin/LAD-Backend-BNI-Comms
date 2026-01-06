@@ -70,8 +70,8 @@ class CoreApplication {
         if (allowedOrigins.indexOf(origin) !== -1) {
           callback(null, true);
         } else {
-          logger.warn('[CORS] Blocked origin', { origin });
-          callback(new Error('Not allowed by CORS'));
+          logger.warn('[CORS] Blocked origin', { origin, allowedOrigins });
+          callback(null, false); // Reject but don't throw error
         }
       },
       credentials: true, // Allow cookies to be sent
