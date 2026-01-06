@@ -257,6 +257,7 @@ class FollowUpSchedulerService {
       'auto-follow-up',
       'followup',
       'auto_follow_up',
+      'auto_followup',
       'manual_followup',
       'manual_follow_up',
       'scheduled_call'
