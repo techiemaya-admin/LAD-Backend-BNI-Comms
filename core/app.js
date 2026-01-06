@@ -268,13 +268,13 @@ class CoreApplication {
 
   async start(port = 3000) {
     await this.registerFeatures();
-
+    
     return new Promise((resolve, reject) => {
-      const server = this.app.listen(port, (err) => {
+      this.app.listen(port, (err) => {
         if (err) return reject(err);
         logger.info(`Core Platform running on port ${port}`);
         logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
-        resolve(server);
+        resolve();
       });
     });
   }
