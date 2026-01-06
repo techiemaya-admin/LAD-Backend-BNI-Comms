@@ -81,7 +81,7 @@ substitutions:
   _REGION: 'us-central1'
   _SERVICE_NAME: 'lad-backend-develop'
   _ENV: 'develop'
-  _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
+  _FRONTEND_URL: 'https://lad-frontend-develop-741719885039.us-central1.run.app'
   _BACKEND_URL: 'https://lad-backend-develop-741719885039.us-central1.run.app'
   _FRONTEND_HEADER: 'lad-frontend'
   _FRONTEND_APIKEY: 'lad-api-key'
