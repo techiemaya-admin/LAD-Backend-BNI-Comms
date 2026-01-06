@@ -9,6 +9,7 @@ require('dotenv').config();
 const CoreApplication = require('./core/app');
 const logger = require('./core/utils/logger');
 const { getListener } = require('./features/deals-pipeline/services/bookingNotificationListener');
+const { getListener: getCallLogsListener } = require('./features/voice-agent/services/callLogsNotificationListener');
 
 const PORT = process.env.PORT || 3004;
 
@@ -36,6 +37,18 @@ async function startServer() {
     }
     
     logger.info('✅ Booking notification listener started successfully');
+    
+    // Start call logs notification listener for real-time updates
+    logger.info('Starting call logs notification listener...');
+    const callLogsListener = getCallLogsListener();
+    await callLogsListener.start();
+    
+    // Verify call logs listener is working
+    if (!callLogsListener.isListening) {
+      throw new Error('Call logs notification listener failed to start - real-time updates disabled');
+    }
+    
+    logger.info('✅ Call logs notification listener started successfully');
     logger.info('✅ Automatic Cloud Task creation system is ACTIVE');
     
     logger.info('Server successfully started', {
@@ -72,6 +85,14 @@ process.on('SIGTERM', async () => {
     logger.error('Error stopping booking listener:', { error: error.message });
   }
   
+  // Stop the call logs listener
+  try {
+    const callLogsListener = getCallLogsListener();
+    await callLogsListener.stop();
+  } catch (error) {
+    logger.error('Error stopping call logs listener:', { error: error.message });
+  }
+  
   process.exit(0);
 });
 
@@ -84,6 +105,14 @@ process.on('SIGINT', async () => {
     await listener.stop();
   } catch (error) {
     logger.error('Error stopping booking listener:', { error: error.message });
+  }
+  
+  // Stop the call logs listener
+  try {
+    const callLogsListener = getCallLogsListener();
+    await callLogsListener.stop();
+  } catch (error) {
+    logger.error('Error stopping call logs listener:', { error: error.message });
   }
   
   process.exit(0);
