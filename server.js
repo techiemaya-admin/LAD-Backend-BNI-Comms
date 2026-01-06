@@ -25,15 +25,18 @@ async function startServer() {
     await app.start(PORT);
     
     // Start booking notification listener for Cloud Task scheduling
-    try {
-      const listener = getListener();
-      await listener.start();
-      logger.info('Booking notification listener started');
-    } catch (error) {
-      logger.error('Failed to start booking listener (non-fatal):', {
-        error: error.message
-      });
+    // This is CRITICAL - if it fails, the automatic system won't work
+    logger.info('Starting booking notification listener...');
+    const listener = getListener();
+    await listener.start();
+    
+    // Verify listener is actually working
+    if (!listener.isListening) {
+      throw new Error('Booking notification listener failed to start - automatic Cloud Task creation disabled');
     }
+    
+    logger.info('✅ Booking notification listener started successfully');
+    logger.info('✅ Automatic Cloud Task creation system is ACTIVE');
     
     logger.info('Server successfully started', {
       port: PORT,
