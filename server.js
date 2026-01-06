@@ -24,6 +24,8 @@ async function startServer() {
     const server = await app.start(PORT);
 
     // Initialize Socket.IO and Postgres LISTEN/NOTIFY bridge
+    // Temporarily disabled to fix Cloud Run deployment
+    /*
     try {
       const { initSocket } = require('./core/socket');
       await initSocket(server);
@@ -31,6 +33,7 @@ async function startServer() {
     } catch (err) {
       logger.error('Failed to initialize Socket.IO', { error: err.message });
     }
+    */
     
     logger.info('Server successfully started', {
       port: PORT,
