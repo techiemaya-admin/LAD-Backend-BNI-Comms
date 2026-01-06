@@ -14,8 +14,7 @@ async function initSocket(server) {
       'http://localhost:3001',
       'http://localhost:3002',
       'https://lad-frontend-3nddlneyya-uc.a.run.app',
-      'https://lad-frontend-741719885039.us-central1.run.app',
-      'https://lad-frontend-develop-741719885039.us-central1.run.app',
+      'https://lad-frontend-develop-3nddlneyya-uc.a.run.app',
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
