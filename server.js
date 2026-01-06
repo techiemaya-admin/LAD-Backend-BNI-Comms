@@ -21,7 +21,16 @@ async function startServer() {
     });
     
     const app = new CoreApplication();
-    await app.start(PORT);
+    const server = await app.start(PORT);
+
+    // Initialize Socket.IO and Postgres LISTEN/NOTIFY bridge
+    try {
+      const { initSocket } = require('./core/socket');
+      await initSocket(server);
+      logger.info('Socket.IO initialized and listening for DB notifications');
+    } catch (err) {
+      logger.error('Failed to initialize Socket.IO', { error: err.message });
+    }
     
     logger.info('Server successfully started', {
       port: PORT,

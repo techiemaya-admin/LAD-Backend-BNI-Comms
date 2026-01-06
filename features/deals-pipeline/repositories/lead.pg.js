@@ -134,7 +134,7 @@ async function createLead(leadData, tenant_id, schema = DEFAULT_SCHEMA) {
     leadData.status || 'active',
     leadData.source || null,
     PRIORITY_TO_INT[leadData.priority] || 2, // Convert to integer, default to medium (2)
-    leadData.value || null
+    leadData.amount || leadData.value || null // Accept both amount and value
   ];
   const result = await query(sql, params);
   return mapFieldsFromDB(result.rows[0]);

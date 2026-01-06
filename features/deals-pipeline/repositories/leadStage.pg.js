@@ -97,14 +97,25 @@ async function createLeadStage(stageData, schema = DEFAULT_SCHEMA) {
     );
     logger.debug('createLeadStage - BEFORE shifting', { stages: beforeShift.rows });
 
-    // Shift existing stages if inserting at specific position
-    const updateResult = await poolQuery(
+    // Use a two-step approach to avoid unique constraint violations:
+    // Step 1: Add a large offset (10000) to stages that need to be shifted
+    await poolQuery(
       `UPDATE ${schema}.lead_stages
-       SET display_order = display_order + 1
+       SET display_order = display_order + 10000
        WHERE (tenant_id = $1 OR tenant_id IS NULL)
          AND display_order >= $2`,
       [tenant_id, effectiveOrder]
     );
+
+    // Step 2: Subtract the offset minus 1 to get final positions (net effect: +1)
+    const updateResult = await poolQuery(
+      `UPDATE ${schema}.lead_stages
+       SET display_order = display_order - 9999
+       WHERE (tenant_id = $1 OR tenant_id IS NULL)
+         AND display_order >= $2`,
+      [tenant_id, effectiveOrder + 10000]
+    );
+    
     logger.debug('createLeadStage - Shifted stages', { shiftedCount: updateResult.rowCount });
 
     // Show state after shifting

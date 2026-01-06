@@ -31,6 +31,7 @@
  */
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { FeatureRegistry } = require('./feature_registry');
@@ -173,6 +174,11 @@ class CoreApplication {
     this.app.use('/api/deal-pipeline', this.createFeatureMiddleware('deals-pipeline'), dealsPipelineRoutes);
     logger.info('[App] Deals Pipeline routes mounted with feature flag check');
     
+    // Social Integration routes (includes calendar OAuth)
+    const socialIntegrationRoutes = require('../features/social-integration/routes/index');
+    this.app.use('/api/social-integration', this.createFeatureMiddleware('social-integration'), socialIntegrationRoutes);
+    logger.info('[App] Social Integration routes mounted with feature flag check');
+    
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
       try {
@@ -272,11 +278,21 @@ class CoreApplication {
 
   async start(port = 3000) {
     await this.registerFeatures();
-    
-    this.app.listen(port, () => {
-      logger.info(`Core Platform running on port ${port}`);
-      logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
+
+    // Create an HTTP server from the Express app so callers can attach WS servers
+    this.server = http.createServer(this.app);
+
+    await new Promise((resolve, reject) => {
+      this.server.listen(port, (err) => {
+        if (err) return reject(err);
+        logger.info(`Core Platform running on port ${port}`);
+        logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
+        resolve();
+      });
     });
+
+    // Return the server so external modules (Socket.IO) can attach
+    return this.server;
   }
 }
 

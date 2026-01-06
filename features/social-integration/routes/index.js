@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
 const SocialIntegrationController = require('../controllers/SocialIntegrationController');
+const calendarRoutes = require('./calendar.routes');
 
 /**
  * Initialize routes with database connection
@@ -22,6 +23,9 @@ const SocialIntegrationController = require('../controllers/SocialIntegrationCon
  */
 function initializeRoutes(db) {
   const controller = new SocialIntegrationController(db);
+  
+  // Calendar integration routes (Google OAuth)
+  router.use('/calendar', calendarRoutes);
   
   // List available platforms (protected)
   router.get('/platforms', jwtAuth, (req, res) => controller.listPlatforms(req, res));
@@ -100,4 +104,6 @@ function initializeRoutes(db) {
   return router;
 }
 
-module.exports = initializeRoutes;
+// Export router directly (db will be passed when available)
+// For now, initialize with null db - controller will handle gracefully
+module.exports = initializeRoutes(null);
