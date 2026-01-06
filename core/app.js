@@ -40,11 +40,14 @@ const billingRoutes = require('./billing/routes');
 const userRoutes = require('./users/routes');
 const { authenticateToken } = require('./middleware/auth');
 const { trackClientFeatures } = require('./middleware/feature_tracking');
+const { getSocketService } = require('../shared/services/socketService');
 const logger = require('./utils/logger');
+const http = require('http');
 
 class CoreApplication {
   constructor() {
     this.app = express();
+    this.server = null;
     this.featureRegistry = new FeatureRegistry();
     this.featureFlagService = new FeatureFlagService();
     this.setupMiddleware();
@@ -310,10 +313,29 @@ class CoreApplication {
     await this.registerFeatures();
     
     return new Promise((resolve, reject) => {
-      this.app.listen(port, (err) => {
+      // Create HTTP server
+      this.server = http.createServer(this.app);
+      
+      // Initialize Socket.IO
+      try {
+        const socketService = getSocketService();
+        socketService.initialize(this.server);
+        logger.info('[App] Socket.IO initialized for real-time features');
+      } catch (error) {
+        logger.warn('[App] Socket.IO initialization failed:', {
+          error: error.message
+        });
+      }
+      
+      this.server.listen(port, (err) => {
         if (err) return reject(err);
         logger.info(`Core Platform running on port ${port}`);
         logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
+        
+        const socketService = getSocketService();
+        const socketStatus = socketService.getStatus();
+        logger.info('[App] Socket.IO status:', socketStatus);
+        
         resolve();
       });
     });

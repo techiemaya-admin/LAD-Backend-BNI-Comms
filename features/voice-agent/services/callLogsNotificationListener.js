@@ -9,6 +9,7 @@
 
 const { Client } = require('pg');
 const logger = require('../../../core/utils/logger');
+const { getSocketService } = require('../../../shared/services/socketService');
 
 class CallLogsNotificationListener {
   constructor() {
@@ -135,6 +136,20 @@ class CallLogsNotificationListener {
         call_id: call_log?.id,
         status: call_log?.status
       });
+
+      // Emit Socket.IO event for real-time frontend updates
+      try {
+        const socketService = getSocketService();
+        socketService.emitCallLogsUpdate(tenant_id, {
+          operation,
+          call_log
+        });
+      } catch (error) {
+        logger.warn('[CallLogsListener] Socket.IO emit failed:', {
+          error: error.message,
+          tenant_id
+        });
+      }
 
       // Broadcast to all registered callbacks for this tenant
       const callback = this.callbacks.get(tenant_id);
