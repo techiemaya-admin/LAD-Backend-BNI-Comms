@@ -69,6 +69,8 @@ class CoreApplication {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
         
+        logger.debug('[CORS] Origin check', { origin, allowedOrigins });
+        
         if (allowedOrigins.indexOf(origin) !== -1) {
           callback(null, true);
         } else {
@@ -78,13 +80,41 @@ class CoreApplication {
       },
       credentials: true, // Allow cookies to be sent
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+        'Cache-Control',
+        'Pragma',
+        'Accept-Encoding',
+        'Accept-Language',
+        'Connection',
+        'Host',
+        'Referer',
+        'User-Agent'
+      ],
+      exposedHeaders: [
+        'Content-Range',
+        'X-Content-Range'
+      ],
       preflightContinue: false, // Let cors handle preflight
       optionsSuccessStatus: 204 // Success status for preflight
     }));
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(cookieParser()); // Parse cookies
+    
+    // Explicit OPTIONS handler for complex CORS cases
+    this.app.options('*', (req, res) => {
+      logger.debug('[CORS] Handling OPTIONS request', { 
+        url: req.url, 
+        origin: req.get('Origin'),
+        method: req.get('Access-Control-Request-Method')
+      });
+      res.status(204).end();
+    });
     
     // Core middleware (always enabled)
     this.app.use(authenticateToken);
