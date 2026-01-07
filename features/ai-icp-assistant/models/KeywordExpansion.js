@@ -1,51 +1,43 @@
 /**
  * Keyword Expansion Model
- * 
- * Manages cached keyword expansions for performance optimization
+ * LAD Architecture: Business Logic Layer
+ * Uses Repository Pattern for Data Access
  */
 
-const { query } = require('../../../shared/database/connection');
-
+const { KeywordExpansionRepository } = require('../repositories');
+const logger = require('../utils/logger');
 class KeywordExpansion {
   /**
-   * Create or update keyword expansion cache
+   * Create or update keyword expansion cache with tenant isolation
    */
   static async upsert({
     originalKeyword,
     expandedKeywords,
     context = 'general',
     model = null,
-    organizationId = null
+    tenantId = null // Nullable for global expansions
   }) {
     try {
-      const result = await query(`
-        INSERT INTO ai_keyword_expansions (
-          original_keyword,
-          expanded_keywords,
-          context,
-          model,
-          organization_id,
-          usage_count,
-          last_used_at
-        ) VALUES ($1, $2, $3, $4, $5, 1, CURRENT_TIMESTAMP)
-        ON CONFLICT (original_keyword, context, organization_id)
-        DO UPDATE SET
-          expanded_keywords = EXCLUDED.expanded_keywords,
-          model = EXCLUDED.model,
-          usage_count = ai_keyword_expansions.usage_count + 1,
-          last_used_at = CURRENT_TIMESTAMP
-        RETURNING *
-      `, [
-        originalKeyword.toLowerCase().trim(),
-        JSON.stringify(expandedKeywords),
+      if (!originalKeyword || !expandedKeywords) {
+        throw new Error('originalKeyword and expandedKeywords are required');
+      }
+
+      // Business logic: Validate expanded keywords array
+      const validatedKeywords = this.validateKeywords(expandedKeywords);
+      
+      return await KeywordExpansionRepository.upsert({
+        originalKeyword,
+        expandedKeywords: validatedKeywords,
         context,
         model,
-        organizationId
-      ]);
-
-      return result.rows[0];
+        tenantId
+      });
     } catch (error) {
-      console.error('Error upserting keyword expansion:', error);
+      logger.error('Model error upserting keyword expansion', { 
+        error: error.message, 
+        originalKeyword, 
+        tenantId 
+      });
       throw error;
     }
   }
@@ -77,7 +69,7 @@ class KeywordExpansion {
 
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error finding cached keyword expansion:', error);
+      logger.error('Error finding cached keyword expansion:', error);
       throw error;
     }
   }
@@ -109,7 +101,7 @@ class KeywordExpansion {
       const result = await query(sql, params);
       return result.rows;
     } catch (error) {
-      console.error('Error finding organization keyword expansions:', error);
+      logger.error('Error finding organization keyword expansions:', error);
       throw error;
     }
   }
@@ -144,7 +136,7 @@ class KeywordExpansion {
       const result = await query(sql, params);
       return result.rows;
     } catch (error) {
-      console.error('Error getting most used keywords:', error);
+      logger.error('Error getting most used keywords:', error);
       throw error;
     }
   }
@@ -174,7 +166,7 @@ class KeywordExpansion {
       const result = await query(sql, params);
       return result.rows;
     } catch (error) {
-      console.error('Error searching keyword expansions:', error);
+      logger.error('Error searching keyword expansions:', error);
       throw error;
     }
   }
@@ -193,7 +185,7 @@ class KeywordExpansion {
 
       return result.rowCount;
     } catch (error) {
-      console.error('Error pruning old keyword expansions:', error);
+      logger.error('Error pruning old keyword expansions:', error);
       throw error;
     }
   }
@@ -223,7 +215,7 @@ class KeywordExpansion {
       const result = await query(sql, params);
       return result.rows[0];
     } catch (error) {
-      console.error('Error getting keyword expansion stats:', error);
+      logger.error('Error getting keyword expansion stats:', error);
       throw error;
     }
   }
@@ -241,7 +233,7 @@ class KeywordExpansion {
 
       return result.rowCount > 0;
     } catch (error) {
-      console.error('Error deleting keyword expansion:', error);
+      logger.error('Error deleting keyword expansion:', error);
       throw error;
     }
   }

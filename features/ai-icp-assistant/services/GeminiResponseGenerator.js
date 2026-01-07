@@ -3,6 +3,8 @@
  * Uses Gemini API to generate natural, conversational responses
  */
 
+const logger = require('../utils/logger');
+
 let genAI = null;
 let GoogleGenerativeAI = null;
 
@@ -11,10 +13,10 @@ try {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (geminiApiKey) {
     genAI = new GoogleGenerativeAI(geminiApiKey);
-    console.log('✅ Gemini AI initialized for response generation');
+    logger.info('Gemini AI initialized for response generation');
   }
 } catch (error) {
-  console.log('⚠️ Gemini AI package not found for response generation');
+  logger.warn('Gemini AI package not found for response generation');
   genAI = null;
 }
 
@@ -43,6 +45,9 @@ class GeminiResponseGenerator {
 
       const stageInstructions = this.getStageInstructions(stage, context, questionType);
       
+      // Check if the question for this stage was already answered
+      const alreadyAnswered = this.checkIfQuestionAlreadyAnswered(stage, context, recentHistory);
+      
       const prompt = `You are Maya, a friendly and professional AI assistant helping users set up their outreach campaigns. You're having a natural conversation to understand their needs.
 
 **Current Context:**
@@ -53,6 +58,7 @@ ${recentHistory || 'This is the start of the conversation.'}
 
 **Current Stage:** ${stage}
 **User's Latest Message:** "${message || '(no message yet)'}"
+${alreadyAnswered ? '\n**⚠️ IMPORTANT: The question for this stage has ALREADY been answered. DO NOT ask it again. Move to the next question or acknowledge the answer.**' : ''}
 
 **Your Task:**
 ${stageInstructions}
@@ -85,11 +91,11 @@ Generate your response now (just the text, no JSON, no explanations):`;
         .replace(/```[\s\S]*?```/g, '') // Remove code blocks
         .trim();
 
-      console.log(`🤖 Gemini generated response: "${cleanResponse}"`);
+      logger.debug('Gemini generated response', { response: cleanResponse });
       return cleanResponse;
 
     } catch (error) {
-      console.warn('⚠️ Gemini response generation error:', error.message);
+      logger.warn('Gemini response generation error', { error: error.message, stage, context });
       return this.generateFallbackResponse(stage, context, questionType);
     }
   }
