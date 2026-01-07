@@ -86,6 +86,6 @@ substitutions:
   _BASE_URL: 'https://voag.techiemaya.com'
   _GCP_PROJECT_ID: 'salesmaya-pluto'
   _GCP_LOCATION: 'us-central1'
-  _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls'
+  _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls-v2'
   _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-3nddlneyya-uc.a.run.app/api/deal-pipeline/bookings'
   _DEFAULT_FOLLOW_UP_AGENT_ID: '14'
