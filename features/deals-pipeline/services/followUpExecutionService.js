@@ -239,6 +239,13 @@ class FollowUpExecutionService {
    */
   async prepareCallParameters(schema, booking, tenantId, client) {
     try {
+      logger.info('[FollowUpExecution] Preparing call parameters:', {
+        tenantId,
+        bookingId: booking.id,
+        bookingLeadId: booking.lead_id,
+        schema
+      });
+
       // Fetch lead information
       const leadQuery = `
         SELECT 
@@ -258,6 +265,14 @@ class FollowUpExecutionService {
       if (!lead) {
         throw new Error('Lead not found for booking');
       }
+
+      logger.info('[FollowUpExecution] Lead found:', {
+        tenantId,
+        bookingId: booking.id,
+        leadId: lead.id,
+        leadName: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+        phoneNumber: this.maskPhoneNumber(lead.phone)
+      });
 
       // Get default agent ID (could be from booking metadata or tenant settings)
       // For now, use a configurable default or fetch from tenant settings
@@ -289,6 +304,14 @@ class FollowUpExecutionService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Mask phone number for logging (show only last 4 digits)
+   */
+  maskPhoneNumber(phoneNumber) {
+    if (!phoneNumber || phoneNumber.length < 4) return '***';
+    return '***' + phoneNumber.slice(-4);
   }
 
   /**

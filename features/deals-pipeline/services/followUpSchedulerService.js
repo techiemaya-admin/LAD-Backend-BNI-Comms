@@ -46,6 +46,7 @@ class FollowUpSchedulerService {
    * @param {string} params.leadId - Lead ID
    * @param {string} params.assignedUserId - Assigned user ID
    * @param {Date|string} params.scheduledAt - When to execute the call
+   * @param {string} params.timezone - Timezone of the scheduled time (e.g., 'GST', 'UTC')
    * @param {string} params.bookingType - Booking type
    * @param {string} params.schema - Schema name (resolved from tenant)
    * @returns {Promise<Object>} Scheduling result
@@ -56,6 +57,7 @@ class FollowUpSchedulerService {
     leadId,
     assignedUserId,
     scheduledAt,
+    timezone,
     bookingType,
     schema
   }) {
@@ -106,14 +108,44 @@ class FollowUpSchedulerService {
         scheduledAt
       );
 
-      // Parse schedule time
-      const scheduleTime = scheduledAt instanceof Date 
-        ? scheduledAt 
-        : new Date(scheduledAt);
+      // Parse schedule time and convert from local timezone to UTC
+      let scheduleTime;
+      if (scheduledAt instanceof Date) {
+        // If already a Date object, assume it's already in the correct timezone
+        scheduleTime = scheduledAt;
+      } else {
+        // Parse the time and convert from local timezone to UTC
+        const localTime = new Date(scheduledAt);
+        
+        // Convert based on timezone
+        let utcOffset = 0; // Default to UTC
+        if (timezone === 'GST') {
+          utcOffset = 4; // GST is UTC+4
+        } else if (timezone === 'EST') {
+          utcOffset = -5; // EST is UTC-5
+        } else if (timezone === 'PST') {
+          utcOffset = -8; // PST is UTC-8
+        }
+        // Add more timezone mappings as needed
+        
+        // Convert local time to UTC by subtracting the offset
+        scheduleTime = new Date(localTime.getTime() - (utcOffset * 60 * 60 * 1000));
+      }
 
       // If scheduled time is in the past, schedule for immediate execution
       const now = new Date();
       const effectiveScheduleTime = scheduleTime < now ? now : scheduleTime;
+
+      logger.info('[FollowUpScheduler] Time conversion:', {
+        tenantId,
+        bookingId,
+        originalTime: scheduledAt,
+        timezone: timezone || 'UTC',
+        localTime: scheduledAt instanceof Date ? scheduledAt.toISOString() : new Date(scheduledAt).toISOString(),
+        utcTime: scheduleTime.toISOString(),
+        effectiveTime: effectiveScheduleTime.toISOString(),
+        nowUTC: now.toISOString()
+      });
 
       // Build task payload
       const payload = {

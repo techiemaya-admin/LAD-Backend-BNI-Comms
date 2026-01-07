@@ -86,6 +86,7 @@ class BookingNotificationListener {
         leadId: booking.lead_id,
         assignedUserId: booking.assigned_user_id,
         scheduledAt: booking.scheduled_at,
+        timezone: booking.timezone,
         bookingType: booking.booking_type,
         schema: schema
       });

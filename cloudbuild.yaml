@@ -88,4 +88,4 @@ substitutions:
   _GCP_LOCATION: 'us-central1'
   _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls'
   _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-3nddlneyya-uc.a.run.app/api/deal-pipeline/bookings'
-  _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
+  _DEFAULT_FOLLOW_UP_AGENT_ID: '14'
