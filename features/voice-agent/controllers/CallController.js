@@ -268,12 +268,14 @@ class CallController {
   async getCallLogs(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const { status, agent_id, start_date, limit } = req.query;
+      const { status, agent_id, start_date, from_date, to_date, limit } = req.query;
 
       const filters = {};
       if (status) filters.status = status;
       if (agent_id) filters.agentId = agent_id;
       if (start_date) filters.startDate = new Date(start_date);
+      if (from_date) filters.fromDate = new Date(from_date);
+      if (to_date) filters.toDate = new Date(to_date);
 
       const user = req.user;
       const isAdmin = user?.role === 'admin';

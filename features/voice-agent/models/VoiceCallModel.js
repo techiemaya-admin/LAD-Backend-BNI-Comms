@@ -288,6 +288,16 @@ class VoiceCallModel {
       values.push(filters.startDate);
       paramIndex++;
     }
+    if (filters.fromDate) {
+      whereClauses.push(`started_at >= $${paramIndex}`);
+      values.push(filters.fromDate);
+      paramIndex++;
+    }
+    if (filters.toDate) {
+      whereClauses.push(`started_at <= $${paramIndex}`);
+      values.push(filters.toDate);
+      paramIndex++;
+    }
     if (filters.userId) {
       whereClauses.push(`initiated_by_user_id = $${paramIndex}`);
       values.push(filters.userId);

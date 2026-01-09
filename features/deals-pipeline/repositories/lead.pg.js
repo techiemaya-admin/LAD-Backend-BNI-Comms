@@ -1,6 +1,7 @@
 // Lead Repository for deals-pipeline - LAD Architecture Compliant
 const { query } = require('../../../shared/database/connection');
 const leadDTO = require('../dtos/lead.dto');
+const { PRIORITY_TO_INT } = require('../constants/priority');
 
 // Use core utils in LAD architecture
 const { DEFAULT_SCHEMA } = require('../../../core/utils/schemaHelper');

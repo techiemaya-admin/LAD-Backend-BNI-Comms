@@ -43,6 +43,16 @@ exports.deleteNote = async (leadId, noteId, tenant_id, schema = DEFAULT_SCHEMA) 
 };
 
 /**
+ * Update a note
+ */
+exports.updateNote = async (leadId, noteId, noteData, tenant_id, schema = DEFAULT_SCHEMA) => {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for updateNote');
+  }
+  return await attachmentRepository.updateNote(noteId, leadId, noteData, tenant_id, schema);
+};
+
+/**
  * Create a new attachment record for a lead
  */
 exports.createAttachment = async ({ tenant_id, schema = DEFAULT_SCHEMA, leadId, file_url, file_name, file_type, file_size, uploaded_by }) => {

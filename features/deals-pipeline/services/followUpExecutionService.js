@@ -284,8 +284,38 @@ class FollowUpExecutionService {
         throw new Error('Lead has no phone number');
       }
 
-      // Build additional context
-      const addedContext = `This is a follow-up call for a scheduled booking at ${booking.scheduled_at}, try to access earlier conversation for student's response and don't ask any answered repeated questions`;
+      // Build additional context - fetch from lead_notes if available
+      let addedContext = `This is a follow-up call for a scheduled booking at ${booking.scheduled_at}, try to access earlier conversation for student's response and don't ask any answered repeated questions`;
+      
+      try {
+        const leadNotesQuery = `
+          SELECT content
+          FROM ${schema}.lead_notes
+          WHERE lead_id = $1 AND tenant_id = $2 AND is_deleted = false
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+        
+        const leadNotesResult = await client.query(leadNotesQuery, [booking.lead_id, tenantId]);
+        
+        if (leadNotesResult.rows.length > 0 && leadNotesResult.rows[0].content) {
+          addedContext = leadNotesResult.rows[0].content;
+          
+          logger.info('[FollowUpExecution] Using lead notes as context:', {
+            tenantId,
+            bookingId: booking.id,
+            leadId: booking.lead_id,
+            contentLength: addedContext.length
+          });
+        }
+      } catch (notesError) {
+        logger.warn('[FollowUpExecution] Failed to fetch lead notes, using default context:', {
+          tenantId,
+          bookingId: booking.id,
+          error: notesError.message
+        });
+        // Continue with default context if lead_notes query fails
+      }
 
       // Use phone number as fallback if no name available
       const leadName = lead.first_name || lead.last_name || phoneNumber || 'there';

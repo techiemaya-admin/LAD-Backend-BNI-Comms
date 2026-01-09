@@ -1,8 +1,3 @@
--- Migration: Create trigger to automatically schedule Cloud Tasks for follow-up bookings
--- Purpose: When a booking with follow-up type is inserted, automatically create a Cloud Task
--- This works regardless of which service creates the booking (VOAG or LAD backend)
-
--- Create a function that will be called by the trigger
 CREATE OR REPLACE FUNCTION lad_dev.schedule_followup_cloud_task()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -22,7 +17,6 @@ BEGIN
         'lead_id', NEW.lead_id,
         'assigned_user_id', NEW.assigned_user_id,
         'scheduled_at', NEW.scheduled_at,
-        'timezone', NEW.timezone,
         'booking_type', NEW.booking_type,
         'created_at', NEW.created_at
       )::text

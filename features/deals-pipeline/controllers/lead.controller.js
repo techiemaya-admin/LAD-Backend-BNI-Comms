@@ -65,13 +65,33 @@ exports.create = async (req, res) => {
     const lead = await leadService.create(req.body, tenant_id, schema);
     res.status(201).json(lead);
   } catch (error) {
-    logger.error('Error creating lead', error, { body: req.body });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      sqlState: error.sqlState
+    } : error;
+    
+    logger.error('Error creating lead', { 
+      error: errorMessage,
+      details: errorDetails,
+      body: req.body 
+    });
     
     if (error.code === 'TENANT_CONTEXT_MISSING') {
       return res.status(403).json({ error: error.message });
     }
     
-    res.status(500).json({ error: 'Failed to create lead', details: error.message });
+    // Return database constraint errors with more detail
+    if (error.code === '23502' || error.code === '23503') {
+      return res.status(400).json({ 
+        error: 'Invalid lead data', 
+        details: error.message 
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to create lead', details: errorMessage });
   }
 };
 
@@ -108,13 +128,24 @@ exports.remove = async (req, res) => {
     await leadService.remove(req.params.id, tenant_id, schema);
     res.status(204).send();
   } catch (error) {
-    logger.error('Error deleting lead', error, { leadId: req.params.id });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      code: error.code,
+      detail: error.detail
+    } : error;
+    
+    logger.error('Error deleting lead', { 
+      error: errorMessage,
+      details: errorDetails,
+      leadId: req.params.id
+    });
     
     if (error.code === 'TENANT_CONTEXT_MISSING') {
       return res.status(403).json({ error: error.message });
     }
     
-    res.status(500).json({ error: 'Failed to delete lead', details: error.message });
+    res.status(500).json({ error: 'Failed to delete lead', details: errorMessage });
   }
 };
 

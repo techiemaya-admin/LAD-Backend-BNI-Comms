@@ -24,6 +24,9 @@ router.get('/notes', jwtAuth, attachmentController.listNotes);
 // POST /api/deals-pipeline/leads/:id/notes
 router.post('/notes', jwtAuth, attachmentController.createNote);
 
+// PUT /api/deals-pipeline/leads/:id/notes/:noteId
+router.put('/notes/:noteId', jwtAuth, attachmentController.updateNote);
+
 // DELETE /api/deals-pipeline/leads/:id/notes/:noteId
 router.delete('/notes/:noteId', jwtAuth, attachmentController.deleteNote);
 
