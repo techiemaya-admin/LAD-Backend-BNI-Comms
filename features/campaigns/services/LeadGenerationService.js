@@ -116,6 +116,39 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
           : stepConfig.leadGenerationFilters)
       : {};
     
+    logger.debug('[Campaign Execution] Parsed lead generation filters', { 
+      hasLeadGenerationFilters: !!stepConfig.leadGenerationFilters,
+      filtersType: typeof stepConfig.leadGenerationFilters,
+      parsedFilters: filters,
+      stepConfig: JSON.stringify(stepConfig).substring(0, 500) // Log first 500 chars for debugging
+    });
+    
+    // GUARD: Check if at least one search criterion is provided
+    const hasRoles = filters.person_titles && filters.person_titles.length > 0;
+    const hasLocation = filters.organization_locations && filters.organization_locations.length > 0;
+    const hasIndustries = filters.organization_industries && filters.organization_industries.length > 0;
+    
+    logger.debug('[Campaign Execution] Filter criteria check', { 
+      hasRoles, 
+      hasLocation, 
+      hasIndustries,
+      rolesValue: filters.person_titles,
+      locationsValue: filters.organization_locations,
+      industriesValue: filters.organization_industries
+    });
+    
+    if (!hasRoles && !hasLocation && !hasIndustries) {
+      logger.warn('[Campaign Execution] No lead generation filters configured', { campaignId, stepConfig, filters });
+      return {
+        success: false,
+        error: 'Lead generation filter not configured. Please set at least one of: roles, location, or industries',
+        leadsFound: 0,
+        leadsSaved: 0,
+        source: 'skipped',
+        campaignId
+      };
+    }
+    
     // We always fetch 100 results from database/Apollo for efficiency
     // But only process the USER-SELECTED number (leadsPerDay) per day
     const fetchLimit = 100; // Always fetch 100 results (we cache the rest for next days)
@@ -138,16 +171,19 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       disable_leads_sync: true
     };
     
-    if (filters.roles && filters.roles.length > 0) {
-      searchParams.person_titles = Array.isArray(filters.roles) ? filters.roles : [filters.roles];
+    // Add configured filters to search params (validated above - at least one exists)
+    // Note: The API expects person_titles, organization_locations, organization_industries
+    // which matches the parsed filters structure
+    if (hasRoles) {
+      searchParams.person_titles = Array.isArray(filters.person_titles) ? filters.person_titles : [filters.person_titles];
     }
     
-    if (filters.location) {
-      searchParams.organization_locations = Array.isArray(filters.location) ? filters.location : [filters.location];
+    if (hasLocation) {
+      searchParams.organization_locations = Array.isArray(filters.organization_locations) ? filters.organization_locations : [filters.organization_locations];
     }
     
-    if (filters.industries && filters.industries.length > 0) {
-      searchParams.organization_industries = Array.isArray(filters.industries) ? filters.industries : [filters.industries];
+    if (hasIndustries) {
+      searchParams.organization_industries = Array.isArray(filters.organization_industries) ? filters.organization_industries : [filters.organization_industries];
     }
     
     if (tenantId) {
@@ -158,7 +194,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       searchParams.user_id = userId;
     }
     
-    logger.info('[Campaign Execution] Lead generation parameters', { dailyLimit, currentOffset, page, offsetInPage });
+    logger.info('[Campaign Execution] Lead generation parameters', { dailyLimit, currentOffset, page, offsetInPage, hasRoles, hasLocation, hasIndustries });
     
     // Log search parameters for debugging
     logger.debug('[Campaign Execution] Calling LeadSearchService with filters', {
