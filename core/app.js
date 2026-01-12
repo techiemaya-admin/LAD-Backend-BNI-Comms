@@ -212,6 +212,11 @@ class CoreApplication {
     this.app.use('/api/social-integration', this.createFeatureMiddleware('social-integration'), socialIntegrationRoutes);
     logger.info('[App] Social Integration routes mounted with feature flag check');
     
+    // AI ICP Assistant routes with feature flag check
+    const aiICPAssistantRoutes = require('../features/ai-icp-assistant/routes/index');
+    this.app.use('/api/ai-icp-assistant', this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
+    logger.info('[App] AI ICP Assistant routes mounted with feature flag check');
+    
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
       try {

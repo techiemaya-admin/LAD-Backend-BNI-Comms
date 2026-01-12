@@ -15,6 +15,7 @@ module.exports = {
   
   // Feature availability
   plans: ['professional', 'enterprise'],
+  hasRoutes: true,
   
   // Credit costs
   credits: {
