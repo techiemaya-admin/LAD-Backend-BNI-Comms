@@ -163,8 +163,9 @@ class VAPIService {
    * @returns {boolean} Should use VAPI
    */
   shouldUseVAPI(agentId) {
-    // VAPI routing: agent_id === "24" or "VAPI"
-    return agentId === '24' || agentId === 'VAPI' || agentId === 24;
+    // VAPI routing: agent_id === "24" or "VAPI" and service is enabled
+    const isVAPIAgent = agentId === '24' || agentId === 'VAPI' || agentId === 24;
+    return isVAPIAgent && this.enabled;
   }
 
   /**

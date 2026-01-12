@@ -141,13 +141,19 @@ class CoreApplication {
         return next();
       }
 
+      // Handle multiple JWT token formats for better compatibility
       const organizationId = req.user?.tenantId || req.user?.organizationId;
-      const userId = req.user?.userId;
+      const userId = req.user?.userId || req.user?.id; // Support both userId and id fields
       
       try {
         const isEnabled = await this.featureFlagService.isEnabled(organizationId, featureKey, userId);
         
         if (!isEnabled) {
+          logger.warn(`Feature ${featureKey} not enabled`, { 
+            organizationId, 
+            userId, 
+            userFields: Object.keys(req.user || {}) 
+          });
           return res.status(403).json({
             success: false,
             error: 'Feature not available',
