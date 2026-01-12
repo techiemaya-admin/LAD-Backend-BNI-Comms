@@ -212,15 +212,10 @@ class CoreApplication {
     this.app.use('/api/social-integration', this.createFeatureMiddleware('social-integration'), socialIntegrationRoutes);
     logger.info('[App] Social Integration routes mounted with feature flag check');
     
-    // AI ICP Assistant routes with feature flag check and error handling
-    try {
-      const aiICPAssistantRoutes = require('../features/ai-icp-assistant/routes/index');
-      this.app.use('/api/ai-icp-assistant', this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
-      logger.info('[App] AI ICP Assistant routes mounted with feature flag check');
-    } catch (error) {
-      logger.error('[App] Failed to load AI ICP Assistant routes', { error: error.message, stack: error.stack });
-      // Continue without these routes to prevent server startup failure
-    }
+    // AI ICP Assistant routes with feature flag check
+    const aiICPAssistantRoutes = require('../features/ai-icp-assistant/routes/index');
+    this.app.use('/api/ai-icp-assistant', this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
+    logger.info('[App] AI ICP Assistant routes mounted with feature flag check');
     
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
