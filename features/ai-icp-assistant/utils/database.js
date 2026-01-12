@@ -7,7 +7,7 @@ const { Pool } = require('pg');
 
 // PRODUCTION VALIDATION: Fail fast if required env vars missing
 if (process.env.NODE_ENV === 'production') {
-  const required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+  const required = ['POSTGRES_HOST', 'POSTGRES_USER', 'POSTGRES_PASSWORD'];
   const missing = required.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
