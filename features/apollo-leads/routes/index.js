@@ -148,6 +148,13 @@ router.post('/reveal-phone',
 router.post('/search-employees-from-db', ApolloLeadsController.searchEmployeesFromDb);
 
 /**
+ * POST /api/apollo-leads/search-employees
+ * Search employees - delegates to searchEmployeesFromDb
+ * This is the primary endpoint used by LeadSearchService
+ */
+router.post('/search-employees', ApolloLeadsController.searchEmployeesFromDb);
+
+/**
  * Feature health check
  */
 router.get('/health', async (req, res) => {
@@ -165,6 +172,7 @@ router.get('/health', async (req, res) => {
         'POST /reveal-email',
         'GET /leads/:id/phone',
         'POST /reveal-phone',
+        'POST /search-employees',
         'POST /search-employees-from-db'
       ]
     });
