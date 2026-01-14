@@ -29,7 +29,8 @@ async function searchEmployeesFromDb(searchParams, req = null) {
 
   try {
     // LAD Architecture: Extract tenant context from request
-    const tenantId = req?.user?.tenant_id || req?.tenant?.id || req?.headers?.['x-tenant-id'];
+    // Check both camelCase and snake_case for tenantId
+    const tenantId = req?.user?.tenantId || req?.user?.tenant_id || req?.user?.organizationId || req?.tenant?.id || req?.headers?.['x-tenant-id'];
     if (!tenantId && process.env.NODE_ENV === 'production') {
       throw new Error('Tenant context required');
     }
