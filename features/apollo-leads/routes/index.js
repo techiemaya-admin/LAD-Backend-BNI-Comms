@@ -58,6 +58,37 @@ const { requireFeature } = require('../../../shared/middleware/feature_guard');
 const { requireCredits } = require('../../../shared/middleware/credit_guard');
 const ApolloLeadsController = require(path.join(__dirname, '../controllers/ApolloLeadsController'));
 
+/**
+ * Feature health check - no authentication required
+ */
+router.get('/health', async (req, res) => {
+  try {
+    // Simple health check - no need for manifest
+    res.json({
+      feature: 'apollo-leads',
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      endpoints: [
+        'POST /search',
+        'GET /companies/:id',
+        'POST /companies/:id/leads',
+        'GET /leads/:id/email',
+        'POST /reveal-email',
+        'GET /leads/:id/phone',
+        'POST /reveal-phone',
+        'POST /search-employees',
+        'POST /search-employees-from-db'
+      ]
+    });
+  } catch (error) {
+    res.status(500).json({
+      feature: 'apollo-leads',
+      status: 'error',
+      error: error.message
+    });
+  }
+});
+
 // Feature guard middleware - all routes require apollo-leads feature
 router.use(requireFeature('apollo-leads'));
 
@@ -152,37 +183,4 @@ router.post('/search-employees-from-db', ApolloLeadsController.searchEmployeesFr
  * Search employees - delegates to searchEmployeesFromDb
  * This is the primary endpoint used by LeadSearchService
  */
-router.post('/search-employees', ApolloLeadsController.searchEmployeesFromDb);
-
-/**
- * Feature health check
- */
-router.get('/health', async (req, res) => {
-  try {
-    // Simple health check - no need for manifest
-    res.json({
-      feature: 'apollo-leads',
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      endpoints: [
-        'POST /search',
-        'GET /companies/:id',
-        'POST /companies/:id/leads',
-        'GET /leads/:id/email',
-        'POST /reveal-email',
-        'GET /leads/:id/phone',
-        'POST /reveal-phone',
-        'POST /search-employees',
-        'POST /search-employees-from-db'
-      ]
-    });
-  } catch (error) {
-    res.status(500).json({
-      feature: 'apollo-leads',
-      status: 'error',
-      error: error.message
-    });
-  }
-});
-
 module.exports = router;

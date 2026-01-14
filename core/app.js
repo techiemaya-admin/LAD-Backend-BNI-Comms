@@ -129,6 +129,11 @@ class CoreApplication {
    */
   createFeatureMiddleware(featureKey) {
     return async (req, res, next) => {
+      // Skip feature check for health endpoints
+      if (req.path.includes('/health')) {
+        return next();
+      }
+
       // Skip feature check for Cloud Tasks endpoints (they have their own auth)
       if ((req.url && req.url.includes('/execute-followup')) || 
           (req.originalUrl && req.originalUrl.includes('/execute-followup')) ||
