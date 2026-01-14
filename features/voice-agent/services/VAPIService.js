@@ -38,7 +38,7 @@ class VAPIService {
    * @param {Object} params - Call parameters
    * @param {string} params.phoneNumber - Recipient phone number
    * @param {string} params.leadName - Lead name for personalization
-   * @param {string} params.agentId - Agent ID (if "24" or "VAPI", use VAPI)
+   * @param {string} params.agentId - Agent ID (if "VAPI", use VAPI)
    * @param {string} params.addedContext - Additional context for the call
    * @param {Object} params.assistantOverrides - Assistant configuration overrides
    * @returns {Promise<Object>} VAPI call response
@@ -163,8 +163,8 @@ class VAPIService {
    * @returns {boolean} Should use VAPI
    */
   shouldUseVAPI(agentId) {
-    // VAPI routing: agent_id === "24" or "VAPI" and service is enabled
-    const isVAPIAgent = agentId === '24' || agentId === 'VAPI' || agentId === 24;
+    // VAPI routing: only for explicit "VAPI" agent (removed hardcoded agent 24)
+    const isVAPIAgent = agentId === 'VAPI';
     return isVAPIAgent && this.enabled;
   }
 
