@@ -28,7 +28,14 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       return { success: false, error: 'Lead not found' };
     }
     
-    const linkedinUrl = leadData.linkedin_url || leadData.employee_linkedin_url;
+    const linkedinUrl = leadData.linkedin_url 
+      || leadData.employee_linkedin_url
+      || (leadData.employee_data && typeof leadData.employee_data === 'string' 
+          ? JSON.parse(leadData.employee_data).linkedin_url 
+          : leadData.employee_data?.linkedin_url)
+      || (leadData.employee_data && leadData.employee_data.linkedin)
+      || (leadData.employee_data && leadData.employee_data.profile_url);
+    
     if (!linkedinUrl) {
       logger.error('[Campaign Execution] LinkedIn URL not found for lead', { leadId: campaignLead.id, leadDataKeys: Object.keys(leadData) });
       return { success: false, error: 'LinkedIn URL not found for lead' };

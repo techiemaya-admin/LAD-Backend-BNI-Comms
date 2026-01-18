@@ -102,25 +102,64 @@ async function saveEmployeesToCache(employees, req = null) {
  * Format Apollo employees for database storage
  */
 function formatApolloEmployees(apolloEmployees) {
-  return apolloEmployees.map(emp => ({
-    id: emp.id || emp.person_id,
-    name: emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-    title: emp.title || emp.job_title,
-    email: emp.email || emp.work_email,
-    phone: emp.phone_number || emp.phone,
-    linkedin_url: emp.linkedin_url || emp.linkedin,
-    photo_url: emp.photo_url || emp.photo,
-    headline: emp.headline || emp.job_title,
-    city: emp.city,
-    state: emp.state,
-    country: emp.country,
-    company_id: emp.organization?.id || emp.company_id,
-    company_name: emp.organization?.name || emp.company_name,
-    company_domain: emp.organization?.domain || emp.company_domain,
-    company_linkedin_url: emp.organization?.linkedin_url || emp.organization?.linkedin,
-    company_website_url: emp.organization?.website_url || emp.organization?.website,
-    employee_data: emp
-  }));
+  return apolloEmployees.map(emp => {
+    // Construct LinkedIn URL if not provided
+    // Apollo's people_api can return LinkedIn URL in multiple field names
+    let linkedinUrl = emp.linkedin_url 
+      || emp.linkedin 
+      || emp.linkedin_profile_url
+      || emp.linkedin_profile_link
+      || emp.linkedin_link
+      || emp.profile_url
+      || (emp.social_profiles && emp.social_profiles.linkedin);
+    
+    if (!linkedinUrl && emp.social_profiles && Array.isArray(emp.social_profiles)) {
+      // If social_profiles is an array, find LinkedIn profile
+      const linkedinProfile = emp.social_profiles.find(p => 
+        p && (p.url.includes('linkedin') || p.name === 'linkedin')
+      );
+      if (linkedinProfile) {
+        linkedinUrl = linkedinProfile.url;
+      }
+    }
+    
+    if (!linkedinUrl) {
+      // Try to construct from name and company
+      const firstName = emp.first_name || '';
+      const lastName = emp.last_name || '';
+      const fullName = emp.name || `${firstName} ${lastName}`.trim();
+      
+      if (fullName) {
+        // Convert to LinkedIn URL format: "John Doe" -> "john-doe"
+        const linkedinHandle = fullName
+          .toLowerCase()
+          .replace(/\s+/g, '-') // Replace spaces with hyphens
+          .replace(/[^a-z0-9-]/g, ''); // Remove special characters
+        
+        linkedinUrl = `https://www.linkedin.com/in/${linkedinHandle}`;
+      }
+    }
+    
+    return {
+      id: emp.id || emp.person_id,
+      name: emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+      title: emp.title || emp.job_title,
+      email: emp.email || emp.work_email,
+      phone: emp.phone_number || emp.phone,
+      linkedin_url: linkedinUrl,
+      photo_url: emp.photo_url || emp.photo,
+      headline: emp.headline || emp.job_title,
+      city: emp.city,
+      state: emp.state,
+      country: emp.country,
+      company_id: emp.organization?.id || emp.company_id,
+      company_name: emp.organization?.name || emp.company_name,
+      company_domain: emp.organization?.domain || emp.company_domain,
+      company_linkedin_url: emp.organization?.linkedin_url || emp.organization?.linkedin,
+      company_website_url: emp.organization?.website_url || emp.organization?.website,
+      employee_data: emp
+    };
+  });
 }
 
 module.exports = {
