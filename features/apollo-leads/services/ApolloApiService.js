@@ -182,14 +182,9 @@ async function callApolloApi(searchParams) {
   }
   
   // LAD Architecture: Use environment variable or constants (no hardcoded URLs)
-  const { APOLLO_CONFIG } = require('../models/constants');
-  // Normalize base URL to ensure it has /api/ in the path
-  let apolloBaseUrl = process.env.APOLLO_API_BASE_URL || APOLLO_CONFIG.DEFAULT_BASE_URL;
-  
-  // Fix common issue: if base URL is https://api.apollo.io/v2, convert to https://api.apollo.io/api/v2
-  if (apolloBaseUrl.includes('api.apollo.io') && !apolloBaseUrl.includes('/api/')) {
-    apolloBaseUrl = apolloBaseUrl.replace('api.apollo.io', 'api.apollo.io/api');
-  }
+  const { APOLLO_CONFIG } = require('../constants/constants');
+  // Use base URL from environment or constants
+  const apolloBaseUrl = process.env.APOLLO_API_BASE_URL || APOLLO_CONFIG.DEFAULT_BASE_URL;
   
   // LAD Architecture: Use endpoint constant (no hardcoded paths)
   const apolloSearchEndpoint = `${apolloBaseUrl}${APOLLO_CONFIG.ENDPOINTS.MIXED_PEOPLE_SEARCH}`;
