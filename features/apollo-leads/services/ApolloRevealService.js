@@ -3,12 +3,14 @@
  * LAD Architecture Compliant - Email and phone reveal operations
  * 
  * Handles revealing emails and phone numbers with proper tenant scoping and caching.
+ * Includes refund mechanism for failed API calls to prevent credit loss.
  */
 
 const axios = require('axios');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const { requireTenantId } = require('../../../core/utils/tenantHelper');
 const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../constants/constants');
+const { refundCredits } = require('../../../shared/middleware/credit_guard');
 const logger = require('../../../core/utils/logger');
 const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
 
@@ -29,8 +31,33 @@ class ApolloRevealService {
   }
 
   /**
+   * Attempt to refund credits for failed operations
+   * FIX: Implements credit refund mechanism for validation errors
+   * @private
+   */
+  async _attemptRefund(tenantId, usageType, credits, req, reason = 'Operation failed') {
+    try {
+      if (req && tenantId && credits > 0) {
+        await refundCredits(tenantId, usageType, credits, req, reason);
+        logger.info('[Apollo Reveal] Credits refunded', { tenantId, credits, usageType, reason });
+      }
+    } catch (refundError) {
+      logger.error('[Apollo Reveal] Failed to refund credits', { 
+        tenantId, 
+        credits, 
+        error: refundError.message 
+      });
+      // Don't throw - refund failure shouldn't block user response
+    }
+  }
+
+  /**
    * Reveal email - checks database cache first, then calls Apollo API
    * LAD Architecture: Uses tenant scoping and delegates SQL to repository
+   * 
+   * FIX: Validate personId is a valid Apollo person ID format (numeric string)
+   * Apollo person IDs are numeric values, not UUIDs. If the ID looks like a UUID,
+   * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
   async revealEmail(personId, employeeName = null, req = null) {
     try {
@@ -71,6 +98,38 @@ class ApolloRevealService {
       
       if (!personId) {
         return { email: null, from_cache: false, credits_used: 0, error: 'Person ID is required for email reveal' };
+      }
+      
+      // CRITICAL FIX: Validate personId format
+      // Apollo person IDs are numeric. If we receive a UUID format ID (likely a database record ID),
+      // we should reject it and not call Apollo API
+      const isUUIDFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(personId));
+      if (isUUIDFormat) {
+        logger.warn('[Apollo Reveal] Person ID has UUID format - likely a database ID, not an Apollo person ID', { personId });
+        // Refund credits for validation error - no service provided
+        await this._attemptRefund(tenantId, 'apollo_email', CREDIT_COSTS.EMAIL_REVEAL, req, 'Invalid person ID format');
+        return { 
+          email: null, 
+          from_cache: false, 
+          credits_used: 0, 
+          error: 'Invalid person ID format. Apollo expects numeric person IDs from search results.',
+          validation_error: true
+        };
+      }
+      
+      // Validate personId is numeric or at least not completely invalid
+      const personIdNum = Number(personId);
+      if (isNaN(personIdNum) && personId && personId.length > 50) {
+        logger.warn('[Apollo Reveal] Person ID format appears invalid for Apollo API', { personId, length: personId.length });
+        // Refund credits for validation error - no service provided
+        await this._attemptRefund(tenantId, 'apollo_email', CREDIT_COSTS.EMAIL_REVEAL, req, 'Invalid person ID format');
+        return { 
+          email: null, 
+          from_cache: false, 
+          credits_used: 0, 
+          error: 'Invalid person ID format. Expected numeric Apollo person ID.',
+          validation_error: true
+        };
       }
       
       const apolloRequest = {
@@ -120,7 +179,25 @@ class ApolloRevealService {
         responseData: error.response?.data
       });
       
-      // Only charge credits if it was a server error, not a client error
+      // CRITICAL FIX: Refund credits for client errors (4xx)
+      // Client errors mean the request was malformed or invalid - no service provided
+      // Only charge credits for successful reveals (200) or server errors (5xx retry)
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        logger.warn('[Apollo Reveal] Refunding credits due to client error (4xx)', { 
+          status: error.response?.status,
+          error: error.response?.data?.message || error.message
+        });
+        await this._attemptRefund(tenantId, 'apollo_email', CREDIT_COSTS.EMAIL_REVEAL, req, `Apollo API error: ${error.response?.status} ${error.response?.data?.message || error.message}`);
+        return { 
+          email: null, 
+          from_cache: false, 
+          credits_used: 0, // No charge for invalid requests
+          error: `Apollo API error: ${error.response?.data?.message || error.message}`,
+          apollo_status: error.response?.status
+        };
+      }
+      
+      // For server errors (5xx), don't refund - retry could succeed
       const creditsUsed = error.response?.status >= 500 ? CREDIT_COSTS.EMAIL_REVEAL : 0;
       
       return { 
@@ -135,6 +212,10 @@ class ApolloRevealService {
   /**
    * Reveal phone - checks database cache first, then calls Apollo API
    * LAD Architecture: Uses tenant scoping and delegates SQL to repository
+   * 
+   * FIX: Validate personId is a valid Apollo person ID format (numeric string)
+   * Apollo person IDs are numeric values, not UUIDs. If the ID looks like a UUID,
+   * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
   async revealPhone(personId, employeeName = null, req = null) {
     try {
@@ -175,6 +256,38 @@ class ApolloRevealService {
       
       if (!personId) {
         return { phone: null, from_cache: false, credits_used: 0, error: 'Person ID is required for phone reveal' };
+      }
+      
+      // CRITICAL FIX: Validate personId format
+      // Apollo person IDs are numeric. If we receive a UUID format ID (likely a database record ID),
+      // we should reject it and not call Apollo API
+      const isUUIDFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(personId));
+      if (isUUIDFormat) {
+        logger.warn('[Apollo Reveal] Person ID has UUID format - likely a database ID, not an Apollo person ID', { personId });
+        // Refund credits for validation error - no service provided
+        await this._attemptRefund(tenantId, 'apollo_phone', CREDIT_COSTS.PHONE_REVEAL, req, 'Invalid person ID format');
+        return { 
+          phone: null, 
+          from_cache: false, 
+          credits_used: 0, 
+          error: 'Invalid person ID format. Apollo expects numeric person IDs from search results.',
+          validation_error: true
+        };
+      }
+      
+      // Validate personId is numeric or at least not completely invalid
+      const personIdNum = Number(personId);
+      if (isNaN(personIdNum) && personId && personId.length > 50) {
+        logger.warn('[Apollo Reveal] Person ID format appears invalid for Apollo API', { personId, length: personId.length });
+        // Refund credits for validation error - no service provided
+        await this._attemptRefund(tenantId, 'apollo_phone', CREDIT_COSTS.PHONE_REVEAL, req, 'Invalid person ID format');
+        return { 
+          phone: null, 
+          from_cache: false, 
+          credits_used: 0, 
+          error: 'Invalid person ID format. Expected numeric Apollo person ID.',
+          validation_error: true
+        };
       }
       
       const apolloRequest = {
@@ -229,7 +342,25 @@ class ApolloRevealService {
         responseData: error.response?.data
       });
       
-      // Only charge credits if it was a server error, not a client error
+      // CRITICAL FIX: Refund credits for client errors (4xx)
+      // Client errors mean the request was malformed or invalid - no service provided
+      // Only charge credits for successful requests or server errors (5xx retry)
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        logger.warn('[Apollo Reveal] Refunding credits due to client error (4xx)', { 
+          status: error.response?.status,
+          error: error.response?.data?.message || error.message
+        });
+        await this._attemptRefund(tenantId, 'apollo_phone', CREDIT_COSTS.PHONE_REVEAL, req, `Apollo API error: ${error.response?.status} ${error.response?.data?.message || error.message}`);
+        return { 
+          phone: null, 
+          from_cache: false, 
+          credits_used: 0, // No charge for invalid requests
+          error: `Apollo API error: ${error.response?.data?.message || error.message}`,
+          apollo_status: error.response?.status
+        };
+      }
+      
+      // For server errors (5xx), don't refund - retry could succeed
       const creditsUsed = error.response?.status >= 500 ? CREDIT_COSTS.PHONE_REVEAL : 0;
       
       return { 

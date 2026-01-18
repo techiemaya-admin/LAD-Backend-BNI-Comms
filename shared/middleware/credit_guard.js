@@ -111,13 +111,29 @@ const requireCredits = (usageType, creditsRequired) => {
 
 /**
  * Get current credit balance for a tenant
+ * Updated to support both legacy user_credits and new billing_wallets system
  */
 async function getCreditBalance(tenantId) {
   // LAD Architecture: Use dynamic schema resolution
   const schema = process.env.DB_SCHEMA || 'lad_dev';
   
-  // Note: user_credits table uses user_id and tenant_id
-  const query = `
+  // First try the new billing_wallets system (preferred)
+  const walletQuery = `
+    SELECT 
+      current_balance as balance
+    FROM ${schema}.billing_wallets
+    WHERE tenant_id = $1
+    LIMIT 1
+  `;
+  
+  let result = await pool.query(walletQuery, [tenantId]);
+  
+  if (result.rows.length > 0) {
+    return parseFloat(result.rows[0].balance);
+  }
+  
+  // Fall back to legacy user_credits table for backward compatibility
+  const legacyQuery = `
     SELECT 
       COALESCE(uc.balance, 0) as balance
     FROM ${schema}.user_credits uc
@@ -125,10 +141,10 @@ async function getCreditBalance(tenantId) {
     LIMIT 1
   `;
   
-  const result = await pool.query(query, [tenantId]);
+  result = await pool.query(legacyQuery, [tenantId]);
   
   if (result.rows.length === 0) {
-    // Return 0 balance if no record found instead of throwing error
+    // Return 0 balance if no record found
     return 0;
   }
   
@@ -238,8 +254,69 @@ const trackUsage = (usageType) => {
   };
 };
 
+/**
+ * Refund credits to user account
+ * Used when an API operation fails after credits were deducted (e.g., validation errors)
+ * 
+ * FIX: Implements credit refund mechanism for failed Apollo API calls
+ * When Apollo API returns 4xx errors (client errors like 422), no service should be provided,
+ * so credits should be refunded to the user.
+ */
+async function refundCredits(tenantId, usageType, credits, req, reason = 'Operation failed') {
+  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Refund to balance (add back the credits)
+    await client.query(
+      `UPDATE ${schema}.user_credits SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2 OR tenant_id = $2`,
+      [credits, tenantId]
+    );
+    
+    // Log refund transaction
+    await client.query(
+      `INSERT INTO ${schema}.credit_transactions (
+        user_id,
+        tenant_id,
+        amount,
+        transaction_type,
+        description,
+        metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        req.user?.userId || req.user?.id || tenantId,
+        tenantId,
+        credits, // Positive amount for refund
+        'refund',
+        `Refund: ${usageType} - ${reason}`,
+        {
+          usage_type: usageType,
+          reason: reason,
+          endpoint: req.path,
+          method: req.method,
+          timestamp: new Date().toISOString()
+        }
+      ]
+    );
+    
+    await client.query('COMMIT');
+    
+    console.log(`💰 Refunded ${credits} credits to ${tenantId} (${usageType}) - Reason: ${reason}`);
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`❌ Error refunding credits: ${error.message}`);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   requireCredits,
   trackUsage,
-  getCreditBalance
+  getCreditBalance,
+  refundCredits
 };

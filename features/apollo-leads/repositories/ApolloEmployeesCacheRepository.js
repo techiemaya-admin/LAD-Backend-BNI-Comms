@@ -177,6 +177,13 @@ class ApolloEmployeesCacheRepository {
       dbQuery += ` AND (${industryConditions.join(' OR ')})`;
     }
     
+    // Filter out excluded IDs (leads already used in campaigns)
+    if (searchParams.exclude_ids && searchParams.exclude_ids.length > 0) {
+      // Use ANY with array parameter for efficient exclusion
+      queryParams.push(searchParams.exclude_ids);
+      dbQuery += ` AND ec.apollo_person_id NOT IN (SELECT UNNEST($${paramIndex++}::text[]))`;
+    }
+    
     // Add pagination
     const offset = (page - 1) * per_page;
     dbQuery += ` ORDER BY ec.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;

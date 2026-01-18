@@ -253,11 +253,17 @@ router.get('/me', async (req, res) => {
   try {
     // Check if user is authenticated from JWT token
     if (!req.user || !req.user.userId) {
+      logger.debug('[Auth Me] No authenticated user, returning guest context', {
+        hasUser: !!req.user,
+        hasUserId: !!req.user?.userId
+      });
       return res.status(401).json({
         success: false,
         error: 'Not authenticated'
       });
     }
+    
+    logger.debug('[Auth Me] Getting user data for', { userId: req.user.userId });
     
     // Get fresh user data from database
     const result = await query(`
@@ -275,6 +281,7 @@ router.get('/me', async (req, res) => {
     `, [req.user.userId]);
     
     if (result.rows.length === 0) {
+      logger.warn('[Auth Me] User not found in database', { userId: req.user.userId });
       return res.status(404).json({
         success: false,
         error: 'User not found'
@@ -359,7 +366,11 @@ router.get('/me', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Get current user error', { error: error.message, stack: error.stack });
+    logger.error('[Auth Me] Error retrieving user data', { 
+      error: error.message, 
+      stack: error.stack,
+      userId: req.user?.userId 
+    });
     res.status(500).json({
       success: false,
       error: 'Failed to get user information'

@@ -23,15 +23,21 @@ function getBackendUrl() {
 
 /**
  * Get authentication headers for API calls
- * If authToken is provided, use it. Otherwise try to get from environment.
+ * For user requests: Use authToken
+ * For service-to-service calls: Use x-tenant-id header (no auth required)
  */
-function getAuthHeaders(authToken) {
+function getAuthHeaders(authToken, tenantId = null) {
   const headers = {
     'Content-Type': 'application/json'
   };
   
   if (authToken) {
+    // User-authenticated request
     headers['Authorization'] = `Bearer ${authToken}`;
+  } else if (tenantId) {
+    // Service-to-service call - use tenant header instead of auth
+    // The Apollo leads controller supports x-tenant-id for internal calls
+    headers['x-tenant-id'] = tenantId;
   } else if (process.env.JWT_TOKEN) {
     headers['Authorization'] = `Bearer ${process.env.JWT_TOKEN}`;
   }
@@ -45,10 +51,11 @@ function getAuthHeaders(authToken) {
  * @param {number} page - Page number
  * @param {number} offsetInPage - Offset within page
  * @param {number} dailyLimit - Daily limit of leads needed
- * @param {string} authToken - Optional JWT token for authentication
+ * @param {string} authToken - Optional JWT token for user authentication
+ * @param {string} tenantId - Tenant ID for service-to-service calls (when no authToken)
  * @returns {Object} { employees, fromSource }
  */
-async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken = null) {
+async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken = null, tenantId = null) {
   logger.debug('[Lead Search] Searching database for leads', { searchParams, page, offsetInPage, dailyLimit });
   try {
     logger.debug('[Lead Search] Checking database (employees_cache)', { page });
@@ -61,14 +68,29 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
         per_page: 100
       },
       {
-        headers: getAuthHeaders(authToken),
+        headers: getAuthHeaders(authToken, tenantId),
         timeout: 60000
       }
     );
     
     if (dbResponse.data && dbResponse.data.success !== false) {
-      const dbEmployees = dbResponse.data.employees || dbResponse.data || [];
+      let dbEmployees = dbResponse.data.employees || dbResponse.data || [];
       logger.info('[Lead Search] Found leads in database', { count: dbEmployees.length, page });
+      
+      // Filter out excluded IDs (leads already used by this tenant)
+      if (searchParams.exclude_ids && searchParams.exclude_ids.length > 0) {
+        const excludeSet = new Set(searchParams.exclude_ids);
+        const beforeFilter = dbEmployees.length;
+        dbEmployees = dbEmployees.filter(emp => {
+          const empId = emp.id || emp.apollo_person_id;
+          return empId && !excludeSet.has(empId);
+        });
+        logger.info('[Lead Search] Filtered out existing leads from database results', { 
+          before: beforeFilter, 
+          after: dbEmployees.length, 
+          filtered: beforeFilter - dbEmployees.length 
+        });
+      }
       
       // Apply offset within this page and take daily limit
       const availableFromDb = dbEmployees.slice(offsetInPage, offsetInPage + dailyLimit);
@@ -121,7 +143,7 @@ async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dai
  * @param {string} authToken - Optional JWT token for authentication
  * @returns {Array} Array of employees
  */
-async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neededCount, authToken = null) {
+async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neededCount, authToken = null, tenantId = null) {
   try {
     logger.debug('[Lead Search] Fetching from Apollo API', { page });
     
@@ -140,7 +162,7 @@ async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neede
         `${getBackendUrl()}/api/apollo-leads/search-employees`,
         apolloParams,
         {
-          headers: getAuthHeaders(authToken),
+          headers: getAuthHeaders(authToken, tenantId),
           timeout: 60000
         }
       );
@@ -153,7 +175,7 @@ async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neede
           `${getBackendUrl()}/api/apollo-leads/search-employees-from-db`,
           apolloParams,
           {
-            headers: getAuthHeaders(authToken),
+            headers: getAuthHeaders(authToken, tenantId),
             timeout: 60000
           }
         );
@@ -165,8 +187,23 @@ async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neede
     }
     
     if (apolloResponse.data && apolloResponse.data.success !== false) {
-      const apolloEmployees = apolloResponse.data.employees || apolloResponse.data || [];
+      let apolloEmployees = apolloResponse.data.employees || apolloResponse.data || [];
       logger.info('[Lead Search] Found leads from Apollo', { count: apolloEmployees.length, page });
+      
+      // Filter out excluded IDs (leads already used by this tenant)
+      if (searchParams.exclude_ids && searchParams.exclude_ids.length > 0) {
+        const excludeSet = new Set(searchParams.exclude_ids);
+        const beforeFilter = apolloEmployees.length;
+        apolloEmployees = apolloEmployees.filter(emp => {
+          const empId = emp.id || emp.apollo_person_id;
+          return empId && !excludeSet.has(empId);
+        });
+        logger.info('[Lead Search] Filtered out existing leads from Apollo results', { 
+          before: beforeFilter, 
+          after: apolloEmployees.length, 
+          filtered: beforeFilter - apolloEmployees.length 
+        });
+      }
       
       // Apply offset within Apollo page and take what we need
       return apolloEmployees.slice(offsetInPage, offsetInPage + neededCount);
@@ -200,12 +237,12 @@ async function searchEmployeesFromApollo(searchParams, page, offsetInPage, neede
  * @param {string} authToken - Optional JWT token for authentication
  * @returns {Object} { employees, fromSource }
  */
-async function searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken = null) {
+async function searchEmployees(searchParams, page, offsetInPage, dailyLimit, authToken = null, tenantId = null) {
   logger.info('[Lead Search] Starting employee search', { searchParams, page, offsetInPage, dailyLimit, backendUrl: getBackendUrl() });
   
   // STEP 1: Try to get leads from database first
   logger.debug('[Lead Search] STEP 1: Searching database');
-  const dbResult = await searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken);
+  const dbResult = await searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken, tenantId);
   let employees = dbResult.employees;
   let fromSource = dbResult.fromSource;
   const accessDenied = dbResult.accessDenied || false;
@@ -221,7 +258,7 @@ async function searchEmployees(searchParams, page, offsetInPage, dailyLimit, aut
   if (employees.length < dailyLimit) {
     const neededFromApollo = dailyLimit - employees.length;
     logger.debug('[Lead Search] STEP 2: Need more leads, fetching from Apollo', { neededFromApollo });
-    const apolloEmployees = await searchEmployeesFromApollo(searchParams, page, offsetInPage, neededFromApollo, authToken);
+    const apolloEmployees = await searchEmployeesFromApollo(searchParams, page, offsetInPage, neededFromApollo, authToken, tenantId);
     
     // Combine database leads with Apollo leads
     employees = [...employees, ...apolloEmployees].slice(0, dailyLimit);

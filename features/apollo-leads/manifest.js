@@ -105,7 +105,7 @@ const FEATURE = {
   external_apis: [
     {
       name: 'Apollo.io API',
-      url: process.env.APOLLO_API_BASE_URL || require('../../../core/config/constants').APOLLO_CONFIG.DEFAULT_BASE_URL,
+      url: process.env.APOLLO_API_BASE_URL || require('./constants/constants').APOLLO_CONFIG.DEFAULT_BASE_URL,
       required: true
     }
   ],
