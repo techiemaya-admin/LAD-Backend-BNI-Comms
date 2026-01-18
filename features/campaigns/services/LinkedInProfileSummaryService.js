@@ -16,7 +16,7 @@ async function generateAndSaveProfileSummary(campaignLeadId, leadData, profileDa
     // Generate summary using Gemini AI
     let summary = null;
     try {
-      const GoogleGenerativeAI = require('@google/generative-ai');
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
       const geminiApiKey = process.env.GEMINI_API_KEY;
       
       if (geminiApiKey) {
