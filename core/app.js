@@ -193,40 +193,40 @@ class CoreApplication {
     this.app.use('/api/billing', billingRoutes);
     this.app.use('/api/users', userRoutes);
     
-    // Campaigns routes with feature flag check
+    // Campaigns routes with authentication and feature flag check
     const campaignsRoutes = require('../features/campaigns/routes/index');
-    this.app.use('/api/campaigns', this.createFeatureMiddleware('campaigns'), campaignsRoutes);
-    logger.info('[App] Campaigns routes mounted with feature flag check');
+    this.app.use('/api/campaigns', authenticateToken, this.createFeatureMiddleware('campaigns'), campaignsRoutes);
+    logger.info('[App] Campaigns routes mounted with authentication and feature flag check');
     
-    // Apollo Leads routes with feature flag check
+    // Apollo Leads routes with authentication AND feature flag check
     const apolloLeadsRoutes = require('../features/apollo-leads/routes/index');
-    this.app.use('/api/apollo-leads', this.createFeatureMiddleware('apollo-leads'), apolloLeadsRoutes);
-    logger.info('[App] Apollo Leads routes mounted with feature flag check');
+    this.app.use('/api/apollo-leads', authenticateToken, this.createFeatureMiddleware('apollo-leads'), apolloLeadsRoutes);
+    logger.info('[App] Apollo Leads routes mounted with authentication and feature flag check');
     
-    // Voice Agent routes with feature flag check  
+    // Voice Agent routes with authentication and feature flag check
     const voiceAgentRoutes = require('../features/voice-agent/routes/index');
-    this.app.use('/api/voice-agent', this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
-    logger.info('[App] Voice Agent routes mounted with feature flag check');
+    this.app.use('/api/voice-agent', authenticateToken, this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
+    logger.info('[App] Voice Agent routes mounted with authentication and feature flag check');
     
     // Deals Pipeline public routes FIRST (Cloud Tasks endpoints - no feature flag check)
     const dealsPipelinePublicRoutes = require('../features/deals-pipeline/routes/public.routes');
     this.app.use('/api/deal-pipeline', dealsPipelinePublicRoutes);
     logger.info('[App] Deals Pipeline public routes mounted (no feature check)');
     
-    // Deals Pipeline protected routes AFTER (with feature flag check)
+    // Deals Pipeline protected routes with authentication and feature flag check
     const dealsPipelineRoutes = require('../features/deals-pipeline/routes/index');
-    this.app.use('/api/deal-pipeline', this.createFeatureMiddleware('deals-pipeline'), dealsPipelineRoutes);
-    logger.info('[App] Deals Pipeline routes mounted with feature flag check');
+    this.app.use('/api/deal-pipeline', authenticateToken, this.createFeatureMiddleware('deals-pipeline'), dealsPipelineRoutes);
+    logger.info('[App] Deals Pipeline routes mounted with authentication and feature flag check');
     
-    // Social Integration routes (includes calendar OAuth)
+    // Social Integration routes with authentication and feature flag check
     const socialIntegrationRoutes = require('../features/social-integration/routes/index');
-    this.app.use('/api/social-integration', this.createFeatureMiddleware('social-integration'), socialIntegrationRoutes);
-    logger.info('[App] Social Integration routes mounted with feature flag check');
+    this.app.use('/api/social-integration', authenticateToken, this.createFeatureMiddleware('social-integration'), socialIntegrationRoutes);
+    logger.info('[App] Social Integration routes mounted with authentication and feature flag check');
     
-    // AI ICP Assistant routes with feature flag check
+    // AI ICP Assistant routes with authentication and feature flag check
     const aiICPAssistantRoutes = require('../features/ai-icp-assistant/routes/index');
-    this.app.use('/api/ai-icp-assistant', this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
-    logger.info('[App] AI ICP Assistant routes mounted with feature flag check');
+    this.app.use('/api/ai-icp-assistant', authenticateToken, this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
+    logger.info('[App] AI ICP Assistant routes mounted with authentication and feature flag check');
     
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {
