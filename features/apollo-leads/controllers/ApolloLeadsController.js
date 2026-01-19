@@ -319,7 +319,7 @@ class ApolloLeadsController {
     try {
       // LAD Architecture: Validate tenant context
       // Support both authenticated requests and internal service calls via header
-      const tenantId = req.user?.tenant_id || req.tenant?.id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant?.id || req.headers['x-tenant-id'];
       
       if (!tenantId && process.env.NODE_ENV === 'production') {
         logger.warn('[Apollo Leads Controller] Missing tenant context', {

@@ -34,6 +34,10 @@ function getAuthHeaders(authToken, tenantId = null) {
   if (authToken) {
     // User-authenticated request
     headers['Authorization'] = `Bearer ${authToken}`;
+    // Also include tenant header as fallback if JWT doesn't have tenantId in payload
+    if (tenantId) {
+      headers['x-tenant-id'] = tenantId;
+    }
   } else if (tenantId) {
     // Service-to-service call - use tenant header instead of auth
     // The Apollo leads controller supports x-tenant-id for internal calls
