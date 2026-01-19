@@ -14,7 +14,7 @@ class UnipileSearchController {
    */
   static async searchCompanies(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       
       const { industry, location, accountId, limit = 50 } = req.body;
 
@@ -72,7 +72,7 @@ class UnipileSearchController {
    */
   static async searchPeople(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       
       const { industry, location, designation, company, accountId, limit = 50 } = req.body;
 
@@ -134,7 +134,7 @@ class UnipileSearchController {
    */
   static async search(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       
       const { industry, location, designation, accountId, limit = 50 } = req.body;
 
@@ -189,7 +189,7 @@ class UnipileSearchController {
    */
   static async getProfile(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       const { linkedinId } = req.params;
       const { accountId } = req.query;
 

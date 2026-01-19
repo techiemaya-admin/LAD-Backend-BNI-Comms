@@ -5,7 +5,8 @@ const logger = require('../../../core/utils/logger');
  * Helper to validate tenant context (standalone function to avoid 'this' binding issues)
  */
 function validateTenant(req) {
-  const tenantId = req.user?.tenant_id || req.tenant?.id || req.headers?.['x-tenant-id'];
+  // Support both snake_case (tenant_id) and camelCase (tenantId) field names
+  const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant?.id || req.headers?.['x-tenant-id'];
   if (!tenantId && process.env.NODE_ENV === 'production') {
     throw new Error('Tenant context required');
   }

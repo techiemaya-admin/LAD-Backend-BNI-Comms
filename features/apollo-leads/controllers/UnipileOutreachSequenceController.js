@@ -14,7 +14,7 @@ class UnipileOutreachSequenceController {
    */
   static async createSequence(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       
       const {
         campaignId,
@@ -76,7 +76,7 @@ class UnipileOutreachSequenceController {
    */
   static async getPendingSlots(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       const { accountId } = req.query;
 
       if (!accountId) {
@@ -121,7 +121,7 @@ class UnipileOutreachSequenceController {
    */
   static async sendRequest(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       
       const {
         slotId,
@@ -174,7 +174,7 @@ class UnipileOutreachSequenceController {
    */
   static async processPending(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       const { accountId } = req.body;
 
       if (!accountId) {
@@ -219,7 +219,7 @@ class UnipileOutreachSequenceController {
    */
   static async getStatus(req, res) {
     try {
-      const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+      const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
       const { sequenceId } = req.params;
 
       if (!sequenceId) {

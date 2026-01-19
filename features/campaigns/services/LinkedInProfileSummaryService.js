@@ -4,6 +4,7 @@
  */
 
 const { pool } = require('../../../shared/database/connection');
+const { getSchema } = require('../../../core/utils/schemaHelper');
 const logger = require('../../../core/utils/logger');
 
 /**
@@ -11,6 +12,7 @@ const logger = require('../../../core/utils/logger');
  */
 async function generateAndSaveProfileSummary(campaignLeadId, leadData, profileData, employee) {
   try {
+    const schema = getSchema();
     logger.info('[Profile Summary] Generating profile summary', { employeeName: employee.fullname, leadId: campaignLeadId });
     
     // Generate summary using Gemini AI
