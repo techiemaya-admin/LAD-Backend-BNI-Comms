@@ -58,13 +58,19 @@ const authenticateToken = (req, res, next) => {
     return next();
   }
 
-  // Try to get token from Authorization header first, then from cookies
+  // Try to get token from Authorization header first, then from cookies, then from query params
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
   
   // If no Authorization header, try to get token from cookies
   if (!token && req.cookies && req.cookies.access_token) {
     token = req.cookies.access_token;
+  }
+
+  // For SSE endpoints (EventSource can't set headers), check query parameter
+  if (!token && req.query && req.query.token) {
+    token = req.query.token;
+    logger.debug('[Auth] Using token from query parameter for SSE');
   }
 
   if (!token) {

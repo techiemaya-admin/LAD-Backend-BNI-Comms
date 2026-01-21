@@ -14,7 +14,13 @@ class StageRouter {
    */
   static inferContextFromHistory(context, conversationHistory) {
     if (!conversationHistory || conversationHistory.length === 0) return context;
-    const historyText = conversationHistory.map(m => m.content).join(' ').toLowerCase();
+    
+    // Only look at USER messages to infer context (ignore assistant messages)
+    const userMessages = conversationHistory.filter(m => m.role === 'user');
+    if (userMessages.length === 0) return context;
+    
+    const historyText = userMessages.map(m => m.content).join(' ').toLowerCase();
+    
     // Infer outreachType if not set
     if (!context.outreachType) {
       if (historyText.match(/\b(inbound|incoming|leads come|respond to|follow.?up)\b/)) {
@@ -23,6 +29,7 @@ class StageRouter {
         context.outreachType = 'outbound';
       }
     }
+    
     // Infer targetKnowledge if outbound and not set
     if (context.outreachType === 'outbound' && !context.targetKnowledge) {
       if (historyText.match(/\b(already have|have profiles?|have linkedin|have names?|specific people|these companies|know my|know the)\b/)) {
@@ -31,6 +38,7 @@ class StageRouter {
         context.targetKnowledge = 'discovery';
       }
     }
+    
     return context;
   }
   /**
