@@ -274,10 +274,6 @@ class UnipileProfileService {
                 }
             };
         } catch (error) {
-                error: error.message, 
-                status: error.response?.status, 
-                responseData: error.response?.data 
-            });
             // Return failure so caller can fallback to other methods (e.g., Apollo)
             return {
                 success: false,
