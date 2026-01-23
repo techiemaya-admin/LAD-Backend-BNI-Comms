@@ -4,6 +4,7 @@
  */
 const { campaignEventsService } = require('../services/campaignEventsService');
 const { campaignStatsTracker } = require('../services/campaignStatsTracker');
+const logger = require('../../../core/utils/logger');
 /**
  * SSE endpoint for real-time campaign stats updates
  * GET /api/campaigns/:id/events
@@ -28,7 +29,28 @@ async function streamCampaignStats(req, res) {
       timestamp: new Date().toISOString()
     })}\n\n`);
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: 'ERROR', message: 'Failed to load stats' })}\n\n`);
+    logger.error(`Failed to load stats for campaign ${campaignId}:`, {
+      error: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    // Send empty stats instead of error to keep connection open
+    res.write(`data: ${JSON.stringify({ 
+      type: 'INITIAL_STATS', 
+      campaignId, 
+      stats: {
+        leads_count: 0,
+        sent_count: 0,
+        connected_count: 0,
+        replied_count: 0,
+        delivered_count: 0,
+        opened_count: 0,
+        clicked_count: 0,
+        platform_metrics: {}
+      },
+      error: 'Stats unavailable',
+      timestamp: new Date().toISOString()
+    })}\n\n`);
   }
   // Subscribe to campaign stats updates
   const listener = (event) => {
@@ -83,4 +105,4 @@ module.exports = {
   streamCampaignStats,
   getCampaignStats,
   refreshCampaignStats
-};
+};
