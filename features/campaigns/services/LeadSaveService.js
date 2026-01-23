@@ -36,16 +36,9 @@ async function saveLeadsToCampaign(campaignId, tenantId, employees) {
     const isUUIDFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(sourceId));
     try {
       if (!sourceId || sourceId === 'unknown') {
-          employeeName: employee.name || employee.employee_name,
-          source 
-        });
         continue;
       }
       if (isUUIDFormat) {
-          name: employee.name || employee.employee_name,
-          id: sourceId,
-          source
-        });
         continue;
       }
       // Check if lead already exists
@@ -95,34 +88,12 @@ async function saveLeadsToCampaign(campaignId, tenantId, employees) {
           if (!firstGeneratedLeadId) {
             firstGeneratedLeadId = insertedLeadId;
           }
-            sourceId, 
-            source,
-            campaignLeadId: insertedLeadId, 
-            leadId 
-          });
         } catch (err) {
-            sourceId,
-            source,
-            message: err.message,
-            code: err.code,
-            detail: err.detail,
-            constraint: err.constraint
-          });
           // Continue to next lead instead of throwing
         }
       } else {
-          sourceId, 
-          source,
-          existingLeadId: existingLead.id 
-        });
       }
     } catch (err) {
-        sourceId,
-        source,
-        message: err.message,
-        code: err.code,
-        detail: err.detail
-      });
       // Continue to next lead instead of stopping
     }
   }
@@ -182,11 +153,6 @@ async function findOrCreateLead(tenantId, sourceId, fields, leadData, source = '
           JSON.stringify(leadData) // raw_data - full lead data
         ]
       );
-        sourceId, 
-        source,
-        leadId, 
-        sourceIdentifier: source === 'unipile' ? 'unipile_id' : 'apollo_person_id'
-      });
     }
   } catch (leadErr) {
     // If leads table doesn't exist or has different schema, generate UUID and continue

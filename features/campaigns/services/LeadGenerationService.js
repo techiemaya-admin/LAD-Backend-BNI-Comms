@@ -124,22 +124,12 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
           ? JSON.parse(stepConfig.leadGenerationFilters) 
           : stepConfig.leadGenerationFilters)
       : {};
-      hasLeadGenerationFilters: !!stepConfig.leadGenerationFilters,
-      filtersType: typeof stepConfig.leadGenerationFilters,
-      parsedFilters: filters,
-      stepConfig: JSON.stringify(stepConfig).substring(0, 500) // Log first 500 chars for debugging
-    });
+    
     // GUARD: Check if at least one search criterion is provided
     const hasRoles = filters.person_titles && filters.person_titles.length > 0;
     const hasLocation = filters.organization_locations && filters.organization_locations.length > 0;
     const hasIndustries = filters.organization_industries && filters.organization_industries.length > 0;
-      hasRoles, 
-      hasLocation, 
-      hasIndustries,
-      rolesValue: filters.person_titles,
-      locationsValue: filters.organization_locations,
-      industriesValue: filters.organization_industries
-    });
+    
     if (!hasRoles && !hasLocation && !hasIndustries) {
       return {
         success: false,
@@ -191,17 +181,9 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     if (existingLeadIds.size > 0) {
       searchParams.exclude_ids = Array.from(existingLeadIds);
     }
-    // Log search parameters for debugging
-      person_titles: searchParams.person_titles,
-      organization_industries: searchParams.organization_industries,
-      organization_locations: searchParams.organization_locations,
-      page,
-      offsetInPage,
-      dailyLimit
-    });
+    
     // PRODUCTION-GRADE: Check search source preference (Unipile, Apollo, or Auto)
     // Get campaign configuration for source preference
-    const schema = getSchema(null);
     const campaignQuery = await pool.query(
       `SELECT config, search_source FROM ${schema}.campaigns 
        WHERE id = $1 AND is_deleted = FALSE`,
@@ -210,10 +192,7 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     const campaign = campaignQuery.rows[0];
     const searchSource = campaign?.search_source || process.env.SEARCH_SOURCE_DEFAULT || 'apollo_io';
     const unipileAccountId = campaign?.config?.unipile_account_id || process.env.UNIPILE_ACCOUNT_ID;
-      campaignId, 
-      searchSource,
-      hasUnipileAccountId: !!unipileAccountId
-    });
+    
     let employees = [];
     let fromSource = 'unknown';
     let searchError = null;
@@ -240,14 +219,8 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
           if (unipileResult.success && unipileResult.people && unipileResult.people.length > 0) {
             employees = unipileResult.people.slice(0, dailyLimit);
             fromSource = unipileResult.source; // 'unipile' or 'apollo' (if fallback used)
-              count: employees.length,
-              source: fromSource,
-              sources_tried: unipileResult.sources_tried
-            });
           } else if (searchSource === 'auto') {
             // Auto mode: fallback to Apollo if Unipile failed or returned no results
-              error: unipileResult.error
-            });
             searchError = null; // Clear error to continue to Apollo
           } else {
             // Unipile was required but failed
@@ -269,11 +242,6 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
         if (dbEmployees.length > 0) {
           employees = [...employees, ...dbEmployees].slice(0, dailyLimit);
           fromSource = employees.length > 0 && fromSource === 'unknown' ? 'database' : (fromSource !== 'unknown' ? 'mixed' : 'database');
-            dbCount: dbEmployees.length, 
-            totalCount: employees.length, 
-            dailyLimit, 
-            source: fromSource
-          });
         }
         searchError = dbSearchResult.error || null;
         accessDenied = dbSearchResult.accessDenied || false;
@@ -282,20 +250,13 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
         // If still have insufficient leads, try Apollo API
         if (employees.length < dailyLimit && !searchError && !accessDenied) {
           const neededFromApollo = dailyLimit - employees.length;
-            dbLeadsCount: employees.length, 
-            dailyLimit, 
-            neededFromApollo 
-          });
+          
           const apolloSearchResult = await searchEmployees(searchParams, page, offsetInPage, neededFromApollo, authToken, tenantId);
           const apolloEmployees = apolloSearchResult.employees || [];
           // Combine database leads with Apollo leads
           if (apolloEmployees.length > 0) {
             employees = [...employees, ...apolloEmployees].slice(0, dailyLimit);
             fromSource = employees.length > 0 && apolloEmployees.length > 0 ? 'mixed' : (apolloEmployees.length > 0 ? 'apollo' : 'database');
-              dbLeads: employees.length - apolloEmployees.length, 
-              apolloLeads: apolloEmployees.length, 
-              totalLeads: employees.length 
-            });
           } else {
             searchError = apolloSearchResult.error || null;
           }
@@ -314,18 +275,9 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
       });
       const filteredOut = originalCount - employees.length;
       if (filteredOut > 0) {
-          originalCount, 
-          afterFilter: employees.length, 
-          filteredOut 
-        });
       }
     }
-      employeesCount: employees.length,
-      fromSource: fromSource,
-      hasError: !!searchError,
-      accessDenied: accessDenied,
-      error: searchError || 'none'
-    });
+    
     // Handle access denied (403) - this is NOT an error, just no access to Apollo/database
     if (accessDenied) {
       // Set execution state to waiting_for_leads with clear message
@@ -348,9 +300,6 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     }
     // Handle actual errors (not access denied)
     if (searchError) {
-        error: searchError,
-        backendUrl: require('./LeadSearchService').BACKEND_URL || 'not set'
-      });
       // Set execution state to error
       await CampaignModel.updateExecutionState(campaignId, 'error', {
         lastExecutionReason: `Lead search failed: ${searchError}`
@@ -366,13 +315,6 @@ async function executeLeadGeneration(campaignId, step, stepConfig, userId, tenan
     }
     // PRODUCTION-GRADE: Handle no leads found scenario
     if (!employees || employees.length === 0) {
-        possibleReasons: [
-          'No leads match the filters (too specific)',
-          'Database is empty',
-          'Network/connection issues'
-        ],
-        searchParams
-      });
       // Set execution state to waiting_for_leads
       const now = new Date();
       const retryIntervalHours = process.env.LEAD_RETRY_INTERVAL_HOURS || 6; // Default 6 hours
