@@ -343,7 +343,7 @@ class CoreApplication {
         });
       }
       
-      this.server.listen(port, (err) => {
+      this.server.listen(port, '0.0.0.0', (err) => {
         if (err) return reject(err);
         logger.info(`Core Platform running on port ${port}`);
         logger.info(`Registered features: ${this.featureRegistry.getFeatureList().join(', ')}`);
