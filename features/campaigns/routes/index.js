@@ -11,7 +11,7 @@ const CampaignStatsController = require('../controllers/campaignStatsController'
 const CampaignAnalyticsController = require('../controllers/campaignAnalyticsController');
 const CampaignsStreamController = require('../controllers/campaignsStreamController');
 const linkedInRoutes = require('./linkedin');
-const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
+const { authenticateToken: jwtAuth, authenticateSSE: sseAuth } = require('../../../core/middleware/auth');
 const {
   validateCampaignCreation,
   validateCampaignUpdate,
@@ -22,7 +22,7 @@ const {
 // LinkedIn integration (mount before /:id routes to avoid conflicts)
 router.use('/linkedin', linkedInRoutes);
 // Real-time campaigns stream (SSE)
-router.get('/stream', jwtAuth, CampaignsStreamController.streamAllCampaigns);
+router.get('/stream', sseAuth, CampaignsStreamController.streamAllCampaigns);
 // Campaign CRUD operations
 router.get('/', jwtAuth, validatePagination, CampaignController.listCampaigns);
 router.get('/stats', jwtAuth, CampaignController.getCampaignStats);
@@ -37,11 +37,11 @@ router.get('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), valid
 router.post('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsSummaryController.generateLeadSummary);
 router.post('/:id/leads/:leadId/reveal-email', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadEmail);
 router.post('/:id/leads/:leadId/reveal-phone', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadPhone);
-// Campaign analytics (new campaign_analytics table)
-router.get('/:id/analytics', jwtAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalytics);
+// Campaign analytics (new campaign_analytics table) - Use SSE auth for streaming endpoint
+router.get('/:id/analytics', sseAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalytics);
 router.get('/:id/analytics/summary', jwtAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalyticsSummary);
 // Campaign stats (SSE and REST)
-router.get('/:id/events', jwtAuth, validateUuidParam('id'), CampaignStatsController.streamCampaignStats);
+router.get('/:id/events', sseAuth, validateUuidParam('id'), CampaignStatsController.streamCampaignStats);
 router.get('/:id/stats', jwtAuth, validateUuidParam('id'), CampaignStatsController.getCampaignStats);
 router.post('/:id/stats/refresh', jwtAuth, validateUuidParam('id'), CampaignStatsController.refreshCampaignStats);
 // Campaign activities (legacy route - keeping for backward compatibility)
@@ -53,4 +53,4 @@ router.post('/:id/stop', jwtAuth, validateUuidParam('id'), CampaignController.st
 // Campaign steps
 router.get('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.getCampaignSteps);
 router.post('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.updateCampaignSteps);
-module.exports = router;
+module.exports = router;

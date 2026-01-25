@@ -15,20 +15,11 @@ async function streamCampaignStats(req, res) {
   logger.info('[SSE] Connection request', {
     campaignId,
     userId: req.user?.userId,
-    origin: req.headers.origin,
-    hasToken: !!req.query.token || !!req.headers.authorization
+    origin: req.headers.origin
   });
   
-  // Set SSE headers with CORS support
-  const origin = req.headers.origin || '*';
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx/Cloud Run buffering
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
-  logger.info('[SSE] Headers set, fetching initial stats', { campaignId });
+  // SSE headers are already set by authenticateSSE middleware
+  logger.info('[SSE] Fetching initial stats', { campaignId });
   
   // Send initial stats immediately
   try {

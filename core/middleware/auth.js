@@ -103,4 +103,72 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-module.exports = { authenticateToken };
+/**
+ * SSE-specific authentication middleware
+ * 
+ * Unlike regular auth, this sets SSE headers first, then sends error events
+ * instead of JSON responses to prevent MIME type errors in EventSource
+ */
+const authenticateSSE = (req, res, next) => {
+  // Skip auth for OPTIONS requests (CORS preflight)
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
+  // Set SSE headers first to prevent MIME type errors
+  const origin = req.headers.origin || '*';
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Try to get token from query params (EventSource limitation)
+  let token = req.query && req.query.token;
+  
+  // Fallback to Authorization header
+  if (!token) {
+    const authHeader = req.headers['authorization'];
+    token = authHeader && authHeader.split(' ')[1];
+  }
+  
+  // Fallback to cookies
+  if (!token && req.cookies && req.cookies.access_token) {
+    token = req.cookies.access_token;
+  }
+
+  if (!token) {
+    logger.debug(`[SSE Auth] No token for ${req.method} ${req.path}`);
+    // Send SSE error event instead of JSON
+    res.write(`data: ${JSON.stringify({
+      type: 'ERROR',
+      error: 'Authentication required',
+      message: 'Access token required for SSE connection'
+    })}\n\n`);
+    return res.end();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+    req.user = decoded;
+    logger.debug(`[SSE Auth] Success for ${req.method} ${req.path}`, { 
+      userId: decoded.userId, 
+      email: decoded.email 
+    });
+    next();
+  } catch (error) {
+    logger.warn(`[SSE Auth] Invalid token for ${req.method} ${req.path}`, {
+      error: error.message
+    });
+    // Send SSE error event instead of JSON
+    res.write(`data: ${JSON.stringify({
+      type: 'ERROR',
+      error: 'Invalid token',
+      message: error.message
+    })}\n\n`);
+    return res.end();
+  }
+};
+
+module.exports = { authenticateToken, authenticateSSE };
