@@ -37,8 +37,8 @@ router.get('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), valid
 router.post('/:id/leads/:leadId/summary', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsSummaryController.generateLeadSummary);
 router.post('/:id/leads/:leadId/reveal-email', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadEmail);
 router.post('/:id/leads/:leadId/reveal-phone', jwtAuth, validateUuidParam('id'), validateUuidParam('leadId'), CampaignLeadsRevealController.revealLeadPhone);
-// Campaign analytics (new campaign_analytics table) - Use SSE auth for streaming endpoint
-router.get('/:id/analytics', sseAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalytics);
+// Campaign analytics (new campaign_analytics table)
+router.get('/:id/analytics', jwtAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalytics);
 router.get('/:id/analytics/summary', jwtAuth, validateUuidParam('id'), CampaignAnalyticsController.getCampaignAnalyticsSummary);
 // Campaign stats (SSE and REST)
 router.get('/:id/events', sseAuth, validateUuidParam('id'), CampaignStatsController.streamCampaignStats);
