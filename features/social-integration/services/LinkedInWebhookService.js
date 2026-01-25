@@ -883,7 +883,7 @@ class LinkedInWebhookService {
       console.log(`[LinkedIn Webhook] 📞 Triggering automatic call for lead: ${leadName} (${cleanPhone})`);
       
       // Call the voiceagent API
-      const DEFAULT_INTERNAL_API_URL = process.env.DEFAULT_INTERNAL_API_URL || 'http://localhost:3004';
+      const DEFAULT_INTERNAL_API_URL = process.env.DEFAULT_INTERNAL_API_URL || process.env.BACKEND_URL || process.env.BASE_URL || 'http://localhost:3004';
       let API_BASE_URL = process.env.INTERNAL_API_URL || process.env.BASE_URL || DEFAULT_INTERNAL_API_URL;
       if (API_BASE_URL.includes('ngrok')) {
         API_BASE_URL = DEFAULT_INTERNAL_API_URL;

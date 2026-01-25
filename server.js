@@ -53,7 +53,7 @@ async function startServer() {
     
     logger.info('Server successfully started', {
       port: PORT,
-      url: `http://localhost:${PORT}`,
+      url: process.env.BACKEND_URL || process.env.BASE_URL || `http://localhost:${PORT}`,
       endpoints: [
         'POST /api/auth/login',
         'POST /api/auth/register', 

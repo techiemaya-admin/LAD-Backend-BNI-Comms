@@ -21,7 +21,10 @@ class SocketService {
   initialize(server) {
     this.server = server;
     
+    // Get allowed origins from environment variable or fallback to localhost for development
+    const envOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [];
     const allowedOrigins = [
+      ...envOrigins,
       'http://localhost:3000',
       'http://localhost:3001',
       'https://lad-frontend-develop-741719885039.us-central1.run.app',

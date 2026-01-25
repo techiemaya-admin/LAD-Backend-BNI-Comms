@@ -11,6 +11,14 @@ const logger = require('../../../core/utils/logger');
  */
 async function streamCampaignStats(req, res) {
   const { id: campaignId } = req.params;
+  
+  logger.info('[SSE] Connection request', {
+    campaignId,
+    userId: req.user?.userId,
+    origin: req.headers.origin,
+    hasToken: !!req.query.token || !!req.headers.authorization
+  });
+  
   // Set SSE headers with CORS support
   const origin = req.headers.origin || '*';
   res.setHeader('Content-Type', 'text/event-stream');
@@ -19,17 +27,28 @@ async function streamCampaignStats(req, res) {
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx/Cloud Run buffering
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  logger.info('[SSE] Headers set, fetching initial stats', { campaignId });
+  
   // Send initial stats immediately
   try {
+    logger.info('[SSE] Calling campaignStatsTracker.getStats', { campaignId });
     const initialStats = await campaignStatsTracker.getStats(campaignId);
-    res.write(`data: ${JSON.stringify({ 
+    logger.info('[SSE] Stats fetched successfully', { campaignId, stats: initialStats });
+    
+    const initialMessage = JSON.stringify({ 
       type: 'INITIAL_STATS', 
       campaignId, 
       stats: initialStats,
       timestamp: new Date().toISOString()
-    })}\n\n`);
+    });
+    
+    logger.info('[SSE] Sending initial stats', { campaignId, messageLength: initialMessage.length });
+    res.write(`data: ${initialMessage}\n\n`);
+    logger.info('[SSE] Initial stats sent successfully', { campaignId });
   } catch (error) {
-    logger.error(`Failed to load stats for campaign ${campaignId}:`, {
+    logger.error('[SSE] Failed to load stats', {
+      campaignId,
       error: error.message,
       stack: error.stack,
       code: error.code
@@ -59,17 +78,22 @@ async function streamCampaignStats(req, res) {
     }
   };
   campaignEventsService.subscribe(listener);
+  
+  logger.info('[SSE] Subscriber added, connection established', { campaignId });
+  
   // Heartbeat to keep connection alive (every 30s)
   const heartbeat = setInterval(() => {
     res.write(`: heartbeat\n\n`);
   }, 30000);
   // Cleanup on client disconnect
   req.on('close', () => {
+    logger.info('[SSE] Client disconnected', { campaignId });
     clearInterval(heartbeat);
     campaignEventsService.unsubscribe(listener);
   });
   // Handle errors
   req.on('error', (error) => {
+    logger.error('[SSE] Connection error', { campaignId, error: error.message });
     clearInterval(heartbeat);
     campaignEventsService.unsubscribe(listener);
   });
