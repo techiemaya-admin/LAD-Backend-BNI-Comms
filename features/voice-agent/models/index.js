@@ -1,29 +1,19 @@
 /**
- * Voice Agent Models Index1.0
+ * Voice Agent Models Index (DEPRECATED)
  * 
- * Exports all voice agent models for easy import
- * Also re-exports core models for convenience
+ * This file is kept for backward compatibility.
+ * All data access has been moved to repositories/
+ * 
+ * Use: const { VoiceCallRepository, LeadBookingRepository } = require('../repositories');
  */
 
-const VoiceCallModel = require('./VoiceCallModel');
-const VoiceAgentModel = require('./VoiceAgentModel');
-const VoiceModel = require('./VoiceModel');
-const PhoneNumberModel = require('./PhoneNumberModel');
-const PhoneResolverModel = require('./PhoneResolverModel');
+const VoiceCallModel = require('./CallLogModal');
+const LeadBookingModel = require('./LeadBooking.pg');
 
 // Core models (from backend/core/models)
 // const { TenantModel, UserModel, MembershipModel } = require('../../../core/models');
 
 module.exports = {
-  // Voice agent models
   VoiceCallModel,
-  VoiceAgentModel,
-  VoiceModel,
-  PhoneNumberModel,
-  PhoneResolverModel,
-  
-  // Core models (re-exported for convenience)
-  // TenantModel,
-  // UserModel,
-  // MembershipModel
+  LeadBookingModel
 };
