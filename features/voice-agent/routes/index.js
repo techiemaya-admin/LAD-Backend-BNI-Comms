@@ -1,138 +1,333 @@
+/**
+ * Voice Agent Routes 1.0
+ * 
+ * Registers all voice agent endpoints with proper middleware
+ * Supports JWT authentication for user-specific endpoints
+ */
+
 const express = require('express');
+const router = express.Router();
 const { 
-  VoiceAgentController,
-  LeadBookingController
+  VoiceAgentController, 
+  CallController, 
+  BatchCallController, 
+  CallInitiationController 
 } = require('../controllers');
+const { pool } = require('../../../shared/database/connection');
+const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
 
-const { getSchema } = require('../../../core/utils/schemaHelper');
+// Initialize controllers with shared database pool
+const voiceAgentController = new VoiceAgentController(pool);
+const callController = new CallController(pool);
+const batchCallController = new BatchCallController(pool);
+const callInitiationController = new CallInitiationController(pool);
 
-// JWT Authentication Middleware with strict tenant validation
-const jwtAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  
-  // In dev mode, accept any token and provide full tenant context
-  const token = authHeader.substring(7);
-  
-  // Extract tenant from header (X-Tenant-Id) - required
-  const tenantIdFromHeader = req.headers['x-tenant-id'] || req.headers['x-tenantid'];
-  
-  const tenantId = tenantIdFromHeader;
-  
-  // Validate tenant_id is present - MANDATORY
-  if (!tenantId) {
-    return res.status(400).json({ 
-      error: 'Tenant context required',
-      message: 'Missing X-Tenant-Id header or tenant context in token'
-    });
-  }
-  
-  // Get schema based on tenant_id (removes hardcoding)
-  let schema;
-  try {
-    schema = getSchema({ user: { tenant_id: tenantId } });
-  } catch (e) {
+// Tenant middleware - extracts tenant ID from request
+const tenantMiddleware = (req, res, next) => {
+  req.tenantId = req.tenantId || 
+                 req.user?.tenantId || 
+                 req.headers['x-tenant-id'] ||
+                 req.query.tenant_id;
+
+  if (!req.tenantId) {
     return res.status(400).json({
-      error: 'Invalid tenant',
-      message: 'Invalid tenant_id format'
+      success: false,
+      error: 'Tenant ID required',
+      message: 'Please provide tenant_id in headers or query params'
     });
   }
-  
-  req.user = {
-    id: 'fe9d6368-ff1b-4133-952a-525d60d06cbe', // Mock user UUID
-    email: 'admin@glinks.com',
-    tenant_id: tenantId, // Use snake_case consistently
-    tenantId: tenantId, // Backward compatibility
-    role: 'owner', // Mock owner role
-    schema: schema // Dynamic schema resolution
-  };
-  req.schema = schema; // Also set schema at request level
-  
+
   next();
 };
-    
-function createVoiceAgentRouter(db, options = {}) {
-  const router = express.Router();
-  
-  // Initialize controllers
-  const voiceAgentController = new VoiceAgentController(db);
-  const leadBookingController = new LeadBookingController(db);
 
-  /**
-   * GET /user/available-agents
-   * Get available agents for authenticated user
-   */
-  router.get(
-    '/user/available-agents',
-    jwtAuth,
-    (req, res) => voiceAgentController.getUserAvailableAgents(req, res)
-  );
+// ============================================
+// JWT-Protected Endpoints (User-Specific)
+// ============================================
 
-  /**
-   * GET /calls
-   * Get call logs with optional filters (status, agentId, startDate, endDate, userId)
-   */
-  router.get(
-    '/calls',
-    jwtAuth,
-    (req, res) => voiceAgentController.getCallLogs(req, res)
-  );
+/**
+ * GET /user/available-agents
+ * Get available agents for authenticated user
+ */
+router.get(
+  '/user/available-agents',
+  jwtAuth,
+  (req, res) => voiceAgentController.getUserAvailableAgents(req, res)
+);
 
-  /**
-   * GET /bookings
-   * Get lead bookings with role-based filtering
-   * Query params: selectedUserId, status, bookingType, bookingSource, leadId, startDate, endDate, callResult, limit
-   */
-  router.get(
-    '/bookings',
-    jwtAuth,
-    (req, res) => leadBookingController.getLeadBookings(req, res)
-  );
+/**
+ * GET /user/available-numbers
+ * Get available phone numbers for authenticated user
+ */
+router.get(
+  '/user/available-numbers',
+  jwtAuth,
+  (req, res) => voiceAgentController.getUserAvailableNumbers(req, res)
+);
 
-  /**
-   * GET /bookings/:id
-   * Get a single lead booking by ID
-   */
-  router.get(
-    '/bookings/:id',
-    jwtAuth,
-    (req, res) => leadBookingController.getLeadBookingById(req, res)
-  );
+/**
+ * GET /voices/:id/sample-signed-url
+ * Get signed URL for voice sample
+ */
+router.get(
+  '/voices/:id/sample-signed-url',
+  jwtAuth,
+  (req, res) => voiceAgentController.getVoiceSampleSignedUrl(req, res)
+);
 
-  /**
-   * POST /bookings
-   * Create a new lead booking
-   */
-  router.post(
-    '/bookings',
-    jwtAuth,
-    (req, res) => leadBookingController.createLeadBooking(req, res)
-  );
+/**
+ * GET /agents/:agentId/sample-signed-url
+ * Get signed URL for agent's voice sample
+ */
+router.get(
+  '/agents/:agentId/sample-signed-url',
+  jwtAuth,
+  (req, res) => voiceAgentController.getAgentVoiceSampleSignedUrl(req, res)
+);
 
-  /**
-   * PUT /bookings/:id
-   * Update a lead booking
-   */
-  router.put(
-    '/bookings/:id',
-    jwtAuth,
-    (req, res) => leadBookingController.updateLeadBooking(req, res)
-  );
+// ============================================
+// Settings Endpoints
+// ============================================
 
-  /**
-   * GET /users
-   * Get all users for the tenant (Owner role only)
-   */
-  router.get(
-    '/users',
-    jwtAuth,
-    (req, res) => leadBookingController.getTenantUsers(req, res)
-  );
+/**
+ * GET /settings
+ * Get voice agent settings
+ */
+router.get(
+  '/settings',
+  jwtAuth,
+  (req, res) => voiceAgentController.getSettings(req, res)
+);
 
-  return router;
-}
+/**
+ * PUT /settings
+ * Update voice agent settings
+ */
+router.put(
+  '/settings',
+  jwtAuth,
+  (req, res) => voiceAgentController.updateSettings(req, res)
+);
 
-module.exports = createVoiceAgentRouter;
+// ============================================
+// Public/Tenant Endpoints
+// ============================================
+
+/**
+ * GET /test
+ * Health check / test endpoint
+ */
+router.get('/test', (req, res) => voiceAgentController.test(req, res));
+
+/**
+ * GET /all
+ * Get all agents for tenant
+ */
+router.get(
+  '/all',
+  tenantMiddleware,
+  (req, res) => voiceAgentController.getAllAgents(req, res)
+);
+
+/**
+ * GET /agent/:name
+ * Get agent by name
+ */
+router.get(
+  '/agent/:name',
+  tenantMiddleware,
+  (req, res) => voiceAgentController.getAgentByName(req, res)
+);
+
+/**
+ * GET /voices
+ * Get all voice profiles
+ */
+router.get(
+  '/voices',
+  tenantMiddleware,
+  (req, res) => voiceAgentController.getAllVoices(req, res)
+);
+
+/**
+ * GET / (legacy)
+ * Get all voices (legacy endpoint)
+ */
+router.get(
+  '/',
+  tenantMiddleware,
+  (req, res) => voiceAgentController.getAllVoices(req, res)
+);
+
+/**
+ * GET /numbers
+ * Get all phone numbers
+ */
+router.get(
+  '/numbers',
+  tenantMiddleware,
+  (req, res) => voiceAgentController.getAllPhoneNumbers(req, res)
+);
+
+// ============================================
+// Call Endpoints
+// ============================================
+
+/**
+ * GET /calls
+ * Get call logs with filters (primary endpoint for frontend)
+ */
+router.get(
+  '/calls',
+  jwtAuth,
+  (req, res) => callController.getCallLogs(req, res)
+);
+
+/**
+ * POST /calls
+ * Initiate a single voice call
+ */
+router.post(
+  '/calls',
+  tenantMiddleware,
+  (req, res) => callInitiationController.initiateCall(req, res)
+);
+
+/**
+ * POST /calls/batch
+ * Initiate batch voice calls
+ */
+router.post(
+  '/calls/batch',
+  tenantMiddleware,
+  (req, res) => batchCallController.batchInitiateCalls(req, res)
+);
+
+/**
+ * GET /calllogs
+ * Get call logs (for testing / general listing)
+ */
+router.get(
+  '/calllogs',
+  tenantMiddleware,
+  (req, res) => callController.getCallLogs(req, res)
+);
+
+/**
+ * GET /calllogs/:call_log_id
+ * Get a single call log by ID
+ */
+router.get(
+  '/calllogs/:call_log_id',
+  jwtAuth,
+  (req, res) => callController.getCallLogById(req, res)
+);
+
+/**
+ * GET /calls/:id/recording-signed-url
+ * Get signed URL for call recording
+ */
+router.get(
+  '/calls/:id/recording-signed-url',
+  tenantMiddleware,
+  (req, res) => callController.getCallRecordingSignedUrl(req, res)
+);
+
+/**
+ * GET /calls/recent
+ * Get recent calls with filters
+ */
+router.get(
+  '/calls/recent',
+  tenantMiddleware,
+  (req, res) => callController.getRecentCalls(req, res)
+);
+
+/**
+ * GET /calls/stats
+ * Get call statistics
+ */
+router.get(
+  '/calls/stats',
+  tenantMiddleware,
+  (req, res) => callController.getCallStats(req, res)
+);
+
+// ============================================
+// Phone Resolution & Sales Summary
+// ============================================
+
+/**
+ * POST /resolve-phones
+ * Resolve phone numbers from company/employee caches
+ */
+router.post(
+  '/resolve-phones',
+  tenantMiddleware,
+  (req, res) => callController.resolvePhones(req, res)
+);
+
+/**
+ * POST /update-summary
+ * Update sales summary for company or employee
+ */
+router.post(
+  '/update-summary',
+  tenantMiddleware,
+  (req, res) => callController.updateSalesSummary(req, res)
+);
+
+// ============================================
+// V2 API Endpoints
+// ============================================
+
+/**
+ * POST /calls/start-call (V2)
+ * Initiate a single voice call - V2 endpoint with UUID support
+ */
+router.post(
+  '/calls/start-call',
+  tenantMiddleware,
+  (req, res) => callInitiationController.initiateCallV2(req, res)
+);
+
+/**
+ * POST /batch/trigger-batch-call (V2)
+ * Initiate batch voice calls - V2 endpoint
+ */
+router.post(
+  '/batch/trigger-batch-call',
+  tenantMiddleware,
+  (req, res) => batchCallController.batchInitiateCallsV2(req, res)
+);
+
+/**
+ * GET /calls/job/:job_id (V2)
+ * Get call log by job ID - V2 endpoint
+ */
+router.get(
+  '/calls/job/:job_id',
+  tenantMiddleware,
+  (req, res) => callController.getCallLogByJobId(req, res)
+);
+
+/**
+ * GET /batch/batch-status/:id (V2)
+ * Get batch status - V2 endpoint
+ */
+router.get(
+  '/batch/batch-status/:id',
+  tenantMiddleware,
+  (req, res) => batchCallController.getBatchStatusV2(req, res)
+);
+
+/**
+ * POST /batch/batch-cancel/:id (V2)
+ * Cancel batch - V2 endpoint
+ */
+router.post(
+  '/batch/batch-cancel/:id',
+  tenantMiddleware,
+  (req, res) => batchCallController.cancelBatchV2(req, res)
+);
+
+module.exports = router;

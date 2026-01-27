@@ -31,7 +31,13 @@ module.exports = {
     '/resolve-phones',
     '/update-summary',
     '/settings',
-    '/numbers'
+    '/numbers',
+    // V2 API routes
+    '/calls/start-call',
+    '/batch/trigger-batch-call',
+    '/calls/job/:job_id',
+    '/batch/batch-status/:id',
+    '/batch/batch-cancel/:id'
   ],
   
   description: 'AI-powered voice calling system. Initiate single or batch calls, manage voice agents, retrieve recordings, and handle call logging.',

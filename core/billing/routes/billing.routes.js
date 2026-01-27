@@ -630,31 +630,40 @@ router.get('/wallet/packages', async (req, res) => {
     const packages = [
       {
         id: 'starter',
-        name: 'Starter Pack',
-        credits: 100,
-        price: 29,
-        pricePerCredit: 0.29,
+        name: 'Starter',
+        credits: 1000,
+        price: 99,
+        pricePerCredit: 0.099,
         savings: 0,
-        description: 'Perfect for trying out the platform'
+        description: 'Get started with essentials'
       },
       {
         id: 'professional',
-        name: 'Professional Pack',
-        credits: 500,
-        price: 129,
-        pricePerCredit: 0.258,
-        savings: 11,
+        name: 'Professional',
+        credits: 3000,
+        price: 199,
+        pricePerCredit: 0.0663,
+        savings: 33,
         popular: true,
-        description: 'Best value for regular users'
+        description: 'For small teams'
+      },
+      {
+        id: 'business',
+        name: 'Business',
+        credits: 12000,
+        price: 499,
+        pricePerCredit: 0.0416,
+        savings: 58,
+        description: 'For growing businesses'
       },
       {
         id: 'enterprise',
-        name: 'Enterprise Pack',
-        credits: 2000,
-        price: 449,
-        pricePerCredit: 0.2245,
-        savings: 23,
-        description: 'For power users and teams'
+        name: 'Enterprise',
+        credits: 12000,
+        price: 999,
+        pricePerCredit: 0.0833,
+        savings: 0,
+        description: 'Custom solutions (Contact sales for Enterprise options)'
       }
     ];
     
@@ -861,31 +870,40 @@ router.get('/packages', async (req, res) => {
     const packages = [
       {
         id: 'starter',
-        name: 'Starter Pack',
-        credits: 100,
-        price: 29,
-        pricePerCredit: 0.29,
+        name: 'Starter',
+        credits: 1000,
+        price: 99,
+        pricePerCredit: 0.099,
         savings: 0,
-        description: 'Perfect for trying out the platform'
+        description: 'Get started with essentials'
       },
       {
         id: 'professional',
-        name: 'Professional Pack',
-        credits: 500,
-        price: 129,
-        pricePerCredit: 0.258,
-        savings: 11,
+        name: 'Professional',
+        credits: 3000,
+        price: 199,
+        pricePerCredit: 0.0663,
+        savings: 33,
         popular: true,
-        description: 'Best value for regular users'
+        description: 'For small teams'
+      },
+      {
+        id: 'business',
+        name: 'Business',
+        credits: 12000,
+        price: 499,
+        pricePerCredit: 0.0416,
+        savings: 58,
+        description: 'For growing businesses'
       },
       {
         id: 'enterprise',
-        name: 'Enterprise Pack',
-        credits: 2000,
-        price: 449,
-        pricePerCredit: 0.2245,
-        savings: 23,
-        description: 'For power users and teams'
+        name: 'Enterprise',
+        credits: 12000,
+        price: 999,
+        pricePerCredit: 0.0833,
+        savings: 0,
+        description: 'Custom solutions (Contact sales for Enterprise options)'
       }
     ];
     

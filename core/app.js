@@ -207,7 +207,10 @@ class CoreApplication {
     
     // Voice Agent routes with authentication and feature flag check
     const voiceAgentRoutes = require('../features/voice-agent/routes/index');
-    this.app.use('/api/voice-agent', authenticateToken, this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
+    this.app.use('/api/voice-agent', (req, res, next) => {
+      logger.debug(`[VoiceAgent] Incoming request: ${req.method} ${req.originalUrl}`);
+      next();
+    }, authenticateToken, this.createFeatureMiddleware('voice-agent'), voiceAgentRoutes);
     logger.info('[App] Voice Agent routes mounted with authentication and feature flag check');
     
     // Deals Pipeline public routes FIRST (Cloud Tasks endpoints - no feature flag check)

@@ -1,9 +1,15 @@
+/**
+ * Services Index 1.0
+ * 
+ * Exports all voice agent services
+ */
+
+const VAPIService = require('./VAPIService');
 const CallLoggingService = require('./CallLoggingService');
-const LeadBookingService = require('./LeadBooking.service');
-const UserService = require('./User.service');
+const RecordingService = require('./RecordingService');
 
 module.exports = {
+  VAPIService,
   CallLoggingService,
-  LeadBookingService,
-  UserService
+  RecordingService
 };
