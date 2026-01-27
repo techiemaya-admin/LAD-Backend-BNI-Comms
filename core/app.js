@@ -191,6 +191,8 @@ class CoreApplication {
     // Platform routes (always available)
     this.app.use('/api/auth', authRoutes);
     this.app.use('/api/billing', billingRoutes);
+    // Mount billing routes on /api/wallet for backward compatibility
+    this.app.use('/api/wallet', billingRoutes);
     this.app.use('/api/users', userRoutes);
     
     // Campaigns routes with authentication and feature flag check
@@ -227,6 +229,15 @@ class CoreApplication {
     const aiICPAssistantRoutes = require('../features/ai-icp-assistant/routes/index');
     this.app.use('/api/ai-icp-assistant', authenticateToken, this.createFeatureMiddleware('ai-icp-assistant'), aiICPAssistantRoutes);
     logger.info('[App] AI ICP Assistant routes mounted with authentication and feature flag check');
+    
+    // Overview/Dashboard routes - unified dashboard view for users, bookings, and calls
+    const createOverviewRouter = require('../features/overview/routes/index');
+    const { pool } = require('../shared/database/connection');
+    const overviewRoutes = createOverviewRouter(pool);
+    this.app.use('/api/overview', authenticateToken, overviewRoutes);
+    // Also mount on /api/dashboard for backward compatibility
+    this.app.use('/api/dashboard', authenticateToken, overviewRoutes);
+    logger.info('[App] Overview/Dashboard routes mounted with authentication');
     
     // Feature flags endpoint
     this.app.get('/api/features', async (req, res) => {

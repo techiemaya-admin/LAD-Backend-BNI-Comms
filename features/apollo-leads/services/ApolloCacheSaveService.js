@@ -51,7 +51,7 @@ async function saveEmployeesToCache(employees, req = null) {
           email: emp.email || null,
           phone: emp.phone || null,
           linkedin_url: emp.linkedin_url || null,
-          photo_url: emp.photo_url || null,
+          photo_url: emp.photo_url || emp.headshot_url || null,
           headline: emp.headline || null,
           city: emp.city || null,
           state: emp.state || null,

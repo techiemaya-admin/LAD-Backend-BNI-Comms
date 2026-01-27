@@ -513,10 +513,349 @@ router.get('/wallet/balance', authenticateToken, requireTenantContext, async (re
 });
 
 /**
+ * GET /api/wallet/usage/analytics
+ * Legacy endpoint - returns usage analytics for the specified time range
+ */
+router.get('/wallet/usage/analytics', authenticateToken, requireTenantContext, async (req, res) => {
+  try {
+    const { timeRange = '30d' } = req.query;
+    
+    // Parse time range
+    const now = new Date();
+    let fromDate;
+    
+    switch (timeRange) {
+      case '7d':
+        fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        fromDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    // Get usage events
+    const usageEvents = await billingService.listUsageEvents({
+      tenantId: req.tenantId,
+      fromDate,
+      toDate: now,
+      status: 'charged'
+    });
+    
+    // Calculate daily breakdown
+    const dailyUsage = {};
+    usageEvents.forEach(event => {
+      const date = new Date(event.created_at).toISOString().split('T')[0];
+      if (!dailyUsage[date]) {
+        dailyUsage[date] = 0;
+      }
+      dailyUsage[date] += parseFloat(event.total_cost);
+    });
+    
+    // Calculate feature-level breakdown
+    const featureUsage = {};
+    usageEvents.forEach(event => {
+      const feature = event.feature_key || 'unknown';
+      if (!featureUsage[feature]) {
+        featureUsage[feature] = {
+          feature,
+          totalCost: 0,
+          count: 0
+        };
+      }
+      featureUsage[feature].totalCost += parseFloat(event.total_cost);
+      featureUsage[feature].count += 1;
+    });
+    
+    // Calculate totals and percentages
+    const totalUsage = usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0);
+    
+    // Transform to frontend format
+    res.json({
+      success: true,
+      totalCreditsUsed: totalUsage,
+      topFeatures: Object.values(featureUsage)
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .map(f => ({
+          featureName: f.feature,
+          totalCredits: f.totalCost,
+          usageCount: f.count,
+          percentage: totalUsage > 0 ? (f.totalCost / totalUsage) * 100 : 0,
+          icon: f.feature // Frontend will map this to appropriate icon
+        })),
+      dailyUsage: Object.entries(dailyUsage)
+        .map(([date, cost]) => ({
+          date,
+          credits: cost
+        }))
+        .sort((a, b) => new Date(a.date) - new Date(b.date)),
+      monthlyTrend: {
+        currentMonth: totalUsage,
+        lastMonth: 0, // TODO: Calculate from previous period
+        percentageChange: 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('[Billing API] Error fetching usage analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      // Return empty analytics on error for graceful degradation
+      summary: {
+        totalSpent: 0,
+        totalTopup: 0,
+        netChange: 0,
+        transactionCount: 0,
+        averageDailySpend: 0
+      },
+      byFeature: [],
+      dailyUsage: {},
+      transactions: []
+    });
+  }
+});
+
+/**
  * GET /api/wallet/packages
  * Legacy endpoint - returns credit packages (stub for now)
  */
 router.get('/wallet/packages', async (req, res) => {
+  try {
+    // Return standard credit packages
+    const packages = [
+      {
+        id: 'starter',
+        name: 'Starter Pack',
+        credits: 100,
+        price: 29,
+        pricePerCredit: 0.29,
+        savings: 0,
+        description: 'Perfect for trying out the platform'
+      },
+      {
+        id: 'professional',
+        name: 'Professional Pack',
+        credits: 500,
+        price: 129,
+        pricePerCredit: 0.258,
+        savings: 11,
+        popular: true,
+        description: 'Best value for regular users'
+      },
+      {
+        id: 'enterprise',
+        name: 'Enterprise Pack',
+        credits: 2000,
+        price: 449,
+        pricePerCredit: 0.2245,
+        savings: 23,
+        description: 'For power users and teams'
+      }
+    ];
+    
+    res.json({
+      success: true,
+      packages
+    });
+    
+  } catch (error) {
+    console.error('[Billing API] Error fetching packages:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =============================================================================
+// ALTERNATE ROUTES (without /wallet prefix for direct mounting on /api/wallet)
+// =============================================================================
+
+/**
+ * GET /api/wallet/balance (when router mounted on /api/wallet)
+ * Same as /wallet/balance but accessible at /api/wallet/balance
+ */
+router.get('/balance', authenticateToken, requireTenantContext, async (req, res) => {
+  try {
+    const wallet = await billingService.getWalletBalance(req.tenantId);
+    
+    // Get monthly usage
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const usage = await billingService.listUsageEvents({
+      tenantId: req.tenantId,
+      fromDate: firstDayOfMonth,
+      toDate: now,
+      status: 'charged'
+    });
+    
+    const monthlyUsage = usage.reduce((sum, event) => sum + parseFloat(event.total_cost), 0);
+    
+    // Get last topup
+    const transactions = await billingService.listLedgerTransactions({
+      tenantId: req.tenantId,
+      limit: 100
+    });
+    
+    const lastTopup = transactions.find(tx => tx.transaction_type === 'topup');
+    const totalSpent = transactions
+      .filter(tx => tx.transaction_type === 'debit')
+      .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0);
+    
+    // Transform to legacy format
+    res.json({
+      success: true,
+      credits: wallet.currentBalance,
+      balance: wallet.currentBalance,
+      currency: wallet.currency,
+      lastRecharge: lastTopup ? {
+        amount: parseFloat(lastTopup.amount),
+        credits: parseFloat(lastTopup.amount),
+        date: lastTopup.created_at
+      } : null,
+      monthlyUsage: monthlyUsage,
+      totalSpent: totalSpent,
+      transactions: transactions.slice(0, 10).map(tx => ({
+        id: tx.id,
+        amount: parseFloat(tx.amount),
+        type: tx.transaction_type === 'debit' ? 'debit' : 'credit',
+        description: tx.description,
+        timestamp: tx.created_at,
+        status: 'completed'
+      }))
+    });
+    
+  } catch (error) {
+    console.error('[Billing API] Error fetching wallet balance:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      credits: 0,
+      balance: 0,
+      currency: 'USD',
+      lastRecharge: null,
+      monthlyUsage: 0,
+      totalSpent: 0,
+      transactions: []
+    });
+  }
+});
+
+/**
+ * GET /api/wallet/usage/analytics (when router mounted on /api/wallet)
+ * Same as /wallet/usage/analytics but accessible at /api/wallet/usage/analytics
+ */
+router.get('/usage/analytics', authenticateToken, requireTenantContext, async (req, res) => {
+  try {
+    const { timeRange = '30d' } = req.query;
+    
+    // Parse time range
+    const now = new Date();
+    let fromDate;
+    
+    switch (timeRange) {
+      case '7d':
+        fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        fromDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    // Get usage events
+    const usageEvents = await billingService.listUsageEvents({
+      tenantId: req.tenantId,
+      fromDate,
+      toDate: now,
+      status: 'charged'
+    });
+    
+    // Get transactions for the period
+    const transactions = await billingService.listLedgerTransactions({
+      tenantId: req.tenantId,
+      fromDate,
+      toDate: now,
+      limit: 1000
+    });
+    
+    // Calculate daily breakdown
+    const dailyUsage = {};
+    usageEvents.forEach(event => {
+      const date = new Date(event.created_at).toISOString().split('T')[0];
+      if (!dailyUsage[date]) {
+        dailyUsage[date] = 0;
+      }
+      dailyUsage[date] += parseFloat(event.total_cost);
+    });
+    
+    // Calculate feature-level breakdown
+    const featureUsage = {};
+    usageEvents.forEach(event => {
+      const feature = event.feature_key || 'unknown';
+      if (!featureUsage[feature]) {
+        featureUsage[feature] = {
+          feature,
+          totalCost: 0,
+          count: 0
+        };
+      }
+      featureUsage[feature].totalCost += parseFloat(event.total_cost);
+      featureUsage[feature].count += 1;
+    });
+    
+    // Calculate totals and percentages
+    const totalUsage = usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0);
+    
+    // Transform to frontend format
+    res.json({
+      success: true,
+      totalCreditsUsed: totalUsage,
+      topFeatures: Object.values(featureUsage)
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .map(f => ({
+          featureName: f.feature,
+          totalCredits: f.totalCost,
+          usageCount: f.count,
+          percentage: totalUsage > 0 ? (f.totalCost / totalUsage) * 100 : 0,
+          icon: f.feature // Frontend will map this to appropriate icon
+        })),
+      dailyUsage: Object.entries(dailyUsage)
+        .map(([date, cost]) => ({
+          date,
+          credits: cost
+        }))
+        .sort((a, b) => new Date(a.date) - new Date(b.date)),
+      monthlyTrend: {
+        currentMonth: totalUsage,
+        lastMonth: 0, // TODO: Calculate from previous period
+        percentageChange: 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('[Billing API] Error fetching usage analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/wallet/packages (when router mounted on /api/wallet)
+ * Same as /wallet/packages but accessible at /api/wallet/packages
+ */
+router.get('/packages', async (req, res) => {
   try {
     // Return standard credit packages
     const packages = [

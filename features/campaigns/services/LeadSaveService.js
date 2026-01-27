@@ -85,7 +85,7 @@ async function saveLeadsToCampaign(campaignId, tenantId, employees) {
           company_id: employee.company_id,
           company_name: employee.company_name,
           company_domain: employee.company_domain,
-          photo_url: employee.photo_url || employee.profile_picture_url,
+          photo_url: employee.photo_url || employee.headshot_url || employee.profile_picture_url,
           headline: employee.headline,
           city: employee.city,
           state: employee.state,

@@ -536,7 +536,7 @@ class UnipileLeadSearchService {
         industry: person.industry,
         location: person.location,
         headline: person.headline,
-        photo_url: person.photo_url || person.profile_picture_url,
+        photo_url: person.photo_url || person.headshot_url || person.profile_picture_url,
         network_distance: person.network_distance,
         premium: person.premium || false,
         open_profile: person.open_profile,

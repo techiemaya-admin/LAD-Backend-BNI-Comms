@@ -100,7 +100,7 @@ class CampaignLeadsController {
               : (snapshot.linkedin_url || leadData.linkedin_url || leadData.employee_linkedin_url || leadData.linkedin || null),
             photo_url: isInboundLead 
               ? null 
-              : (leadData.photo_url || leadData.employee_photo_url || leadData.avatar || snapshot.photo_url || null),
+              : (leadData.photo_url || leadData.headshot_url || leadData.employee_photo_url || leadData.avatar || leadData.profile_picture || leadData.picture || leadData.image_url || snapshot.photo_url || snapshot.headshot_url || null),
             profile_summary: profileSummary,
             apollo_person_id: apolloPersonId, // Include apollo_person_id for reveal functionality (only outbound)
             created_at: row.created_at,
