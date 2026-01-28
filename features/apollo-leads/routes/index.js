@@ -149,6 +149,13 @@ router.post('/reveal-phone',
 router.post('/search-employees-from-db', ApolloLeadsController.searchEmployeesFromDb);
 
 /**
+ * POST /api/apollo-leads/webhook/phone-reveal
+ * Webhook endpoint for Apollo to deliver phone numbers asynchronously
+ * No authentication required - Apollo calls this endpoint
+ */
+router.post('/webhook/phone-reveal', ApolloLeadsController.handlePhoneRevealWebhook);
+
+/**
  * Feature health check
  */
 router.get('/health', async (req, res) => {

@@ -60,10 +60,10 @@ class ApolloRevealService {
    * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
   async revealEmail(personId, employeeName = null, req = null) {
+    const tenantId = requireTenantId(null, req, 'revealEmail');
+    const schema = getSchema(req);
+    
     try {
-      const tenantId = requireTenantId(null, req, 'revealEmail');
-      const schema = getSchema(req);
-      
       // STEP 1: Check employees_cache table first (0 credits)
       if (personId || employeeName) {
         let cachedEmployee;
@@ -221,10 +221,10 @@ class ApolloRevealService {
    * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
   async revealPhone(personId, employeeName = null, req = null) {
+    const tenantId = requireTenantId(null, req, 'revealPhone');
+    const schema = getSchema(req);
+    
     try {
-      const tenantId = requireTenantId(null, req, 'revealPhone');
-      const schema = getSchema(req);
-      
       // STEP 1: Check employees_cache table first (0 credits)
       if (personId || employeeName) {
         let cachedEmployee;
@@ -372,6 +372,51 @@ class ApolloRevealService {
         credits_used: creditsUsed, 
         error: `${error.message}${error.response?.data ? ` - ${JSON.stringify(error.response.data)}` : ''}` 
       };
+    }
+  }
+
+  /**
+   * Handle webhook callback from Apollo for phone number reveal
+   * Apollo sends phone numbers asynchronously
+   */
+  async handlePhoneRevealWebhook(webhookData) {
+    try {
+      logger.info('[Apollo Reveal] Processing phone reveal webhook', { 
+        data: webhookData 
+      });
+
+      // Apollo webhook format: { person: { id: '...', sanitized_phone: '+1234567890', ... } }
+      const personData = webhookData.person || webhookData;
+      const personId = personData.id;
+      const phone = personData.sanitized_phone || personData.phone;
+
+      if (!personId || !phone) {
+        logger.warn('[Apollo Reveal] Webhook missing person ID or phone', { 
+          webhookData 
+        });
+        return { success: false, error: 'Missing person ID or phone' };
+      }
+
+      // Update employees_cache with the phone number
+      const schema = process.env.POSTGRES_SCHEMA || 'lad_dev';
+      await ApolloEmployeesCacheRepository.updatePhone(personId, phone, null, schema);
+
+      logger.info('[Apollo Reveal] Phone number saved from webhook', { 
+        personId, 
+        phone: phone.substring(0, 5) + '***' 
+      });
+
+      return { 
+        success: true, 
+        personId, 
+        phone 
+      };
+    } catch (error) {
+      logger.error('[Apollo Reveal] Webhook processing error', { 
+        error: error.message, 
+        stack: error.stack 
+      });
+      throw error;
     }
   }
 }

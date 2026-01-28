@@ -1,4 +1,5 @@
 const ApolloLeadsService = require('../services/ApolloLeadsService');
+const PersonIdResolverService = require('../services/PersonIdResolverService');
 const logger = require('../../../core/utils/logger');
 
 /**
@@ -171,7 +172,7 @@ class ApolloLeadsController {
       validateTenant(req);
       
       // Support both GET /leads/:id/email and POST /reveal-email
-      const personId = req.params.id || req.body.person_id;
+      let personId = req.params.id || req.body.person_id;
       const employeeName = req.body.employee_name || null;
       
       if (!personId) {
@@ -180,6 +181,10 @@ class ApolloLeadsController {
           error: 'person_id is required'
         });
       }
+      
+      // LAD Architecture: Use service to resolve person ID (handles both Apollo ID and campaign lead UUID)
+      const resolved = await PersonIdResolverService.resolvePersonId(personId, req);
+      personId = resolved.apolloPersonId;
       
       const result = await ApolloLeadsService.revealEmail(personId, employeeName, req);
       
@@ -216,7 +221,7 @@ class ApolloLeadsController {
       validateTenant(req);
       
       // Support both GET /leads/:id/phone and POST /reveal-phone
-      const personId = req.params.id || req.body.person_id;
+      let personId = req.params.id || req.body.person_id;
       const employeeName = req.body.employee_name || null;
       
       if (!personId) {
@@ -225,6 +230,10 @@ class ApolloLeadsController {
           error: 'person_id is required'
         });
       }
+      
+      // LAD Architecture: Use service to resolve person ID (handles both Apollo ID and campaign lead UUID)
+      const resolved = await PersonIdResolverService.resolvePersonId(personId, req);
+      personId = resolved.apolloPersonId;
       
       const result = await ApolloLeadsService.revealPhone(personId, employeeName, req);
       
@@ -348,6 +357,41 @@ class ApolloLeadsController {
         stack: error.stack
       });
       res.status(error.message.includes('required') ? 400 : 500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Handle webhook callback from Apollo for phone number reveal
+   * Apollo sends phone numbers asynchronously to this endpoint
+   */
+  async handlePhoneRevealWebhook(req, res) {
+    try {
+      logger.info('[Apollo Webhook] Phone reveal webhook received', {
+        body: req.body,
+        headers: req.headers
+      });
+
+      // Apollo sends the data in the request body
+      // Store it in the database for the person
+      const result = await ApolloLeadsService.handlePhoneRevealWebhook(req.body);
+
+      res.json({
+        success: true,
+        message: 'Webhook received',
+        result
+      });
+    } catch (error) {
+      logger.error('[Apollo Webhook] Phone reveal webhook error', {
+        error: error.message,
+        stack: error.stack,
+        body: req.body
+      });
+      
+      // Still return 200 to Apollo so they don't retry
+      res.json({
         success: false,
         error: error.message
       });

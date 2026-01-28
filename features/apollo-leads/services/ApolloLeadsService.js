@@ -274,6 +274,13 @@ class ApolloLeadsService {
     const { searchEmployeesFromDb } = require('./ApolloCacheService');
     return searchEmployeesFromDb(searchParams, req);
   }
+
+  /**
+   * Handle webhook callback from Apollo for phone number reveal
+   */
+  async handlePhoneRevealWebhook(webhookData) {
+    return this.revealService.handlePhoneRevealWebhook(webhookData);
+  }
 }
 
 module.exports = new ApolloLeadsService();
