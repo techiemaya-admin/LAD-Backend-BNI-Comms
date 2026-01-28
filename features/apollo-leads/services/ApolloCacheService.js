@@ -119,7 +119,6 @@ async function searchEmployeesFromDb(searchParams, req = null) {
         
         return {
           id: row.id,
-          apollo_person_id: row.id, // Explicitly set apollo_person_id (row.id is the alias from repository)
           name: row.name,
           title: row.title,
           email: row.email,
@@ -154,7 +153,6 @@ async function searchEmployeesFromDb(searchParams, req = null) {
         
         return {
           id: row.id,
-          apollo_person_id: row.id, // Explicitly set apollo_person_id (row.id is the alias from repository)
           name: row.name,
           title: row.title,
           email: row.email,

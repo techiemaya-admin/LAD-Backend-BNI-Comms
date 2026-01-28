@@ -149,21 +149,6 @@ router.post('/reveal-phone',
 router.post('/search-employees-from-db', ApolloLeadsController.searchEmployeesFromDb);
 
 /**
- * On-demand enrichment endpoint
- * POST /enrichment/lead/:leadId
- * Enriches a single lead with email and LinkedIn URL
- */
-const EnrichmentController = require('../controllers/EnrichmentController');
-router.post('/enrichment/lead/:leadId', requireFeature('apollo-leads'), (req, res) => EnrichmentController.enrichLead(req, res));
-
-/**
- * Batch enrichment endpoint
- * POST /enrichment/batch
- * Enriches multiple leads in batch
- */
-router.post('/enrichment/batch', requireFeature('apollo-leads'), (req, res) => EnrichmentController.enrichLeadsBatch(req, res));
-
-/**
  * Feature health check
  */
 router.get('/health', async (req, res) => {
@@ -181,9 +166,7 @@ router.get('/health', async (req, res) => {
         'POST /reveal-email',
         'GET /leads/:id/phone',
         'POST /reveal-phone',
-        'POST /search-employees-from-db',
-        'POST /enrichment/lead/:leadId',
-        'POST /enrichment/batch'
+        'POST /search-employees-from-db'
       ]
     });
   } catch (error) {

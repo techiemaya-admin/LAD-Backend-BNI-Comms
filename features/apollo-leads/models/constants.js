@@ -8,15 +8,11 @@ const APOLLO_CONFIG = {
   DEFAULT_BASE_URL: 'https://api.apollo.io/v1',
   MAX_PER_PAGE: 100,
   ENDPOINTS: {
-    ORGANIZATIONS_SEARCH: '/mixed_companies/api_search',
+    ORGANIZATIONS_SEARCH: '/mixed_companies/search',
     ORGANIZATION_BY_ID: '/organizations',
-    PEOPLE_SEARCH: '/mixed_people/api_search',
+    PEOPLE_SEARCH: '/mixed_people/search',
     PEOPLE_BULK_MATCH: '/people/bulk_match',
-    MIXED_PEOPLE_SEARCH: '/mixed_people/api_search',
-    PEOPLE_MATCH: '/people/match',
-    PEOPLE_ENRICHMENT: '/people/match',
-    BULK_PEOPLE_ENRICHMENT: '/people/bulk_match',
-    ORGANIZATION_ENRICHMENT: '/organizations/enrich'
+    MIXED_PEOPLE_SEARCH: '/mixed_people/search'
   }
 };
 

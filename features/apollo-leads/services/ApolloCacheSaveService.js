@@ -50,8 +50,8 @@ async function saveEmployeesToCache(employees, req = null) {
           title: emp.title || null,
           email: emp.email || null,
           phone: emp.phone || null,
-          linkedin_url: emp.linkedin_url || emp.linkedin_profile_url || emp.profile_url || emp.linkedin || null,
-          photo_url: emp.photo_url || emp.avatar_url || emp.profile_pic_url || null,
+          linkedin_url: emp.linkedin_url || null,
+          photo_url: emp.photo_url || null,
           headline: emp.headline || null,
           city: emp.city || null,
           state: emp.state || null,
@@ -123,11 +123,21 @@ function formatApolloEmployees(apolloEmployees) {
       }
     }
     
-    // DO NOT construct LinkedIn URLs from names - this creates incorrect URLs
-    // The enrichment API should be called after the search to get the real LinkedIn URL
-    // Leave linkedinUrl as null if not provided by Apollo API
     if (!linkedinUrl) {
-      linkedinUrl = null; // Will be populated by enrichment API
+      // Try to construct from name and company
+      const firstName = emp.first_name || '';
+      const lastName = emp.last_name || '';
+      const fullName = emp.name || `${firstName} ${lastName}`.trim();
+      
+      if (fullName) {
+        // Convert to LinkedIn URL format: "John Doe" -> "john-doe"
+        const linkedinHandle = fullName
+          .toLowerCase()
+          .replace(/\s+/g, '-') // Replace spaces with hyphens
+          .replace(/[^a-z0-9-]/g, ''); // Remove special characters
+        
+        linkedinUrl = `https://www.linkedin.com/in/${linkedinHandle}`;
+      }
     }
     
     return {

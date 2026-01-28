@@ -625,7 +625,6 @@ class UnipileLeadSearchService {
 
   /**
    * Cache search results to employees_cache table
-   * LAD Architecture: Use repository for data access
    */
   async cacheResults(tenantId, results, searchParams) {
     try {
@@ -634,60 +633,24 @@ class UnipileLeadSearchService {
       }
 
       const schema = getSchema(null);
-      
-      // LAD Architecture: Use repository instead of direct SQL
-      const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
-      const repository = new ApolloEmployeesCacheRepository();
-      
-      let cachedCount = 0;
-      for (const person of results) {
-        try {
-          await repository.upsertEmployee({
-            apolloPersonId: person.id || person.profile_id,
-            name: person.name,
-            title: person.title,
-            email: person.email || null,
-            linkedin_url: person.linkedin_url,
-            photo_url: person.photo_url || null,
-            headline: person.headline || null,
-            city: null,
-            state: null,
-            country: person.location,
-            company_id: null,
-            company_name: person.company_name,
-            company_domain: null,
-            data_source: 'unipile',
-            employee_data: person._unipile_data || person
-          }, schema, tenantId);
-          cachedCount++;
-        } catch (err) {
-          logger.warn('[Unipile Cache] Failed to cache person', {
-            personId: person.id,
-            error: err.message
-          });
-        }
-      }
 
-      return { cached: cachedCount };
-    } catch (error) {
-      logger.error('[Unipile Cache] Caching failed', {
-        error: error.message,
-        stack: error.stack
-      });
-      return { cached: 0, error: error.message };
-    }
-  }
-
-  /**
-   * Batch cache results with conflict resolution
-   */
-  async batchCacheResults(tenantId, values) {
-    try {
-      if (!Array.isArray(values) || values.length === 0) {
-        return { cached: 0 };
-      }
-
-      const schema = getSchema(null);
+      const values = results.map(person => [
+        person.id || person.profile_id,
+        person.name,
+        person.title,
+        person.email || null,
+        person.linkedin_url,
+        person.photo_url || null,
+        person.headline || null,
+        person.location,
+        person.company_name,
+        null, // company_id
+        null, // company_domain
+        null, // company_website
+        JSON.stringify(person._unipile_data || person),
+        tenantId,
+        new Date()
+      ]);
 
       // Batch insert with ON CONFLICT UPDATE
       const placeholders = values

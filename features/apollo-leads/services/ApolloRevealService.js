@@ -59,9 +59,9 @@ class ApolloRevealService {
    * Apollo person IDs are numeric values, not UUIDs. If the ID looks like a UUID,
    * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
-  async revealEmail(personId, employeeName = null, req = null, explicitTenantId = null) {
+  async revealEmail(personId, employeeName = null, req = null) {
     try {
-      const tenantId = requireTenantId(explicitTenantId, req, 'revealEmail');
+      const tenantId = requireTenantId(null, req, 'revealEmail');
       const schema = getSchema(req);
       
       // STEP 1: Check employees_cache table first (0 credits)
@@ -163,25 +163,16 @@ class ApolloRevealService {
       
       logger.info('[Apollo Reveal] Email revealed successfully from Apollo', { credits_used: CREDIT_COSTS.EMAIL_REVEAL });
       
-      // Extract LinkedIn URL if available
-      const linkedinUrl = person?.linkedin_url || person?.profile_url || null;
-      
-      // STEP 3: Update cache with real email and LinkedIn URL
+      // STEP 3: Update cache with real email
       try {
         // LAD Architecture: Use repository for SQL operations
         await ApolloEmployeesCacheRepository.updateEmail(personId, email, tenantId, schema);
-        
-        // Also update LinkedIn URL if available
-        if (linkedinUrl) {
-          await ApolloEmployeesCacheRepository.updateLinkedInUrl(personId, linkedinUrl, tenantId, schema);
-        }
-        
-        logger.debug('[Apollo Reveal] Real email and LinkedIn data saved to employees_cache');
+        logger.debug('[Apollo Reveal] Real email saved to employees_cache');
       } catch (cacheError) {
-        logger.warn('[Apollo Reveal] Error caching enrichment data', { error: cacheError.message });
+        logger.warn('[Apollo Reveal] Error caching email', { error: cacheError.message });
       }
       
-      return { email, linkedin_url: linkedinUrl, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL };
+      return { email, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL };
     } catch (error) {
       logger.error('[Apollo Reveal] Reveal email error', { 
         error: error.message, 
