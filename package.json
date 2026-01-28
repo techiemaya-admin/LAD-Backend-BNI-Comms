@@ -29,6 +29,7 @@
     "multer": "^2.0.2",
     "pg": "^8.16.3",
     "socket.io": "^4.8.3",
+    "stripe": "^17.7.0",
     "unipile-node-sdk": "^1.9.3"
   },
   "devDependencies": {

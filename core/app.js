@@ -105,6 +105,14 @@ class CoreApplication {
       preflightContinue: false, // Let cors handle preflight
       optionsSuccessStatus: 204 // Success status for preflight
     }));
+    
+    // Mount Stripe webhook BEFORE json parser (needs raw body)
+    // Note: Only the webhook route is mounted here, other Stripe routes mounted later
+    this.app.use('/api/stripe/webhook', 
+      express.raw({ type: 'application/json' }), 
+      require('./billing/routes/stripe.routes')
+    );
+    
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(cookieParser()); // Parse cookies
@@ -193,6 +201,9 @@ class CoreApplication {
     this.app.use('/api/billing', billingRoutes);
     // Mount billing routes on /api/wallet for backward compatibility
     this.app.use('/api/wallet', billingRoutes);
+    // Stripe routes (checkout requires auth, webhook is already mounted above before auth)
+    const stripeRoutes = require('./billing/routes/stripe.routes');
+    this.app.use('/api/stripe', stripeRoutes);
     this.app.use('/api/users', userRoutes);
     
     // Campaigns routes with authentication and feature flag check

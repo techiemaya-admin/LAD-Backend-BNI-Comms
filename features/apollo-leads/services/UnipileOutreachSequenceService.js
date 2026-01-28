@@ -20,6 +20,7 @@ const axios = require('axios');
 const { pool } = require('../../../shared/database/connection');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const logger = require('../../../core/utils/logger');
+const OutreachSequenceRepository = require('../repositories/OutreachSequenceRepository');
 
 // LinkedIn Rate Limits (from Unipile documentation)
 const LINKEDIN_LIMITS = {

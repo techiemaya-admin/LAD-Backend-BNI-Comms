@@ -46,7 +46,7 @@ const authenticateToken = (req, res, next) => {
   }
 
   // Skip auth for public endpoints
-  const publicPaths = ['/api/auth/login', '/api/auth/register', '/health'];
+  const publicPaths = ['/api/auth/login', '/api/auth/register', '/health', '/api/stripe/webhook'];
   // Also skip auth for feature health endpoints
   if (publicPaths.includes(req.path) || req.path.includes('/health')) {
     logger.debug(`[Auth] Skipping auth for health endpoint: ${req.path}`);

@@ -59,9 +59,9 @@ class ApolloRevealService {
    * Apollo person IDs are numeric values, not UUIDs. If the ID looks like a UUID,
    * it's likely a database record ID and needs to be resolved to an Apollo person ID.
    */
-  async revealEmail(personId, employeeName = null, req = null) {
+  async revealEmail(personId, employeeName = null, req = null, explicitTenantId = null) {
     try {
-      const tenantId = requireTenantId(null, req, 'revealEmail');
+      const tenantId = requireTenantId(explicitTenantId, req, 'revealEmail');
       const schema = getSchema(req);
       
       // STEP 1: Check employees_cache table first (0 credits)
@@ -93,8 +93,8 @@ class ApolloRevealService {
         throw new Error('Apollo API key is not configured');
       }
       
-      // Apollo API v1 endpoint for email reveal - using people/match with reveal flag
-      const apolloUrl = `${this.baseURL || APOLLO_CONFIG.DEFAULT_BASE_URL}/people/match`;
+      // Apollo API v1 endpoint for email reveal - using people/bulk_match (same as search enrichment)
+      const apolloUrl = `${this.baseURL || APOLLO_CONFIG.DEFAULT_BASE_URL}/people/bulk_match`;
       
       if (!personId) {
         return { email: null, from_cache: false, credits_used: 0, error: 'Person ID is required for email reveal' };
@@ -132,8 +132,9 @@ class ApolloRevealService {
         };
       }
       
+      // FIXED: Use bulk_match format (same as test file)
       const apolloRequest = {
-        id: personId,
+        details: [{ id: personId }],
         reveal_personal_emails: true
       };
       
@@ -145,14 +146,16 @@ class ApolloRevealService {
       
       const apolloResponse = await axios.post(apolloUrl, apolloRequest, {
         headers: {
-          'X-Api-Key': this.apiKey,
+          'x-api-key': this.apiKey,  // FIXED: lowercase x-api-key (consistent with search API)
           'Content-Type': 'application/json'
         },
         timeout: 30000
       });
       
-      const person = apolloResponse.data?.person;
-      const email = person?.email || apolloResponse.data?.email;
+      // FIXED: bulk_match returns matches array, not single person
+      const matches = apolloResponse.data?.matches || [];
+      const person = matches.length > 0 ? matches[0] : null;
+      const email = person?.email || person?.personal_emails?.[0];
       if (!email || this._isFakeEmail(email)) {
         logger.warn('[Apollo Reveal] Real email not available from Apollo API');
         return { email: null, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL, error: 'Real email not available for this person' };
@@ -160,16 +163,25 @@ class ApolloRevealService {
       
       logger.info('[Apollo Reveal] Email revealed successfully from Apollo', { credits_used: CREDIT_COSTS.EMAIL_REVEAL });
       
-      // STEP 3: Update cache with real email
+      // Extract LinkedIn URL if available
+      const linkedinUrl = person?.linkedin_url || person?.profile_url || null;
+      
+      // STEP 3: Update cache with real email and LinkedIn URL
       try {
         // LAD Architecture: Use repository for SQL operations
         await ApolloEmployeesCacheRepository.updateEmail(personId, email, tenantId, schema);
-        logger.debug('[Apollo Reveal] Real email saved to employees_cache');
+        
+        // Also update LinkedIn URL if available
+        if (linkedinUrl) {
+          await ApolloEmployeesCacheRepository.updateLinkedInUrl(personId, linkedinUrl, tenantId, schema);
+        }
+        
+        logger.debug('[Apollo Reveal] Real email and LinkedIn data saved to employees_cache');
       } catch (cacheError) {
-        logger.warn('[Apollo Reveal] Error caching email', { error: cacheError.message });
+        logger.warn('[Apollo Reveal] Error caching enrichment data', { error: cacheError.message });
       }
       
-      return { email, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL };
+      return { email, linkedin_url: linkedinUrl, from_cache: false, credits_used: CREDIT_COSTS.EMAIL_REVEAL };
     } catch (error) {
       logger.error('[Apollo Reveal] Reveal email error', { 
         error: error.message, 

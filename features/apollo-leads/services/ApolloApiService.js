@@ -191,28 +191,55 @@ async function callApolloApi(searchParams) {
   
   const {
     organization_locations = [],
+    person_locations = [],  // Personal location (where person lives)
     person_titles = [],
-    organization_industries = [],
+    person_seniorities = [],  // Seniority levels (director, manager, c_suite, etc.)
+    organization_industries = [],  // Keep for backward compatibility
+    q_organization_domains_list = [],  // Specific company domains for filtering
     per_page = 100,
     page = 1
   } = searchParams;
   
-  // Build Apollo.io API request (API key goes in header, not body)
-  const apolloRequestData = {
-    per_page: per_page,
-    page: page || 1
+  // Build Apollo.io API request - filters go in QUERY PARAMETERS, not body
+  // Apollo expects filters as query params with array syntax: param[]=value1&param[]=value2
+  const apolloRequestParams = {
+    per_page: 100,  // Fixed: always fetch 100 results (max per page)
+    page: 1,  // Fixed: always get page 1 only
+    reveal_personal_emails: true,  // Reveal emails directly in search results
+    reveal_phone_number: true  // Reveal phones directly in search results
   };
   
-  // Add filters
+  // Add filters (Apollo expects exact parameter names and array format)
   if (person_titles && person_titles.length > 0) {
-    apolloRequestData.person_titles = person_titles;
+    apolloRequestParams.person_titles = person_titles;
+  }
+  
+  // Add seniority filter
+  if (person_seniorities && person_seniorities.length > 0) {
+    apolloRequestParams.person_seniorities = person_seniorities;
+  }
+  
+  // Support both person_locations (personal) and organization_locations (company)
+  if (person_locations && person_locations.length > 0) {
+    apolloRequestParams.person_locations = person_locations;
   }
   if (organization_locations && organization_locations.length > 0) {
-    apolloRequestData.organization_locations = organization_locations;
+    apolloRequestParams.organization_locations = organization_locations;
   }
+  
+  // Company domain filtering (for specific companies)
+  if (q_organization_domains_list && q_organization_domains_list.length > 0) {
+    apolloRequestParams.q_organization_domains_list = q_organization_domains_list;
+  }
+  
+  // NOTE: People API Search doesn't have direct industry filter
+  // Industry filtering works better with organization search or via q_organization_domains_list
+  // Keep organization_industries for backward compatibility but it may not work as expected
   if (organization_industries && organization_industries.length > 0) {
-    // Apollo API expects q_organization_keyword_tags for industry/keyword search
-    apolloRequestData.q_organization_keyword_tags = organization_industries;
+    apolloRequestParams.organization_industries = organization_industries.map(ind => 
+      String(ind).toLowerCase().trim()
+    );
+    logger.warn('[Apollo API] Note: organization_industries may not be supported by People API Search endpoint. Consider using q_organization_domains_list for company filtering.');
   }
   
   logger.info('[Apollo API] Calling Apollo.io API directly', {
@@ -222,7 +249,7 @@ async function callApolloApi(searchParams) {
     apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none'
   });
   logger.info('[Apollo API] Request params being sent', {
-    ...apolloRequestData,
+    ...apolloRequestParams,
     searchCriteria: {
       titles: person_titles?.length || 0,
       locations: organization_locations?.length || 0,
@@ -233,12 +260,27 @@ async function callApolloApi(searchParams) {
   try {
     const apolloResponse = await axios.post(
       apolloSearchEndpoint,
-      apolloRequestData,
+      {},  // Empty body - filters go in params!
       {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
-          'X-Api-Key': apiKey  // Apollo.io requires API key in header
+          'x-api-key': apiKey  // Apollo uses lowercase x-api-key
+        },
+        params: apolloRequestParams,  // Filters as query parameters
+        paramsSerializer: {
+          serialize: (params) => {
+            // Serialize arrays as param[]=value1&param[]=value2 (Apollo format)
+            const qs = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+              if (Array.isArray(value)) {
+                value.forEach((v) => qs.append(`${key}[]`, v));
+              } else if (value !== undefined && value !== null) {
+                qs.append(key, value);
+              }
+            });
+            return qs.toString();
+          }
         },
         timeout: 120000 // 2 minutes for Apollo API
       }

@@ -93,4 +93,9 @@ uploads/
 # SSL certificates
 *.pem
 *.key
-*.crt
+*.crt# Test and utility scripts
+test-*.js
+check-*.js
+fix-*.js
+generate-test-*.js
+*-test-*.sql

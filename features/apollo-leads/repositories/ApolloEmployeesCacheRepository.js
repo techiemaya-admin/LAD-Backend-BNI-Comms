@@ -257,6 +257,21 @@ class ApolloEmployeesCacheRepository {
     const result = await pool.query(query, [phone, String(personId), tenantId]);
     return result.rowCount > 0;
   }
+
+  /**
+   * Update employee LinkedIn URL
+   * LAD Architecture: SQL only, tenant-scoped update
+   */
+  async updateLinkedInUrl(personId, linkedinUrl, tenantId, schema) {
+    const query = `
+      UPDATE ${schema}.employees_cache
+      SET employee_linkedin_url = $1, updated_at = NOW()
+      WHERE apollo_person_id = $2 AND tenant_id = $3
+    `;
+    
+    const result = await pool.query(query, [linkedinUrl, String(personId), tenantId]);
+    return result.rowCount > 0;
+  }
 }
 
 module.exports = new ApolloEmployeesCacheRepository();
