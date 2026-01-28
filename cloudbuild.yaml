@@ -18,8 +18,7 @@ steps:
       '-t', 'gcr.io/$PROJECT_ID/lad-backend:latest',
       '--cache-from', 'gcr.io/$PROJECT_ID/lad-backend:latest',
       '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
-      '-f', 'backend/Dockerfile',
-      './backend'
+      '.'
     ]
 
   # Push the Docker images to Container Registry
