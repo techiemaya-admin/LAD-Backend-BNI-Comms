@@ -475,6 +475,20 @@ class BillingService {
   }
 
   /**
+   * Legacy: get credit balance from user_credits
+   */
+  async getLegacyCreditBalance(tenantId) {
+    return billingRepo.getLegacyCreditBalance(tenantId);
+  }
+
+  /**
+   * Legacy: list credit transactions from credit_transactions
+   */
+  async listLegacyCreditTransactions(filters) {
+    return billingRepo.listLegacyCreditTransactions(filters);
+  }
+
+  /**
    * List active pricing
    */
   async listPricing(filters) {

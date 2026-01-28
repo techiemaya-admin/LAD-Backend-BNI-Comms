@@ -67,7 +67,14 @@ class CallLoggingService {
       leadId,
       initiatedByUserId: initiatedByUserId || initiatedBy || null,
       recordingUrl: null, // Will be updated later
-      direction: 'outbound'
+      direction: 'outbound',
+      metadata: {
+        vapiCallId: vapiResponse?.id || null,
+        vapiStatus: vapiResponse?.status || null,
+        vapiAssistantId: vapiResponse?.assistantId || null,
+        vapiPhoneNumberId: vapiResponse?.phoneNumberId || null,
+        createdVia: 'vapi'
+      }
     });
     return callLog;
   }

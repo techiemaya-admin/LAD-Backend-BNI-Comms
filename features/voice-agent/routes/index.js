@@ -13,14 +13,17 @@ const {
   BatchCallController, 
   CallInitiationController 
 } = require('../controllers');
+const VAPIWebhookController = require('../controllers/VAPIWebhookController');
 const { pool } = require('../../../shared/database/connection');
 const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
+const { requireCredits } = require('../../../shared/middleware/credit_guard');
 
 // Initialize controllers with shared database pool
 const voiceAgentController = new VoiceAgentController(pool);
 const callController = new CallController(pool);
 const batchCallController = new BatchCallController(pool);
 const callInitiationController = new CallInitiationController(pool);
+const vapiWebhookController = new VAPIWebhookController(pool);
 
 // Tenant middleware - extracts tenant ID from request
 const tenantMiddleware = (req, res, next) => {
@@ -185,10 +188,12 @@ router.get(
 /**
  * POST /calls
  * Initiate a single voice call
+ * Requires 1 credit for call initiation (additional credits charged based on duration)
  */
 router.post(
   '/calls',
-  tenantMiddleware,
+  jwtAuth,
+  requireCredits('voice_call', 1),
   (req, res) => callInitiationController.initiateCall(req, res)
 );
 
@@ -199,6 +204,7 @@ router.post(
 router.post(
   '/calls/batch',
   tenantMiddleware,
+  requireCredits(1, 'voice_agent_batch'),
   (req, res) => batchCallController.batchInitiateCalls(req, res)
 );
 
@@ -277,16 +283,39 @@ router.post(
 );
 
 // ============================================
+// Webhook Endpoints
+// ============================================
+
+/**
+ * POST /webhook/vapi
+ * Receive webhooks from VAPI for call status updates and billing
+ * This endpoint processes call completion events and charges credits based on duration
+ * 
+ * VAPI Events:
+ * - call.started: Call has been initiated
+ * - call.ended: Call completed (triggers credit deduction)
+ * - call.failed: Call failed (triggers credit refund)
+ * 
+ * No authentication required (VAPI webhook signature verification should be added)
+ */
+router.post(
+  '/webhook/vapi',
+  (req, res) => vapiWebhookController.handleVAPIWebhook(req, res)
+);
+
+// ============================================
 // V2 API Endpoints
 // ============================================
 
 /**
  * POST /calls/start-call (V2)
  * Initiate a single voice call - V2 endpoint with UUID support
+ * Requires 1 credit for call initiation (additional credits charged based on duration)
  */
 router.post(
   '/calls/start-call',
-  tenantMiddleware,
+  jwtAuth,
+  requireCredits('voice_call', 1),
   (req, res) => callInitiationController.initiateCallV2(req, res)
 );
 

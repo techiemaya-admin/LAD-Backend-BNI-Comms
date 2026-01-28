@@ -296,7 +296,7 @@ class ApolloRevealService {
       const apolloRequest = {
         id: personId,
         reveal_phone_number: true,
-        webhook_url: process.env.APOLLO_WEBHOOK_URL
+        webhook_url: process.env.APOLLO_WEBHOOK_URL || 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'
       };
       
       logger.debug('[Apollo Reveal] Phone reveal request', { 

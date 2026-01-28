@@ -448,6 +448,10 @@ router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async
 router.get('/wallet/balance', authenticateToken, requireTenantContext, async (req, res) => {
   try {
     const wallet = await billingService.getWalletBalance(req.tenantId);
+    const legacyBalance = await billingService.getLegacyCreditBalance(req.tenantId);
+    const useLegacyBalance = wallet.currentBalance <= 0 && legacyBalance > 0;
+    const effectiveBalance = useLegacyBalance ? legacyBalance : wallet.currentBalance;
+    const effectiveCurrency = useLegacyBalance ? 'CREDITS' : wallet.currency;
     
     // Get monthly usage
     const now = new Date();
@@ -459,7 +463,19 @@ router.get('/wallet/balance', authenticateToken, requireTenantContext, async (re
       status: 'charged'
     });
     
-    const monthlyUsage = usage.reduce((sum, event) => sum + parseFloat(event.total_cost), 0);
+    let monthlyUsage = usage.reduce((sum, event) => sum + parseFloat(event.total_cost), 0);
+    if (monthlyUsage === 0) {
+      const legacyMonthlyTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        fromDate: firstDayOfMonth,
+        toDate: now,
+        limit: 5000
+      });
+      monthlyUsage = legacyMonthlyTx
+        .map(tx => parseFloat(tx.amount))
+        .filter(amount => amount < 0)
+        .reduce((sum, amount) => sum + Math.abs(amount), 0);
+    }
     
     // Get last topup
     const transactions = await billingService.listLedgerTransactions({
@@ -468,16 +484,26 @@ router.get('/wallet/balance', authenticateToken, requireTenantContext, async (re
     });
     
     const lastTopup = transactions.find(tx => tx.transaction_type === 'topup');
-    const totalSpent = transactions
+    let totalSpent = transactions
       .filter(tx => tx.transaction_type === 'debit')
       .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0);
+    if (totalSpent === 0) {
+      const legacyAllTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        limit: 5000
+      });
+      totalSpent = legacyAllTx
+        .map(tx => parseFloat(tx.amount))
+        .filter(amount => amount < 0)
+        .reduce((sum, amount) => sum + Math.abs(amount), 0);
+    }
     
     // Transform to legacy format
     res.json({
       success: true,
-      credits: wallet.currentBalance,
-      balance: wallet.currentBalance,
-      currency: wallet.currency,
+      credits: effectiveBalance,
+      balance: effectiveBalance,
+      currency: effectiveCurrency,
       lastRecharge: lastTopup ? {
         amount: parseFloat(lastTopup.amount),
         credits: parseFloat(lastTopup.amount),
@@ -485,10 +511,13 @@ router.get('/wallet/balance', authenticateToken, requireTenantContext, async (re
       } : null,
       monthlyUsage: monthlyUsage,
       totalSpent: totalSpent,
-      transactions: transactions.slice(0, 10).map(tx => ({
+      transactions: (transactions.length > 0 ? transactions : await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        limit: 10
+      })).slice(0, 10).map(tx => ({
         id: tx.id,
         amount: parseFloat(tx.amount),
-        type: tx.transaction_type === 'debit' ? 'debit' : 'credit',
+        type: (tx.transaction_type ? tx.transaction_type === 'debit' : parseFloat(tx.amount) < 0) ? 'debit' : 'credit',
         description: tx.description,
         timestamp: tx.created_at,
         status: 'completed'
@@ -545,34 +574,64 @@ router.get('/wallet/usage/analytics', authenticateToken, requireTenantContext, a
       toDate: now,
       status: 'charged'
     });
+
+    let legacyTx = [];
+    if (usageEvents.length === 0) {
+      legacyTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        fromDate,
+        toDate: now,
+        limit: 5000
+      });
+    }
     
-    // Calculate daily breakdown
+    // Calculate daily breakdown + feature usage
     const dailyUsage = {};
-    usageEvents.forEach(event => {
-      const date = new Date(event.created_at).toISOString().split('T')[0];
-      if (!dailyUsage[date]) {
-        dailyUsage[date] = 0;
-      }
-      dailyUsage[date] += parseFloat(event.total_cost);
-    });
-    
-    // Calculate feature-level breakdown
     const featureUsage = {};
-    usageEvents.forEach(event => {
-      const feature = event.feature_key || 'unknown';
-      if (!featureUsage[feature]) {
-        featureUsage[feature] = {
-          feature,
-          totalCost: 0,
-          count: 0
-        };
-      }
-      featureUsage[feature].totalCost += parseFloat(event.total_cost);
-      featureUsage[feature].count += 1;
-    });
+
+    if (usageEvents.length > 0) {
+      usageEvents.forEach(event => {
+        const date = new Date(event.created_at).toISOString().split('T')[0];
+        if (!dailyUsage[date]) {
+          dailyUsage[date] = 0;
+        }
+        dailyUsage[date] += parseFloat(event.total_cost);
+
+        const feature = event.feature_key || 'unknown';
+        if (!featureUsage[feature]) {
+          featureUsage[feature] = { feature, totalCost: 0, count: 0 };
+        }
+        featureUsage[feature].totalCost += parseFloat(event.total_cost);
+        featureUsage[feature].count += 1;
+      });
+    } else {
+      legacyTx.forEach(tx => {
+        const amount = parseFloat(tx.amount);
+        if (amount >= 0) return;
+        const date = new Date(tx.created_at).toISOString().split('T')[0];
+        if (!dailyUsage[date]) {
+          dailyUsage[date] = 0;
+        }
+        dailyUsage[date] += Math.abs(amount);
+
+        const metaFeature = tx.metadata?.feature || tx.metadata?.featureKey;
+        const metaUsage = tx.metadata?.usage_type || tx.metadata?.usageType;
+        const feature = metaFeature || metaUsage || 'unknown';
+        if (!featureUsage[feature]) {
+          featureUsage[feature] = { feature, totalCost: 0, count: 0 };
+        }
+        featureUsage[feature].totalCost += Math.abs(amount);
+        featureUsage[feature].count += 1;
+      });
+    }
     
     // Calculate totals and percentages
-    const totalUsage = usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0);
+    const totalUsage = usageEvents.length > 0
+      ? usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0)
+      : legacyTx.reduce((sum, tx) => {
+          const amount = parseFloat(tx.amount);
+          return amount < 0 ? sum + Math.abs(amount) : sum;
+        }, 0);
     
     // Transform to frontend format
     res.json({
@@ -692,6 +751,10 @@ router.get('/wallet/packages', async (req, res) => {
 router.get('/balance', authenticateToken, requireTenantContext, async (req, res) => {
   try {
     const wallet = await billingService.getWalletBalance(req.tenantId);
+    const legacyBalance = await billingService.getLegacyCreditBalance(req.tenantId);
+    const useLegacyBalance = wallet.currentBalance <= 0 && legacyBalance > 0;
+    const effectiveBalance = useLegacyBalance ? legacyBalance : wallet.currentBalance;
+    const effectiveCurrency = useLegacyBalance ? 'CREDITS' : wallet.currency;
     
     // Get monthly usage
     const now = new Date();
@@ -703,7 +766,19 @@ router.get('/balance', authenticateToken, requireTenantContext, async (req, res)
       status: 'charged'
     });
     
-    const monthlyUsage = usage.reduce((sum, event) => sum + parseFloat(event.total_cost), 0);
+    let monthlyUsage = usage.reduce((sum, event) => sum + parseFloat(event.total_cost), 0);
+    if (monthlyUsage === 0) {
+      const legacyMonthlyTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        fromDate: firstDayOfMonth,
+        toDate: now,
+        limit: 5000
+      });
+      monthlyUsage = legacyMonthlyTx
+        .map(tx => parseFloat(tx.amount))
+        .filter(amount => amount < 0)
+        .reduce((sum, amount) => sum + Math.abs(amount), 0);
+    }
     
     // Get last topup
     const transactions = await billingService.listLedgerTransactions({
@@ -712,16 +787,26 @@ router.get('/balance', authenticateToken, requireTenantContext, async (req, res)
     });
     
     const lastTopup = transactions.find(tx => tx.transaction_type === 'topup');
-    const totalSpent = transactions
+    let totalSpent = transactions
       .filter(tx => tx.transaction_type === 'debit')
       .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0);
+    if (totalSpent === 0) {
+      const legacyAllTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        limit: 5000
+      });
+      totalSpent = legacyAllTx
+        .map(tx => parseFloat(tx.amount))
+        .filter(amount => amount < 0)
+        .reduce((sum, amount) => sum + Math.abs(amount), 0);
+    }
     
     // Transform to legacy format
     res.json({
       success: true,
-      credits: wallet.currentBalance,
-      balance: wallet.currentBalance,
-      currency: wallet.currency,
+      credits: effectiveBalance,
+      balance: effectiveBalance,
+      currency: effectiveCurrency,
       lastRecharge: lastTopup ? {
         amount: parseFloat(lastTopup.amount),
         credits: parseFloat(lastTopup.amount),
@@ -729,10 +814,13 @@ router.get('/balance', authenticateToken, requireTenantContext, async (req, res)
       } : null,
       monthlyUsage: monthlyUsage,
       totalSpent: totalSpent,
-      transactions: transactions.slice(0, 10).map(tx => ({
+      transactions: (transactions.length > 0 ? transactions : await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        limit: 10
+      })).slice(0, 10).map(tx => ({
         id: tx.id,
         amount: parseFloat(tx.amount),
-        type: tx.transaction_type === 'debit' ? 'debit' : 'credit',
+        type: (tx.transaction_type ? tx.transaction_type === 'debit' : parseFloat(tx.amount) < 0) ? 'debit' : 'credit',
         description: tx.description,
         timestamp: tx.created_at,
         status: 'completed'
@@ -789,41 +877,69 @@ router.get('/usage/analytics', authenticateToken, requireTenantContext, async (r
       status: 'charged'
     });
     
-    // Get transactions for the period
-    const transactions = await billingService.listLedgerTransactions({
-      tenantId: req.tenantId,
-      fromDate,
-      toDate: now,
-      limit: 1000
-    });
+    // If no usage events, fallback to legacy credit transactions
+    let legacyTx = [];
+    if (usageEvents.length === 0) {
+      legacyTx = await billingService.listLegacyCreditTransactions({
+        tenantId: req.tenantId,
+        fromDate,
+        toDate: now,
+        limit: 5000
+      });
+    }
     
-    // Calculate daily breakdown
+    // Calculate daily and feature breakdown
     const dailyUsage = {};
-    usageEvents.forEach(event => {
-      const date = new Date(event.created_at).toISOString().split('T')[0];
-      if (!dailyUsage[date]) {
-        dailyUsage[date] = 0;
-      }
-      dailyUsage[date] += parseFloat(event.total_cost);
-    });
-    
-    // Calculate feature-level breakdown
     const featureUsage = {};
-    usageEvents.forEach(event => {
-      const feature = event.feature_key || 'unknown';
-      if (!featureUsage[feature]) {
-        featureUsage[feature] = {
-          feature,
-          totalCost: 0,
-          count: 0
-        };
-      }
-      featureUsage[feature].totalCost += parseFloat(event.total_cost);
-      featureUsage[feature].count += 1;
-    });
+    
+    if (usageEvents.length > 0) {
+      // Use new billing system data
+      usageEvents.forEach(event => {
+        const date = new Date(event.created_at).toISOString().split('T')[0];
+        if (!dailyUsage[date]) {
+          dailyUsage[date] = 0;
+        }
+        dailyUsage[date] += parseFloat(event.total_cost);
+        
+        const feature = event.feature_key || 'unknown';
+        if (!featureUsage[feature]) {
+          featureUsage[feature] = { feature, totalCost: 0, count: 0 };
+        }
+        featureUsage[feature].totalCost += parseFloat(event.total_cost);
+        featureUsage[feature].count += 1;
+      });
+    } else {
+      // Use legacy credit transactions
+      legacyTx.forEach(tx => {
+        const amount = parseFloat(tx.amount);
+        if (amount >= 0) return; // Skip credits, only process debits
+        
+        const date = new Date(tx.created_at).toISOString().split('T')[0];
+        if (!dailyUsage[date]) {
+          dailyUsage[date] = 0;
+        }
+        dailyUsage[date] += Math.abs(amount);
+        
+        // Extract feature from metadata
+        const metaFeature = tx.metadata?.feature || tx.metadata?.featureKey;
+        const metaUsage = tx.metadata?.usage_type || tx.metadata?.usageType;
+        const feature = metaFeature || metaUsage || 'unknown';
+        
+        if (!featureUsage[feature]) {
+          featureUsage[feature] = { feature, totalCost: 0, count: 0 };
+        }
+        featureUsage[feature].totalCost += Math.abs(amount);
+        featureUsage[feature].count += 1;
+      });
+    }
     
     // Calculate totals and percentages
-    const totalUsage = usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0);
+    const totalUsage = usageEvents.length > 0
+      ? usageEvents.reduce((sum, e) => sum + parseFloat(e.total_cost), 0)
+      : legacyTx.reduce((sum, tx) => {
+          const amount = parseFloat(tx.amount);
+          return amount < 0 ? sum + Math.abs(amount) : sum;
+        }, 0);
     
     // Transform to frontend format
     res.json({

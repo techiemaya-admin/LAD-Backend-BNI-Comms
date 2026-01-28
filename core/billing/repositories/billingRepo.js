@@ -466,6 +466,61 @@ async function listFeatureEntitlements(tenantId) {
   return result.rows;
 }
 
+// =============================================================================
+// LEGACY CREDIT TABLES (user_credits, credit_transactions)
+// =============================================================================
+
+/**
+ * Get legacy credit balance (user_credits)
+ */
+async function getLegacyCreditBalance(tenantId) {
+  const schema = process.env.DB_SCHEMA || process.env.POSTGRES_SCHEMA || 'lad_dev';
+  const sql = `
+    SELECT COALESCE(uc.balance, 0) as balance
+    FROM ${schema}.user_credits uc
+    WHERE uc.tenant_id = $1 OR uc.user_id = $1
+    LIMIT 1
+  `;
+  const result = await query(sql, [tenantId]);
+  return result.rows.length > 0 ? parseFloat(result.rows[0].balance) : 0;
+}
+
+/**
+ * List legacy credit transactions (credit_transactions)
+ */
+async function listLegacyCreditTransactions({
+  tenantId,
+  fromDate,
+  toDate,
+  limit = 1000,
+  offset = 0
+}) {
+  const schema = process.env.DB_SCHEMA || process.env.POSTGRES_SCHEMA || 'lad_dev';
+  let sql = `
+    SELECT *
+    FROM ${schema}.credit_transactions
+    WHERE tenant_id = $1
+  `;
+  const params = [tenantId];
+  let paramIndex = 2;
+
+  if (fromDate) {
+    sql += ` AND created_at >= $${paramIndex++}`;
+    params.push(fromDate);
+  }
+
+  if (toDate) {
+    sql += ` AND created_at < $${paramIndex++}`;
+    params.push(toDate);
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+  params.push(limit, offset);
+
+  const result = await query(sql, params);
+  return result.rows;
+}
+
 module.exports = {
   // Pricing
   resolvePrice,
@@ -491,5 +546,9 @@ module.exports = {
   
   // Entitlements
   getFeatureEntitlement,
-  listFeatureEntitlements
+  listFeatureEntitlements,
+
+  // Legacy credits
+  getLegacyCreditBalance,
+  listLegacyCreditTransactions
 };

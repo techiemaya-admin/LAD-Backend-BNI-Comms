@@ -42,7 +42,8 @@ class VoiceCallModel {
     leadId = null,
     initiatedByUserId = null,
     recordingUrl = null,
-    direction = 'outbound'
+    direction = 'outbound',
+    metadata = null
   }) {
     const query = `
       INSERT INTO ${schema}.voice_call_logs (
@@ -56,10 +57,11 @@ class VoiceCallModel {
         initiated_by_user_id,
         recording_url,
         direction,
+        metadata,
         started_at,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW(), NOW())
       RETURNING 
         id,
         tenant_id,
@@ -69,7 +71,8 @@ class VoiceCallModel {
         to_base_number,
         status,
         started_at,
-        lead_id
+        lead_id,
+        metadata
     `;
 
     const values = [
@@ -82,7 +85,8 @@ class VoiceCallModel {
       leadId,
       initiatedByUserId,
       recordingUrl,
-      direction
+      direction,
+      metadata ? JSON.stringify(metadata) : null
     ];
 
     const result = await this.pool.query(query, values);
