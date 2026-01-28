@@ -60,7 +60,6 @@ steps:
           --update-env-vars GCP_PROJECT_ID=$_GCP_PROJECT_ID,GCP_LOCATION=$_GCP_LOCATION,GCP_CLOUD_TASKS_SERVICE_ACCOUNT=cloud-tasks@salesmaya-pluto.iam.gserviceaccount.com \
           --update-env-vars FOLLOWUP_QUEUE_NAME=$_FOLLOWUP_QUEUE_NAME,FOLLOWUP_EXECUTION_ENDPOINT=$_FOLLOWUP_EXECUTION_ENDPOINT,DEFAULT_FOLLOW_UP_AGENT_ID=$_DEFAULT_FOLLOW_UP_AGENT_ID \
           --update-env-vars STRIPE_SUCCESS_URL=$_STRIPE_SUCCESS_URL,STRIPE_CANCEL_URL=$_STRIPE_CANCEL_URL \
-          --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
 
 # Images to be pushed to Container Registry
 images:
