@@ -123,22 +123,9 @@ function formatApolloEmployees(apolloEmployees) {
       }
     }
     
-    if (!linkedinUrl) {
-      // Try to construct from name and company
-      const firstName = emp.first_name || '';
-      const lastName = emp.last_name || '';
-      const fullName = emp.name || `${firstName} ${lastName}`.trim();
-      
-      if (fullName) {
-        // Convert to LinkedIn URL format: "John Doe" -> "john-doe"
-        const linkedinHandle = fullName
-          .toLowerCase()
-          .replace(/\s+/g, '-') // Replace spaces with hyphens
-          .replace(/[^a-z0-9-]/g, ''); // Remove special characters
-        
-        linkedinUrl = `https://www.linkedin.com/in/${linkedinHandle}`;
-      }
-    }
+    // REMOVED: Do NOT construct fake LinkedIn URLs from names
+    // Apollo should provide real LinkedIn URLs - if missing, leave as null
+    // Constructing URLs like "linkedin.com/in/firstname-lastname" leads to invalid profiles
     
     return {
       id: emp.id || emp.person_id,
