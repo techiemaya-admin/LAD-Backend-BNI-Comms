@@ -34,13 +34,30 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
     }
     // Get LinkedIn account with Unipile account ID (using helper)
     const linkedinAccountId = await getLinkedInAccountForExecution(tenantId, userId);
+    
+    const logger = require('../../../core/utils/logger');
+    logger.info('[LinkedInStepExecutor] LinkedIn account check', {
+      stepType,
+      tenantId,
+      userId,
+      hasLinkedInAccountId: !!linkedinAccountId,
+      linkedinAccountId
+    });
+    
     if (!linkedinAccountId) {
+      logger.warn('[LinkedInStepExecutor] No LinkedIn account found', {
+        stepType,
+        tenantId,
+        userId,
+        error: 'No active LinkedIn account connected'
+      });
       return { 
         success: false, 
         error: 'No active LinkedIn account connected with Unipile. Please connect a LinkedIn account in Settings → LinkedIn Integration to enable LinkedIn campaign steps.',
         userAction: 'Connect LinkedIn account in Settings'
       };
     }
+    
     // Format employee for Unipile
     const employee = {
       profile_url: linkedinUrl,
