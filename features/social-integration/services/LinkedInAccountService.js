@@ -496,14 +496,27 @@ class LinkedInAccountService {
             throw new Error('li_at cookie is required for cookies method');
           }
 
-          logger.info('[LinkedInAccountService] Connecting via SDK with cookies');
-          const account = await unipile.account.connectLinkedin({
-            cookies: {
-              li_at: li_at,
-              li_a: li_a || undefined
-            },
-            user_agent: user_agent || 'LAD/1.0'
+          logger.info('[LinkedInAccountService] Connecting via SDK with cookies', {
+            hasLiAt: !!li_at,
+            liAtLength: li_at?.length,
+            liAtPrefix: li_at?.substring(0, 20) + '...',
+            hasLiA: !!li_a,
+            hasUserAgent: !!user_agent
           });
+          
+          // Use the dedicated connectLinkedinWithCookie method for cookie auth
+          // Note: user_agent should match the browser the cookie was extracted from
+          const cookiePayload = {
+            access_token: li_at,
+            premium_token: li_a || undefined,
+            user_agent: user_agent || undefined
+          };
+          
+          logger.info('[LinkedInAccountService] SDK cookie payload', {
+            payloadKeys: Object.keys(cookiePayload).filter(k => cookiePayload[k] !== undefined)
+          });
+          
+          const account = await unipile.account.connectLinkedinWithCookie(cookiePayload);
 
           // Check if response is a checkpoint (OTP/2FA required)
           if (account && account.object === 'Checkpoint' && account.checkpoint) {
@@ -514,67 +527,126 @@ class LinkedInAccountService {
           return account;
         }
       } catch (sdkError) {
+        // Extract meaningful error message from SDK error
+        let errorMessage = sdkError.message || '';
+        
+        // Try to get more details from the error object
+        if (!errorMessage && sdkError.response?.data) {
+          if (typeof sdkError.response.data === 'string') {
+            errorMessage = sdkError.response.data;
+          } else if (sdkError.response.data.error) {
+            errorMessage = sdkError.response.data.error;
+          } else if (sdkError.response.data.message) {
+            errorMessage = sdkError.response.data.message;
+          } else if (sdkError.response.data.detail) {
+            errorMessage = sdkError.response.data.detail;
+          } else {
+            errorMessage = JSON.stringify(sdkError.response.data);
+          }
+        }
+        
+        // If still no message, check for common error patterns
+        if (!errorMessage) {
+          if (sdkError.status === 401 || sdkError.response?.status === 401) {
+            errorMessage = 'Invalid credentials or LinkedIn requires verification';
+          } else if (sdkError.status === 429 || sdkError.response?.status === 429) {
+            errorMessage = 'Too many attempts. Please wait and try again later';
+          } else if (sdkError.code === 'ENOTFOUND' || sdkError.code === 'ETIMEDOUT') {
+            errorMessage = 'Unable to connect to LinkedIn service. Please check your internet connection';
+          } else {
+            errorMessage = 'LinkedIn connection failed. Please check your credentials and try again';
+          }
+        }
+        
         logger.error('[LinkedInAccountService] SDK connection failed', {
-          error: sdkError.message,
+          error: errorMessage,
+          originalError: sdkError.message,
           stack: sdkError.stack,
           response: sdkError.response?.data,
           status: sdkError.response?.status,
-          statusText: sdkError.response?.statusText
-        });
-        throw sdkError;
-      }
-    } else {
-      // SDK not available, try HTTP API (fallback)
-      logger.warn('[LinkedInAccountService] Unipile SDK not available, using HTTP API fallback');
-      const headers = unipileService.getAuthHeaders();
-
-      let payload = {};
-      if (method === 'credentials') {
-        // Unipile API requires provider field for credentials method
-        payload = {
-          provider: 'LINKEDIN',
-          username: email,
-          password: password
-        };
-      } else if (method === 'cookies') {
-        // For cookies method, use access_token and premium_token fields
-        payload = { 
-          provider: 'LINKEDIN',
-          access_token: li_at,
-          premium_token: li_a || undefined
-        };
-        if (user_agent) {
-          payload.user_agent = user_agent;
-        }
-      }
-
-      try {
-        const response = await axios.post(
-          `${baseUrl}/accounts`,
-          payload,
-          { headers, timeout: 60000 }
-        );
-
-        return response.data;
-      } catch (apiError) {
-        // Handle 404 - endpoint doesn't exist
-        if (apiError.response?.status === 404) {
-          logger.warn('[LinkedInAccountService] Unipile endpoint not found (404)');
-          throw new Error(
-            'LinkedIn connection endpoint not found. Please install unipile-node-sdk: npm install unipile-node-sdk'
-          );
-        }
-        
-        logger.error('[LinkedInAccountService] HTTP API connection failed', {
-          error: apiError.message,
-          status: apiError.response?.status,
-          statusText: apiError.response?.statusText,
-          responseData: apiError.response?.data,
-          url: `${baseUrl}/accounts`
+          statusText: sdkError.response?.statusText,
+          code: sdkError.code
         });
         
-        throw apiError;
+        // Don't throw - fall through to HTTP API fallback
+        logger.info('[LinkedInAccountService] SDK failed, trying HTTP API fallback');
       }
+    }
+    
+    // HTTP API fallback (used when SDK fails or not available)
+    logger.info('[LinkedInAccountService] Using HTTP API for connection');
+    const headers = unipileService.getAuthHeaders();
+
+    let payload = {};
+    if (method === 'credentials') {
+      // Unipile API requires provider field for credentials method
+      payload = {
+        provider: 'LINKEDIN',
+        username: email,
+        password: password
+      };
+    } else if (method === 'cookies') {
+      // For cookies method, use access_token and premium_token fields
+      payload = { 
+        provider: 'LINKEDIN',
+        access_token: li_at,
+        premium_token: li_a || undefined
+      };
+      if (user_agent) {
+        payload.user_agent = user_agent;
+      }
+    }
+
+    try {
+      logger.info('[LinkedInAccountService] Calling Unipile HTTP API', {
+        url: `${baseUrl}/accounts`,
+        method: payload.username ? 'credentials' : 'cookies'
+      });
+      
+      const response = await axios.post(
+        `${baseUrl}/accounts`,
+        payload,
+        { headers, timeout: 60000 }
+      );
+      
+      logger.info('[LinkedInAccountService] HTTP API connection successful', {
+        hasAccountId: !!response.data?.account_id,
+        responseKeys: Object.keys(response.data || {})
+      });
+
+      return response.data;
+    } catch (apiError) {
+      // Extract detailed error message
+      let errorMsg = apiError.message || 'Connection failed';
+      
+      if (apiError.response?.data) {
+        const data = apiError.response.data;
+        if (data.error) errorMsg = data.error;
+        else if (data.message) errorMsg = data.message;
+        else if (data.detail) errorMsg = data.detail;
+        else if (typeof data === 'string') errorMsg = data;
+      }
+      
+      // Handle specific status codes
+      if (apiError.response?.status === 401) {
+        errorMsg = 'Invalid LinkedIn credentials. Please check your email and password.';
+      } else if (apiError.response?.status === 403) {
+        errorMsg = 'LinkedIn access denied. Your account may require verification.';
+      } else if (apiError.response?.status === 429) {
+        errorMsg = 'Too many connection attempts. Please wait a few minutes and try again.';
+      } else if (apiError.response?.status === 404) {
+        errorMsg = 'Unipile service endpoint not found. Please check configuration.';
+      }
+      
+      logger.error('[LinkedInAccountService] HTTP API connection failed', {
+        error: errorMsg,
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        responseData: apiError.response?.data,
+        url: `${baseUrl}/accounts`
+      });
+      
+      throw new Error(errorMsg);
     }
   }
 

@@ -7,8 +7,11 @@
 const APOLLO_CONFIG = {
   DEFAULT_BASE_URL: 'https://api.apollo.io/v1',
   MAX_PER_PAGE: 100,
+  // Set to true if your API key doesn't have access to people search endpoints
+  // This will skip people search API calls and rely on database cache only
+  SKIP_PEOPLE_SEARCH_API: process.env.APOLLO_SKIP_PEOPLE_SEARCH === 'true',
   ENDPOINTS: {
-    ORGANIZATIONS_SEARCH: '/mixed_companies/api_search',
+    ORGANIZATIONS_SEARCH: '/organizations/search',
     ORGANIZATION_BY_ID: '/organizations',
     PEOPLE_SEARCH: '/mixed_people/api_search',
     PEOPLE_BULK_MATCH: '/people/bulk_match',

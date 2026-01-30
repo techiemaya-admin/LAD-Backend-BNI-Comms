@@ -419,6 +419,126 @@ class ApolloRevealService {
       throw error;
     }
   }
+
+  /**
+   * Enrich person details - reveals email and returns full person data including LinkedIn URL
+   * Used for auto-enrichment before LinkedIn steps
+   * 
+   * @param {string} personId - Apollo person ID
+   * @param {Object} req - Request object (optional)
+   * @returns {Object} { success, person: { email, linkedin_url, ... }, credits_used }
+   */
+  async enrichPersonDetails(personId, req = null) {
+    try {
+      // Don't require tenant for this call - it may be called from background processes
+      const tenantId = req?.user?.tenant_id || req?.tenant?.id || req?.headers?.['x-tenant-id'] || null;
+      
+      if (!this.apiKey) {
+        throw new Error('Apollo API key is not configured');
+      }
+      
+      if (!personId) {
+        return { success: false, person: null, credits_used: 0, error: 'Person ID is required' };
+      }
+      
+      // CRITICAL FIX: Validate personId format
+      const isUUIDFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(personId));
+      if (isUUIDFormat) {
+        logger.warn('[Apollo Reveal] Person ID has UUID format - likely a database ID', { personId });
+        return { 
+          success: false, 
+          person: null, 
+          credits_used: 0, 
+          error: 'Invalid person ID format. Apollo expects numeric person IDs.'
+        };
+      }
+      
+      // Use people/match endpoint for enrichment (returns full person data)
+      const apolloUrl = `${this.baseURL || APOLLO_CONFIG.DEFAULT_BASE_URL}/people/match`;
+      
+      const apolloRequest = {
+        id: personId,
+        reveal_personal_emails: true
+      };
+      
+      logger.info('[Apollo Reveal] Enriching person details', { 
+        personId,
+        url: apolloUrl
+      });
+      
+      const apolloResponse = await axios.post(apolloUrl, apolloRequest, {
+        headers: {
+          'X-Api-Key': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      
+      const person = apolloResponse.data?.person;
+      
+      if (!person) {
+        logger.warn('[Apollo Reveal] No person data in response', { personId });
+        return { 
+          success: false, 
+          person: null, 
+          credits_used: CREDIT_COSTS.EMAIL_REVEAL, 
+          error: 'Person not found' 
+        };
+      }
+      
+      // Extract the data we need
+      const enrichedPerson = {
+        id: person.id,
+        email: person.email || person.personal_emails?.[0],
+        personal_emails: person.personal_emails || [],
+        linkedin_url: person.linkedin_url,
+        name: person.name,
+        first_name: person.first_name,
+        last_name: person.last_name,
+        title: person.title,
+        phone: person.sanitized_phone || person.phone_numbers?.[0]?.sanitized_number,
+        organization: person.organization
+      };
+      
+      logger.info('[Apollo Reveal] Person enriched successfully', { 
+        personId,
+        hasEmail: !!enrichedPerson.email,
+        hasLinkedIn: !!enrichedPerson.linkedin_url,
+        credits_used: CREDIT_COSTS.EMAIL_REVEAL
+      });
+      
+      // Update cache with enriched data
+      try {
+        const schema = getSchema(req);
+        if (enrichedPerson.email) {
+          await ApolloEmployeesCacheRepository.updateEmail(personId, enrichedPerson.email, tenantId, schema);
+        }
+        // Note: LinkedIn URL should already be in cache from initial search
+      } catch (cacheError) {
+        logger.warn('[Apollo Reveal] Error updating cache', { error: cacheError.message });
+      }
+      
+      return { 
+        success: true, 
+        person: enrichedPerson, 
+        credits_used: CREDIT_COSTS.EMAIL_REVEAL 
+      };
+      
+    } catch (error) {
+      logger.error('[Apollo Reveal] Enrich person error', { 
+        personId,
+        error: error.message,
+        status: error.response?.status
+      });
+      
+      return { 
+        success: false, 
+        person: null, 
+        credits_used: 0, 
+        error: error.message 
+      };
+    }
+  }
 }
 
 module.exports = ApolloRevealService;

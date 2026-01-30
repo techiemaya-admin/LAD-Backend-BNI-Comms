@@ -149,10 +149,12 @@ class UnipileApolloAdapterService {
   /**
    * Search for leads using Unipile as primary, Apollo as fallback
    * @param {Object} campaignParams - Campaign parameters
+   * @param {string} tenantId - Tenant ID for caching (optional)
+   * @param {string} authToken - Auth token (optional)
    * @param {boolean} tryUnipileFirst - Try Unipile before Apollo (default: true)
    * @returns {Promise<Object>} { success, people, count, source, errors }
    */
-  async searchLeadsWithFallback(campaignParams, tryUnipileFirst = true) {
+  async searchLeadsWithFallback(campaignParams, tenantId = null, authToken = null, tryUnipileFirst = true) {
     const results = {
       success: false,
       people: [],
@@ -213,10 +215,12 @@ class UnipileApolloAdapterService {
     }
 
     // Fallback to Apollo if Unipile didn't work
-    logger.info('[Unipile-Apollo Adapter] Attempting Apollo fallback search');
+    logger.info('[Unipile-Apollo Adapter] Attempting Apollo fallback search', {
+      tenantId: tenantId ? tenantId.substring(0, 8) + '...' : 'none'
+    });
     try {
       const apolloParams = this.convertCampaignParamsToApollo(campaignParams);
-      const apolloResult = await searchEmployeesFromApollo(apolloParams);
+      const apolloResult = await searchEmployeesFromApollo(apolloParams, tenantId);
       
       results.sources_tried.push('apollo');
 

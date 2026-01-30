@@ -8,6 +8,7 @@ const axios = require('axios');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const logger = require('../../../core/utils/logger');
+const CompanySearchCacheRepository = require('../repositories/CompanySearchCacheRepository');
 
 /**
  * Helper function to call Python Apollo service
@@ -227,15 +228,18 @@ async function callApolloApi(searchParams) {
     apolloRequestParams.organization_locations = organization_locations;
   }
   
-  // Company domain filtering (for specific companies)
+  // Company domain filtering (for specific companies) - this is the PREFERRED method for industry filtering
   if (q_organization_domains_list && q_organization_domains_list.length > 0) {
     apolloRequestParams.q_organization_domains_list = q_organization_domains_list;
+    logger.info('[Apollo API] Using domain-based filtering (2-step approach)', {
+      domainCount: q_organization_domains_list.length
+    });
   }
   
   // NOTE: People API Search doesn't have direct industry filter
   // Industry filtering works better with organization search or via q_organization_domains_list
-  // Keep organization_industries for backward compatibility but it may not work as expected
-  if (organization_industries && organization_industries.length > 0) {
+  // Only add organization_industries if we DON'T have domain list (fallback mode)
+  if (organization_industries && organization_industries.length > 0 && (!q_organization_domains_list || q_organization_domains_list.length === 0)) {
     apolloRequestParams.organization_industries = organization_industries.map(ind => 
       String(ind).toLowerCase().trim()
     );
@@ -253,34 +257,21 @@ async function callApolloApi(searchParams) {
     searchCriteria: {
       titles: person_titles?.length || 0,
       locations: organization_locations?.length || 0,
-      industries: organization_industries?.length || 0
+      industries: organization_industries?.length || 0,
+      domains: q_organization_domains_list?.length || 0
     }
   });
   
   try {
+    // Apollo /mixed_people/api_search expects data in body with X-Api-Key header
     const apolloResponse = await axios.post(
       apolloSearchEndpoint,
-      {},  // Empty body - filters go in params!
+      apolloRequestParams,  // Data goes in body for /mixed_people/api_search
       {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
-          'x-api-key': apiKey  // Apollo uses lowercase x-api-key
-        },
-        params: apolloRequestParams,  // Filters as query parameters
-        paramsSerializer: {
-          serialize: (params) => {
-            // Serialize arrays as param[]=value1&param[]=value2 (Apollo format)
-            const qs = new URLSearchParams();
-            Object.entries(params).forEach(([key, value]) => {
-              if (Array.isArray(value)) {
-                value.forEach((v) => qs.append(`${key}[]`, v));
-              } else if (value !== undefined && value !== null) {
-                qs.append(key, value);
-              }
-            });
-            return qs.toString();
-          }
+          'X-Api-Key': apiKey  // Apollo uses X-Api-Key header (capital X and A)
         },
         timeout: 120000 // 2 minutes for Apollo API
       }
@@ -327,9 +318,202 @@ async function callApolloApi(searchParams) {
 }
 
 /**
- * Search employees from Apollo API (with fallback)
+ * Search companies from Apollo API to get domains for industry-based filtering
+ * Step 1 of 2-step approach: Get company domains by industry
+ * Uses cache to avoid duplicate API calls for same tenant+search combination
+ * 
+ * @param {Object} searchParams - Search parameters
+ * @param {string} tenantId - Tenant ID for caching (optional, but recommended)
  */
-async function searchEmployeesFromApollo(searchParams) {
+async function searchCompaniesForDomains(searchParams, tenantId = null) {
+  const apiKey = process.env.APOLLO_API_KEY || process.env.APOLLO_IO_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('Apollo API key not configured');
+  }
+  
+  const { APOLLO_CONFIG } = require('../constants/constants');
+  const apolloBaseUrl = process.env.APOLLO_API_BASE_URL || APOLLO_CONFIG.DEFAULT_BASE_URL;
+  const companySearchEndpoint = `${apolloBaseUrl}${APOLLO_CONFIG.ENDPOINTS.ORGANIZATIONS_SEARCH}`;
+  
+  const {
+    organization_industries = [],
+    organization_locations = [],
+    per_page = 25  // Get 25 companies to find domains
+  } = searchParams;
+  
+  // Create cache key components
+  const searchKeywords = organization_industries.join(',').toLowerCase().trim() || 'all';
+  const searchLocation = organization_locations.length > 0 
+    ? organization_locations.join(',').toLowerCase().trim() 
+    : null;
+  const searchIndustry = searchKeywords; // For this use case, keywords are the industry
+  
+  // Check cache first if tenantId is provided
+  if (tenantId) {
+    try {
+      const hasFreshCache = await CompanySearchCacheRepository.hasFreshCache(
+        tenantId, 
+        searchKeywords, 
+        searchLocation, 
+        searchIndustry,
+        24  // 24 hour TTL
+      );
+      
+      if (hasFreshCache) {
+        const cachedDomains = await CompanySearchCacheRepository.getCachedDomains(
+          tenantId, 
+          searchKeywords, 
+          searchLocation, 
+          searchIndustry
+        );
+        
+        if (cachedDomains.length > 0) {
+          logger.info('[Apollo API] Step 1: Using cached company domains', {
+            tenantId: tenantId.substring(0, 8) + '...',
+            domainsFromCache: cachedDomains.length,
+            sampleDomains: cachedDomains.slice(0, 5)
+          });
+          
+          return {
+            success: true,
+            domains: cachedDomains,
+            companies: cachedDomains.length,
+            fromCache: true
+          };
+        }
+      }
+    } catch (cacheError) {
+      logger.warn('[Apollo API] Cache check failed, proceeding with API call', {
+        error: cacheError.message
+      });
+    }
+  }
+  
+  logger.info('[Apollo API] Step 1: Searching companies by industry', {
+    url: companySearchEndpoint,
+    industries: organization_industries,
+    locations: organization_locations,
+    tenantId: tenantId ? tenantId.substring(0, 8) + '...' : 'none'
+  });
+  
+  try {
+    // Apollo Organization Search - API key goes in X-Api-Key header
+    const requestBody = {
+      page: 1,
+      per_page
+    };
+    
+    // Add industry keywords
+    if (organization_industries && organization_industries.length > 0) {
+      requestBody.q_organization_keyword_tags = organization_industries;
+    }
+    
+    // Add location filter
+    if (organization_locations && organization_locations.length > 0) {
+      requestBody.organization_locations = organization_locations;
+    }
+    
+    const response = await axios.post(
+      companySearchEndpoint,
+      requestBody,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Api-Key': apiKey
+        },
+        timeout: 60000
+      }
+    );
+    
+    if (response.data && response.data.organizations) {
+      const companies = response.data.organizations;
+      const domains = companies
+        .map(company => company.primary_domain || company.website_url)
+        .filter(domain => domain && domain.length > 0)
+        .map(domain => {
+          // Clean domain - remove http://, https://, www., and trailing paths
+          return domain
+            .replace(/^https?:\/\//, '')
+            .replace(/^www\./, '')
+            .split('/')[0]
+            .toLowerCase();
+        });
+      
+      const uniqueDomains = [...new Set(domains)];
+      
+      logger.info('[Apollo API] Step 1 complete: Found company domains', {
+        companiesFound: companies.length,
+        domainsExtracted: uniqueDomains.length,
+        sampleDomains: uniqueDomains.slice(0, 5)
+      });
+      
+      // Save to cache if tenantId is provided
+      if (tenantId && companies.length > 0) {
+        try {
+          await CompanySearchCacheRepository.saveCompanies(
+            tenantId,
+            searchKeywords,
+            searchLocation,
+            searchIndustry,
+            companies,
+            1  // Page number
+          );
+          logger.info('[Apollo API] Saved company search results to cache', {
+            tenantId: tenantId.substring(0, 8) + '...',
+            companiesSaved: companies.length
+          });
+        } catch (cacheError) {
+          logger.warn('[Apollo API] Failed to save to cache (non-blocking)', {
+            error: cacheError.message
+          });
+        }
+      }
+      
+      return {
+        success: true,
+        domains: uniqueDomains,
+        companies: companies.length,
+        fromCache: false
+      };
+    }
+    
+    logger.warn('[Apollo API] Step 1: No companies found for industry', {
+      industries: organization_industries
+    });
+    
+    return {
+      success: false,
+      domains: [],
+      companies: 0,
+      fromCache: false
+    };
+  } catch (error) {
+    logger.error('[Apollo API] Step 1 failed: Company search error', {
+      message: error.message,
+      status: error.response?.status
+    });
+    return {
+      success: false,
+      domains: [],
+      companies: 0,
+      error: error.message,
+      fromCache: false
+    };
+  }
+}
+
+/**
+ * Search employees from Apollo API (with 2-step industry support)
+ * If industry filter is provided, first search companies to get domains,
+ * then search people using those domains.
+ * Uses cache to avoid duplicate company lookups for same tenant.
+ * 
+ * @param {Object} searchParams - Search parameters
+ * @param {string} tenantId - Tenant ID for caching (optional, but recommended)
+ */
+async function searchEmployeesFromApollo(searchParams, tenantId = null) {
   const {
     organization_locations = [],
     person_titles = [],
@@ -340,15 +524,77 @@ async function searchEmployeesFromApollo(searchParams) {
   
   const apolloPerPage = 100; // Always request 100 from Apollo
   
+  // 2-STEP APPROACH: If industry is specified, first get company domains
+  let q_organization_domains_list = [];
+  
+  if (organization_industries && organization_industries.length > 0) {
+    logger.info('[Apollo API] Industry filter detected - using 2-step approach', {
+      tenantId: tenantId ? tenantId.substring(0, 8) + '...' : 'none'
+    });
+    
+    const companyResult = await searchCompaniesForDomains({
+      organization_industries,
+      organization_locations,
+      per_page: 50  // Get up to 50 companies for domain list
+    }, tenantId);  // Pass tenantId for caching
+    
+    if (companyResult.success && companyResult.domains.length > 0) {
+      q_organization_domains_list = companyResult.domains.slice(0, 25);  // Limit to 25 domains
+      logger.info('[Apollo API] Step 2: Searching people in discovered companies', {
+        domainsToSearch: q_organization_domains_list.length,
+        fromCache: companyResult.fromCache || false
+      });
+    } else {
+      logger.warn('[Apollo API] No companies found for industry, proceeding with direct search', {
+        industries: organization_industries
+      });
+    }
+  }
+  
+  // Check if people search API should be skipped (API key doesn't have access)
+  const { APOLLO_CONFIG } = require('../constants/constants');
+  if (APOLLO_CONFIG.SKIP_PEOPLE_SEARCH_API) {
+    logger.info('[Apollo API] People search API skipped (APOLLO_SKIP_PEOPLE_SEARCH=true)', {
+      reason: 'API key does not have access to people search endpoints',
+      companiesFound: q_organization_domains_list.length
+    });
+    return {
+      success: false,
+      employees: [],
+      error: 'People search API not available - using database cache only',
+      skipReason: 'APOLLO_SKIP_PEOPLE_SEARCH'
+    };
+  }
+  
+  // Build search params for People API
+  const peopleSearchParams = {
+    organization_locations,
+    // CRITICAL: Also use organization_locations as person_locations
+    // This filters by where the PERSON is located, not just the company
+    // Without this, a Dubai company search returns employees in any country
+    person_locations: organization_locations,
+    person_titles,
+    per_page: apolloPerPage,
+    page: page || 1
+  };
+  
+  // Use domain list if we have it (from 2-step approach)
+  if (q_organization_domains_list.length > 0) {
+    peopleSearchParams.q_organization_domains_list = q_organization_domains_list;
+    // Don't pass organization_industries to People API (it doesn't work)
+    logger.info('[Apollo API] Using 2-step approach with location filter', {
+      domains: q_organization_domains_list.length,
+      personLocations: organization_locations,
+      titles: person_titles?.length || 0
+    });
+  } else {
+    // Fallback: pass industry anyway (may not work but won't hurt)
+    peopleSearchParams.organization_industries = organization_industries;
+  }
+  
   try {
     logger.debug('[Apollo API] Attempting to call Apollo via Python script');
-    const apolloResult = await callApolloService('search_people_direct', {
-      organization_locations: organization_locations,
-      person_titles: person_titles,
-      organization_industries: organization_industries,
-      per_page: apolloPerPage,
-      page: page || 1
-    });
+    const apolloResult = await callApolloService('search_people_direct', peopleSearchParams);
     logger.info('[Apollo API] Successfully called Apollo via Python script');
     return apolloResult;
   } catch (pythonError) {
@@ -357,19 +603,13 @@ async function searchEmployeesFromApollo(searchParams) {
     });
     
     // Fallback to HTTP API
-    return await callApolloApi({
-      organization_locations: organization_locations,
-      person_titles: person_titles,
-      organization_industries: organization_industries,
-      per_page: apolloPerPage,
-      page: page
-    });
+    return await callApolloApi(peopleSearchParams);
   }
 }
 
 module.exports = {
   callApolloService,
   callApolloApi,
+  searchCompaniesForDomains,
   searchEmployeesFromApollo
 };
-

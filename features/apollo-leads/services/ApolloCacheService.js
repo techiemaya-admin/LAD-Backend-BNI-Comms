@@ -177,7 +177,8 @@ async function searchEmployeesFromDb(searchParams, req = null) {
       logger.info('[Apollo Cache] Database has insufficient employees, calling Apollo API', { 
         dbCount: dbEmployees.length, 
         requested: limitedPerPage, 
-        neededFromApollo 
+        neededFromApollo,
+        tenantId: tenantId ? tenantId.substring(0, 8) + '...' : 'none'
       });
       
       try {
@@ -187,7 +188,7 @@ async function searchEmployeesFromDb(searchParams, req = null) {
           organization_industries: organization_industries,
           per_page: 100, // Always request 100 from Apollo
           page: page || 1
-        });
+        }, tenantId);  // Pass tenantId for company search caching
         
         if (apolloResult && apolloResult.success && apolloResult.employees && apolloResult.employees.length > 0) {
           let apolloEmployees = apolloResult.employees;
