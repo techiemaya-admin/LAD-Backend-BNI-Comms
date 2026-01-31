@@ -83,7 +83,8 @@ const authenticateToken = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const decoded = jwt.verify(token, jwtSecret);
     req.user = decoded;
     logger.debug(`Auth success for ${req.method} ${req.path}`, { 
       userId: decoded.userId, 
@@ -93,12 +94,20 @@ const authenticateToken = (req, res, next) => {
   } catch (error) {
     logger.warn(`Auth failed - Invalid token for ${req.method} ${req.path}`, {
       error: error.message,
-      tokenPrefix: token ? token.substring(0, 20) : 'none'
+      tokenPrefix: token ? token.substring(0, 20) : 'none',
+      secretConfigured: !!process.env.JWT_SECRET
     });
+    
+    // Provide more helpful error message if JWT_SECRET might not be configured
+    let details = error.message;
+    if (!process.env.JWT_SECRET) {
+      details = 'JWT_SECRET not configured. Check Google Cloud Secret Manager and Cloud Run environment variables.';
+    }
+    
     return res.status(403).json({
       success: false,
       error: 'Invalid token',
-      details: error.message
+      details: details
     });
   }
 };

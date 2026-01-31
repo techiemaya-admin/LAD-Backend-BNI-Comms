@@ -16,10 +16,21 @@ const PORT = process.env.PORT || 3004;
 async function startServer() {
   try {
     logger.info('Starting LAD Backend Server');
+    
+    // Check critical environment variables
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret || jwtSecret === 'your-secret-key-change-in-production') {
+      logger.warn('⚠️  JWT_SECRET is not properly configured. Using development default.');
+      logger.warn('    For production, ensure JWT_SECRET is set via Google Cloud Secret Manager');
+    } else {
+      logger.info('✓ JWT_SECRET is configured');
+    }
+    
     logger.info('Server configuration', {
       environment: process.env.NODE_ENV || 'development',
       database: process.env.POSTGRES_HOST,
-      schema: process.env.POSTGRES_SCHEMA || 'lad_dev'
+      schema: process.env.POSTGRES_SCHEMA || 'lad_dev',
+      jwtConfigured: !!jwtSecret && jwtSecret !== 'your-secret-key-change-in-production'
     });
     
     const app = new CoreApplication();
