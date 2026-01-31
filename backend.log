@@ -1,0 +1,83 @@
+[dotenv@17.2.3] injecting env (42) from .env -- tip: 🔄 add secrets lifecycle management: https://dotenvx.com/ops
+[2026-01-30T04:00:45.469Z] [INFO] [App] Starting LAD Backend Server 
+[2026-01-30T04:00:45.472Z] [INFO] [App] Server configuration {"environment":"development","database":"165.22.221.77","schema":"lad_dev"}
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[2026-01-30T04:00:45.903Z] [INFO] [App] [App] Campaigns routes mounted with authentication and feature flag check 
+[2026-01-30T04:00:45.908Z] [INFO] [App] [App] Apollo Leads routes mounted with authentication and feature flag check 
+[2026-01-30T04:00:45.915Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-30T04:00:45.915Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-30T04:00:45.915Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-30T04:00:45.916Z] [INFO] [App] [App] Voice Agent routes mounted with authentication and feature flag check 
+[2026-01-30T04:00:45.918Z] [INFO] [App] [App] Deals Pipeline public routes mounted (no feature check) 
+[2026-01-30T04:00:45.997Z] [INFO] [App] Using local file storage (GCP not configured) {"path":"/Users/naveenreddy/Desktop/AI-Maya/LAD/LAD-Develop-3001/LAD-Backend/uploads/attachments"}
+[2026-01-30T04:00:46.058Z] [INFO] [App] [App] Deals Pipeline routes mounted with authentication and feature flag check 
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api8.unipile.com:13811...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api8.unipile.com:13811...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api8.unipile.com:13811...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api8.unipile.com:13811...
+[SocialIntegrationController] Initialized with platforms: [ 'linkedin', 'instagram', 'whatsapp', 'facebook' ]
+[SocialIntegration] Routes initialized
+[2026-01-30T04:00:46.064Z] [INFO] [App] [App] Social Integration routes mounted with authentication and feature flag check 
+[2026-01-30T04:00:46.080Z] [INFO] [App] [App] AI ICP Assistant routes mounted with authentication and feature flag check 
+[2026-01-30T04:00:46.083Z] [INFO] [App] [App] Overview/Dashboard routes mounted with authentication 
+[2026-01-30T04:00:46.083Z] [INFO] [App] [FeatureRegistry] Discovering features {"featuresDir":"/Users/naveenreddy/Desktop/AI-Maya/LAD/LAD-Develop-3001/LAD-Backend/features","directoryCount":8}
+[2026-01-30T04:00:46.084Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"ai-icp-assistant","name":"AI ICP Assistant"}
+[2026-01-30T04:00:46.085Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"apollo-leads","name":"Apollo Leads"}
+[2026-01-30T04:00:46.085Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"campaigns","name":"Campaigns"}
+[2026-01-30T04:00:46.085Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"deals-pipeline","name":"Deals Pipeline"}
+[2026-01-30T04:00:46.085Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"lead-enrichment","name":"Lead Enrichment"}
+[2026-01-30T04:00:46.086Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"voice-agent","name":"Voice Agent"}
+[2026-01-30T04:00:46.086Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"social-integration","name":"Social Integration"}
+[2026-01-30T04:00:46.087Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"voice-agent","name":"Voice Agent"}
+[2026-01-30T04:00:46.087Z] [INFO] [App] [FeatureRegistry] Feature discovery complete {"count":7,"features":["ai-icp-assistant","apollo-leads","campaigns","deals-pipeline","lead-enrichment","voice-agent","social-integration"]}
+[2026-01-30T04:00:46.088Z] [INFO] [App] [SocketService] Socket.IO server initialized {"allowedOrigins":8}
+[2026-01-30T04:00:46.088Z] [INFO] [App] [App] Socket.IO initialized for real-time features 
+[2026-01-30T04:00:46.093Z] [INFO] [App] Core Platform running on port 3004 
+[2026-01-30T04:00:46.093Z] [INFO] [App] Registered features: ai-icp-assistant, apollo-leads, campaigns, deals-pipeline, lead-enrichment, voice-agent, social-integration 
+[2026-01-30T04:00:46.093Z] [INFO] [App] [App] Socket.IO status: {"initialized":true,"connectedClients":0}
+[2026-01-30T04:00:46.093Z] [INFO] [App] Starting booking notification listener... 
+[2026-01-30T04:00:46.430Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417100}
+[2026-01-30T04:00:46.513Z] [INFO] [App] [BookingListener] Started listening for booking follow-up notifications 
+[2026-01-30T04:00:46.513Z] [INFO] [App] ✅ Booking notification listener started successfully 
+[2026-01-30T04:00:46.513Z] [INFO] [App] Starting call logs notification listener... 
+[2026-01-30T04:00:46.923Z] [INFO] [App] [CallLogsListener] Started listening for call logs notifications 
+[2026-01-30T04:00:46.923Z] [INFO] [App] ✅ Call logs notification listener started successfully 
+[2026-01-30T04:00:46.923Z] [INFO] [App] ✅ Automatic Cloud Task creation system is ACTIVE 
+[2026-01-30T04:00:46.923Z] [INFO] [App] Server successfully started {"port":"3004","url":"http://localhost:3004","endpoints":["POST /api/auth/login","POST /api/auth/register","GET /api/features","GET /api/users/:id","GET /api/billing/plans","GET /api/apollo-leads/* (with feature flag)"]}
+[2026-01-30T04:07:13.785Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417493}
+[2026-01-30T04:07:13.789Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417494}
+[2026-01-30T04:07:13.821Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417495}
+[2026-01-30T04:07:16.426Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417498}
+[2026-01-30T04:07:16.428Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417499}
+[2026-01-30T04:07:25.354Z] [INFO] [App] [SSE] Connection request {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab","userId":"f6e8a21c-ee6e-421d-b5ab-5b4e96e83624","origin":"http://localhost:3000"}
+[2026-01-30T04:07:25.355Z] [INFO] [App] [SSE] Fetching initial stats {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab"}
+[2026-01-30T04:07:25.355Z] [INFO] [App] [SSE] Calling campaignStatsTracker.getStats {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab"}
+[2026-01-30T04:07:25.522Z] [INFO] [App] [SSE] Stats fetched successfully {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab","stats":{"leads_count":5,"sent_count":0,"connected_count":0,"replied_count":0,"delivered_count":0,"opened_count":0,"clicked_count":0,"platform_metrics":{"linkedin":{"sent":0,"connected":0,"replied":0,"profile_views":0},"email":{"sent":0,"connected":0,"replied":0,"opened":0,"clicked":0},"whatsapp":{"sent":0,"connected":0,"replied":0,"delivered":0},"voice":{"sent":0,"connected":0,"replied":0},"instagram":{"sent":0,"connected":0,"replied":0}}}}
+[2026-01-30T04:07:25.522Z] [INFO] [App] [SSE] Sending initial stats {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab","messageLength":560}
+[2026-01-30T04:07:25.522Z] [INFO] [App] [SSE] Initial stats sent successfully {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab"}
+[2026-01-30T04:07:25.522Z] [INFO] [App] [SSE] Subscriber added, connection established {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab"}
+[2026-01-30T04:07:33.146Z] [ERROR] [App] [SSE] Connection error {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab","error":"aborted"}
+[2026-01-30T04:07:33.147Z] [INFO] [App] [SSE] Client disconnected {"campaignId":"212dcacc-9594-4218-a774-88665b2763ab"}
+[2026-01-30T04:07:36.086Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417519}
+[2026-01-30T04:07:36.090Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417521}
+[2026-01-30T04:07:36.090Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417520}
+[2026-01-30T04:07:36.091Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417522}
+[2026-01-30T04:10:28.707Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417680}
+[2026-01-30T04:10:37.056Z] [INFO] [App] Fetching tenant users - tenant: 1ead8e68-2375-43bd-91c9-555df2521dec, schema: lad_dev 
+[2026-01-30T04:10:37.060Z] [INFO] [App] Fetching lead bookings for tenant: 1ead8e68-2375-43bd-91c9-555df2521dec, user: f6e8a21c-ee6e-421d-b5ab-5b4e96e83624, role: owner, schema: lad_dev 
+[2026-01-30T04:10:37.065Z] [INFO] [App] Fetching call logs for tenant: 1ead8e68-2375-43bd-91c9-555df2521dec, schema: lad_dev, filters: {"startDate":"2026-01-01T04:10:35.016Z","endDate":"2026-01-30T04:10:35.016Z"}
+[2026-01-30T04:10:37.067Z] [INFO] [App] Fetching call logs for tenant: 1ead8e68-2375-43bd-91c9-555df2521dec, schema: lad_dev, filters: {"startDate":"2026-01-01T04:10:35.012Z","endDate":"2026-01-30T04:10:35.012Z"}
+[2026-01-30T04:10:37.408Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417686}
+[2026-01-30T04:10:37.410Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417688}
+[2026-01-30T04:10:37.414Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417690}
+[2026-01-30T04:10:37.415Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417689}
+[2026-01-30T04:10:37.415Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":417687}
+[2026-01-30T04:10:39.681Z] [INFO] [App] Fetching call logs for tenant: 1ead8e68-2375-43bd-91c9-555df2521dec, schema: lad_dev, filters: {"startDate":"2025-12-31T04:10:37.674Z","endDate":"2026-01-30T04:10:37.674Z"}

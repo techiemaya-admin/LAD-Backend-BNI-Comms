@@ -1,0 +1,111 @@
+steps:
+  # Create lowercase branch name for GCP labels (which require lowercase)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "${BRANCH_NAME,,}" > /workspace/branch_lower.txt
+        cat /workspace/branch_lower.txt
+
+  # Build the Docker image with buildkit for better caching
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend:$BRANCH_NAME',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend:latest',
+      '--cache-from', 'gcr.io/$PROJECT_ID/lad-backend:latest',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '.'
+    ]
+
+  # Push the Docker images to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend:$COMMIT_SHA']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend:$BRANCH_NAME']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend:latest']
+
+  # Deploy to Cloud Run with automatic deployment for develop branch
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        echo "========================================"
+        echo "Starting Cloud Run deployment..."
+        echo "Service: $_SERVICE_NAME"
+        echo "Region: $_REGION"
+        echo "Image: gcr.io/$PROJECT_ID/lad-backend:$COMMIT_SHA"
+        echo "========================================"
+        
+        BRANCH_LOWER=$(cat /workspace/branch_lower.txt)
+        
+        gcloud run deploy $_SERVICE_NAME \
+          --image gcr.io/$PROJECT_ID/lad-backend:$COMMIT_SHA \
+          --region $_REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 1Gi \
+          --cpu 1 \
+          --min-instances 0 \
+          --max-instances 10 \
+          --concurrency 80 \
+          --timeout 300 \
+          --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
+          --remove-env-vars PORT \
+          --update-env-vars NODE_ENV=development,JWT_EXPIRES_IN=7d,BRANCH=$BRANCH_NAME,COMMIT_SHA=$SHORT_SHA,BUILD_ID=$BUILD_ID,FRONTEND_URL=$_FRONTEND_URL,BACKEND_URL=$_BACKEND_URL,BASE_URL=$_BACKEND_URL,BASE_URL_FRONTEND_HEADER=$_FRONTEND_HEADER,BASE_URL_FRONTEND_APIKEY=$_FRONTEND_APIKEY,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001,GCP_PROJECT_ID=$_GCP_PROJECT_ID,GCP_LOCATION=$_GCP_LOCATION,FOLLOWUP_QUEUE_NAME=$_FOLLOWUP_QUEUE_NAME,FOLLOWUP_EXECUTION_ENDPOINT=$_FOLLOWUP_EXECUTION_ENDPOINT,DEFAULT_FOLLOW_UP_AGENT_ID=$_DEFAULT_FOLLOW_UP_AGENT_ID,APOLLO_WEBHOOK_URL=$_APOLLO_WEBHOOK_URL \
+          --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
+        
+        DEPLOY_STATUS=$$?
+        echo "========================================"
+        if [ $$DEPLOY_STATUS -eq 0 ]; then
+          echo "✓ Deployment completed successfully!"
+          echo "✓ Service URL: https://$_SERVICE_NAME-741719885039.$_REGION.run.app"
+        else
+          echo "✗ Deployment failed with status: $$DEPLOY_STATUS"
+          exit $$DEPLOY_STATUS
+        fi
+        echo "========================================"
+
+# Images to be pushed to Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/lad-backend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lad-backend:$BRANCH_NAME'
+  - 'gcr.io/$PROJECT_ID/lad-backend:latest'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitutionOption: 'ALLOW_LOOSE'
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+
+# Timeout for the entire build
+timeout: '1200s'
+
+# Substitutions (automatically provided by Cloud Build trigger)
+substitutions:
+  _REGION: 'us-central1'
+  _SERVICE_NAME: 'lad-backend-develop'
+  _ENV: 'develop'
+  _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
+  _BACKEND_URL: 'https://lad-backend-develop-741719885039.us-central1.run.app'
+  _FRONTEND_HEADER: 'lad-frontend'
+  _FRONTEND_APIKEY: 'lad-api-key'
+  _GCP_PROJECT_ID: 'salesmaya-pluto'
+  _GCP_LOCATION: 'us-central1'
+  _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls-v2'
+  _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-741719885039.us-central1.run.app/api/deal-pipeline/bookings'
+  _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
+  _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'

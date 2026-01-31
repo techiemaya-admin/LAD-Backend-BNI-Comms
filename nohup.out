@@ -1,0 +1,64 @@
+[dotenv@17.2.3] injecting env (40) from .env -- tip: 🔄 add secrets lifecycle management: https://dotenvx.com/ops
+[2026-01-24T13:27:20.560Z] [INFO] [App] Starting LAD Backend Server 
+[2026-01-24T13:27:20.561Z] [INFO] [App] Server configuration {"environment":"development","database":"165.22.221.77","schema":"lad_dev"}
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[2026-01-24T13:27:20.936Z] [INFO] [App] [App] Campaigns routes mounted with authentication and feature flag check 
+[2026-01-24T13:27:20.943Z] [INFO] [App] [App] Apollo Leads routes mounted with authentication and feature flag check 
+[2026-01-24T13:27:20.948Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-24T13:27:20.948Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-24T13:27:20.948Z] [WARN] [App] [VAPIService] VAPI_API_KEY not configured - VAPI calls will not work 
+[2026-01-24T13:27:20.949Z] [INFO] [App] [App] Voice Agent routes mounted with authentication and feature flag check 
+[2026-01-24T13:27:20.951Z] [INFO] [App] [App] Deals Pipeline public routes mounted (no feature check) 
+[2026-01-24T13:27:21.033Z] [INFO] [App] Using local file storage (GCP not configured) {"path":"/Users/naveenreddy/Desktop/AI-Maya/LAD-Develop/backend/uploads/attachments"}
+[2026-01-24T13:27:21.094Z] [INFO] [App] [App] Deals Pipeline routes mounted with authentication and feature flag check 
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api27.unipile.com:15720...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api27.unipile.com:15720...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api27.unipile.com:15720...
+[UnipileService] Initializing - DSN present: true Token present: true
+[UnipileService] ✅ Configured successfully
+[UnipileService] DSN: api27.unipile.com:15720...
+[SocialIntegrationController] Initialized with platforms: [ 'linkedin', 'instagram', 'whatsapp', 'facebook' ]
+[SocialIntegration] Routes initialized
+[2026-01-24T13:27:21.100Z] [INFO] [App] [App] Social Integration routes mounted with authentication and feature flag check 
+[2026-01-24T13:27:21.118Z] [INFO] [App] [App] AI ICP Assistant routes mounted with authentication and feature flag check 
+[2026-01-24T13:27:21.119Z] [INFO] [App] [FeatureRegistry] Discovering features {"featuresDir":"/Users/naveenreddy/Desktop/AI-Maya/LAD-Develop/backend/features","directoryCount":8}
+[2026-01-24T13:27:21.119Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"ai-icp-assistant","name":"AI ICP Assistant"}
+[2026-01-24T13:27:21.120Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"apollo-leads","name":"Apollo Leads"}
+[2026-01-24T13:27:21.120Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"campaigns","name":"Campaigns"}
+[2026-01-24T13:27:21.120Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"deals-pipeline","name":"Deals Pipeline"}
+[2026-01-24T13:27:21.121Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"lead-enrichment","name":"Lead Enrichment"}
+[2026-01-24T13:27:21.121Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"social-integration","name":"Social Integration"}
+[2026-01-24T13:27:21.122Z] [INFO] [App] [FeatureRegistry] Registered feature {"key":"voice-agent","name":"Voice Agent"}
+[2026-01-24T13:27:21.122Z] [INFO] [App] [FeatureRegistry] Feature discovery complete {"count":7,"features":["ai-icp-assistant","apollo-leads","campaigns","deals-pipeline","lead-enrichment","social-integration","voice-agent"]}
+[2026-01-24T13:27:21.123Z] [INFO] [App] [SocketService] Socket.IO server initialized {"allowedOrigins":4}
+[2026-01-24T13:27:21.123Z] [INFO] [App] [App] Socket.IO initialized for real-time features 
+[2026-01-24T13:27:21.128Z] [INFO] [App] Core Platform running on port 8080 
+[2026-01-24T13:27:21.128Z] [INFO] [App] Registered features: ai-icp-assistant, apollo-leads, campaigns, deals-pipeline, lead-enrichment, social-integration, voice-agent 
+[2026-01-24T13:27:21.128Z] [INFO] [App] [App] Socket.IO status: {"initialized":true,"connectedClients":0}
+[2026-01-24T13:27:21.128Z] [INFO] [App] Starting booking notification listener... 
+[2026-01-24T13:27:21.466Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":87163}
+[2026-01-24T13:27:21.549Z] [INFO] [App] [BookingListener] Started listening for booking follow-up notifications 
+[2026-01-24T13:27:21.549Z] [INFO] [App] ✅ Booking notification listener started successfully 
+[2026-01-24T13:27:21.549Z] [INFO] [App] Starting call logs notification listener... 
+[2026-01-24T13:27:21.966Z] [INFO] [App] [CallLogsListener] Started listening for call logs notifications 
+[2026-01-24T13:27:21.967Z] [INFO] [App] ✅ Call logs notification listener started successfully 
+[2026-01-24T13:27:21.967Z] [INFO] [App] ✅ Automatic Cloud Task creation system is ACTIVE 
+[2026-01-24T13:27:21.967Z] [INFO] [App] Server successfully started {"port":"8080","url":"http://localhost:8080","endpoints":["POST /api/auth/login","POST /api/auth/register","GET /api/features","GET /api/users/:id","GET /api/billing/plans","GET /api/apollo-leads/* (with feature flag)"]}
+[2026-01-24T13:27:36.816Z] [WARN] [App] Auth failed - Invalid token for POST /api/campaigns {"error":"invalid signature","tokenPrefix":"eyJhbGciOiJIUzI1NiIs"}
+[2026-01-24T13:28:30.329Z] [WARN] [App] Auth failed - Invalid token for POST /api/campaigns {"error":"invalid signature","tokenPrefix":"eyJhbGciOiJIUzI1NiIs"}
+[2026-01-24T13:37:39.622Z] [WARN] [App] Auth failed - Invalid token for POST /api/campaigns {"error":"invalid signature","tokenPrefix":"eyJhbGciOiJIUzI1NiIs"}
+[2026-01-24T13:38:21.925Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":87752}
+[2026-01-24T13:39:07.262Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":87787}
+[2026-01-24T13:39:23.241Z] [INFO] [App] [CampaignCreate] Campaign created {"campaignId":"56e8e90d-789e-4f62-a429-7b13cf8fa3a0","tenantId":"1ead8e68-2375-43bd-91c9-555df2521dec","hasSteps":true,"stepsCount":1}
+[2026-01-24T13:39:23.328Z] [ERROR] [App] [CampaignCreate] Failed to create campaign steps {"error":"null value in column \"type\" of relation \"campaign_steps\" violates not-null constraint","stack":"error: null value in column \"type\" of relation \"campaign_steps\" violates not-null constraint\n    at /Users/naveenreddy/Desktop/AI-Maya/LAD-Develop/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async CampaignStepModel.bulkCreate (/Users/naveenreddy/Desktop/AI-Maya/LAD-Develop/backend/features/campaigns/models/CampaignStepModel.js:338:22)\n    at async CampaignCRUDController.createCampaign (/Users/naveenreddy/Desktop/AI-Maya/LAD-Develop/backend/features/campaigns/controllers/CampaignCRUDController.js:229:26)","campaignId":"56e8e90d-789e-4f62-a429-7b13cf8fa3a0","stepCount":1}
+[2026-01-24T13:39:23.673Z] [INFO] [App] [Database] Connection established {"host":"165.22.221.77","port":"5432","database":"salesmaya_agent","processId":87798}
+🛑 Received SIGTERM. Graceful shutdown...
+[2026-01-24T13:40:56.609Z] [INFO] [App] SIGTERM received, shutting down gracefully 
+[2026-01-24T13:40:56.691Z] [INFO] [App] [BookingListener] Stopped listening for notifications 
+✅ Database pool closed
