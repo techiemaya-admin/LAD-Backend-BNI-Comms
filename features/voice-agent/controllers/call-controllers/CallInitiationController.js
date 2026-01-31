@@ -191,7 +191,8 @@ class CallInitiationController {
   async initiateCallV2(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const userId = req.user?.id;
+      // Extract user ID from JWT - field name is userId, not id
+      const userId = req.user?.userId || req.user?.id;
 
       logger.info('[CallInitiationController] V2 initiateCall called', {
         tenantId,
@@ -248,6 +249,7 @@ class CallInitiationController {
       }
 
       // Build payload for voice service
+      // Use authenticated user ID from backend, not frontend-provided value
       const callPayload = {
         to_number,
         agent_id: agent_id || 'default',
@@ -258,7 +260,7 @@ class CallInitiationController {
         added_context: added_context || null,
         llm_provider: llm_provider || null,
         llm_model: llm_model || null,
-        initiated_by: initiated_by || null,
+        initiated_by: userId || initiated_by || null, // Prefer authenticated user ID
         knowledge_base_store_ids: knowledge_base_store_ids || null,
         tenant_id: tenantId,
         user_id: userId
@@ -284,18 +286,24 @@ class CallInitiationController {
 
       try {
         const callUrl = `${baseUrl}/calls/start-call`;
+        
+        // Get JWT token from request headers to forward to voice service
+        const authHeader = req.headers.authorization || req.headers['x-access-token'] || '';
+        
         logger.info('Calling voice service', {
           url: callUrl,
           agentId: agent_id,
           toNumber: to_number?.substring(0, 4) + '***',
-          hasApiKey: !!frontendApiKey
+          hasApiKey: !!frontendApiKey,
+          hasAuthToken: !!authHeader
         });
 
         const response = await axios.post(callUrl, callPayload, {
           headers: {
             'Content-Type': 'application/json',
             ...(frontendHeader && { 'X-Frontend-ID': frontendHeader }),
-            ...(frontendApiKey && { 'X-API-Key': frontendApiKey })
+            ...(frontendApiKey && { 'X-API-Key': frontendApiKey }),
+            ...(authHeader && { 'Authorization': authHeader })
           },
           timeout: 30000
         });
