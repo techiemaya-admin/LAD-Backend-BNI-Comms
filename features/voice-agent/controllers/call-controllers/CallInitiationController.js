@@ -186,6 +186,7 @@ class CallInitiationController {
   /**
    * V2: Initiate a single voice call with UUID support
    * POST /calls/start-call
+   * Directly uses backend voice calling service (no VAPI)
    */
   async initiateCallV2(req, res) {
     try {
@@ -206,86 +207,123 @@ class CallInitiationController {
         added_context,
         llm_provider,
         llm_model,
-        initiated_by,   // UUID string (V2 change)
+        initiated_by,
         agent_id,
         lead_name,
-        lead_id,        // UUID string (V2 change)
+        lead_id,
         knowledge_base_store_ids
       } = req.body;
 
       // Validate required fields
       if (!to_number) {
+        logger.warn('[CallInitiationController] Missing to_number', { body: req.body });
         return res.status(400).json({
           success: false,
-          error: 'to_number is required'
+          error: 'to_number is required',
+          details: 'Phone number to call is required in the request body'
         });
       }
 
       if (!voice_id) {
+        logger.warn('[CallInitiationController] Missing voice_id', { body: req.body });
         return res.status(400).json({
           success: false,
-          error: 'voice_id is required'
+          error: 'voice_id is required',
+          details: 'Voice ID/type is required in the request body'
         });
       }
 
       // Validate E.164 format for phone number
       const e164Regex = /^\+[1-9]\d{1,14}$/;
       if (!e164Regex.test(to_number)) {
+        logger.warn('[CallInitiationController] Invalid phone number format', { 
+          to_number,
+          expectedFormat: '+[1-9]XXXXXXXXXX (E.164)'
+        });
         return res.status(400).json({
           success: false,
-          error: 'to_number must be in E.164 format (e.g., +1234567890)'
+          error: 'Invalid phone number format',
+          details: `to_number must be in E.164 format (e.g., +1234567890). Received: ${to_number}`
         });
       }
 
-      // Build payload for downstream service (maintaining V1 internal structure for now)
+      // Build payload for voice service
       const callPayload = {
         to_number,
         agent_id: agent_id || 'default',
         from_number: from_number || null,
         lead_name: lead_name || null,
-        lead_id: lead_id || null, // Now supports UUID string
+        lead_id: lead_id || null,
         voice_id,
         added_context: added_context || null,
         llm_provider: llm_provider || null,
         llm_model: llm_model || null,
-        initiated_by: initiated_by || null, // Now supports UUID string
+        initiated_by: initiated_by || null,
         knowledge_base_store_ids: knowledge_base_store_ids || null,
         tenant_id: tenantId,
         user_id: userId
       };
 
-      logger.info('[CallInitiationController] V2 payload prepared', { callPayload });
+      logger.info('[CallInitiationController] Initiating call via voice service', {
+        agentId: agent_id,
+        tenantId: tenantId,
+        toNumber: to_number?.substring(0, 4) + '***'
+      });
 
-      // Use existing VAPI service or forward to external service
-      if (this.vapiService.shouldUseVAPI(agent_id)) {
-        const result = await this.vapiService.initiateCall(callPayload);
-        return res.json({
-          success: true,
-          result,
-          message: 'Call initiated successfully via VAPI'
+      // Call voice service
+      const baseUrl = process.env.BASE_URL;
+      const frontendHeader = process.env.BASE_URL_FRONTEND_HEADER || req.headers['x-frontend-id'];
+      const frontendApiKey = process.env.BASE_URL_FRONTEND_APIKEY || process.env.FRONTEND_API_KEY;
+
+      if (!baseUrl) {
+        return res.status(500).json({
+          success: false,
+          error: 'BASE_URL is not configured for voice calling'
         });
-      } else {
-        // Forward to external voice agent service
-        const baseUrl = process.env.BASE_URL;
-        if (!baseUrl) {
-          return res.status(500).json({
-            success: false,
-            error: 'External voice agent service not configured'
-          });
-        }
+      }
 
-        const headers = {
-          'Content-Type': 'application/json',
-          'X-Frontend-ID': process.env.BASE_URL_FRONTEND_HEADER || 'dev',
-          'X-API-Key': process.env.BASE_URL_FRONTEND_APIKEY || ''
-        };
+      try {
+        const callUrl = `${baseUrl}/calls/start-call`;
+        logger.info('Calling voice service', {
+          url: callUrl,
+          agentId: agent_id,
+          toNumber: to_number?.substring(0, 4) + '***',
+          hasApiKey: !!frontendApiKey
+        });
 
-        const response = await axios.post(`${baseUrl}/calls/start-call`, callPayload, { headers });
-        
+        const response = await axios.post(callUrl, callPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(frontendHeader && { 'X-Frontend-ID': frontendHeader }),
+            ...(frontendApiKey && { 'X-API-Key': frontendApiKey })
+          },
+          timeout: 30000
+        });
+
+        logger.info('Voice service call successful', {
+          agentId: agent_id,
+          responseData: response.data
+        });
+
         return res.json({
           success: true,
-          result: response.data,
-          message: 'Call initiated successfully via external service'
+          message: 'Call initiated successfully',
+          data: response.data
+        });
+      } catch (voiceServiceError) {
+        logger.error('Voice service call failed', {
+          error: voiceServiceError.message,
+          status: voiceServiceError.response?.status,
+          responseData: voiceServiceError.response?.data,
+          baseUrl: baseUrl,
+          endpoint: `${baseUrl}/calls/start-call`,
+          agentId: agent_id
+        });
+
+        return res.status(voiceServiceError.response?.status || 502).json({
+          success: false,
+          error: 'Failed to initiate call with voice service',
+          details: voiceServiceError.response?.data || voiceServiceError.message
         });
       }
 
@@ -293,13 +331,17 @@ class CallInitiationController {
       logger.error('[CallInitiationController] V2 initiateCall failed', { 
         error: error.message, 
         stack: error.stack,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
         body: req.body 
       });
       
       return res.status(500).json({
         success: false,
         error: 'Failed to initiate call',
-        message: error.message
+        message: error.message,
+        details: error.response?.data?.error || error.response?.data?.message || 'Unknown error'
       });
     }
   }
