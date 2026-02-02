@@ -5,7 +5,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy package files first for better layer caching
-COPY package.json package-lock.json ./
+# Updated: 2026-02-02 - Ensuring package-lock.json is included
+COPY package*.json ./
 
 # Install dependencies
 RUN npm ci --only=production && npm cache clean --force
