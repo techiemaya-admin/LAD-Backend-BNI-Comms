@@ -8,6 +8,17 @@ steps:
         echo "${BRANCH_NAME,,}" > /workspace/branch_lower.txt
         cat /workspace/branch_lower.txt
 
+  # Debug: List package files to verify they exist
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Listing package files in workspace ==="
+        ls -la package*.json || echo "No package files found"
+        echo "=== Checking package-lock.json content ==="
+        head -20 package-lock.json || echo "Cannot read package-lock.json"
+
   # Build the Docker image with buildkit for better caching
   - name: 'gcr.io/cloud-builders/docker'
     args: [
