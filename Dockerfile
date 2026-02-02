@@ -8,6 +8,9 @@ WORKDIR /app
 # Updated: 2026-02-02 - Ensuring package-lock.json is included
 COPY package*.json ./
 
+# Debug: Verify files were copied correctly
+RUN ls -la /app && echo "=== package-lock.json head ===" && head -20 /app/package-lock.json
+
 # Install dependencies
 RUN npm ci --only=production && npm cache clean --force
 
