@@ -101,7 +101,7 @@ substitutions:
   _ENV: 'develop'
   _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
   _BACKEND_URL: 'https://lad-backend-develop-741719885039.us-central1.run.app'
-  _CORS_ORIGINS: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app,https://lad-frontend-develop-741719885039.us-central1.run.app,https://www.mrlads.com,https://app.mrlads.com'
+  _CORS_ORIGINS: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app,https://lad-frontend-develop-741719885039.us-central1.run.app,https://dev.mrlads.com,https://stage.mrlads.com,https://app.mrlads.com,https://www.mrlads.com'
   _FRONTEND_HEADER: 'settings'
   _FRONTEND_APIKEY: '_L5cf6UXDkGTcWRaHka9Q13Kmu4k5dxaKEPRH165U8U'
   _GCP_PROJECT_ID: 'salesmaya-pluto'
