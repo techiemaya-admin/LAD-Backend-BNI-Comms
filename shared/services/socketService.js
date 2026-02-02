@@ -28,7 +28,12 @@ class SocketService {
       'http://localhost:3000',
       'http://localhost:3001',
       'https://lad-frontend-develop-741719885039.us-central1.run.app',
-      'https://lad-frontend-main-741719885039.us-central1.run.app'
+      'https://lad-frontend-main-741719885039.us-central1.run.app',
+      'https://lad-frontend-stage-3nddlneyya-uc.a.run.app',
+      'https://www.mrlads.com',
+      'https://app.mrlads.com',
+      'https://dev.mrlads.com',
+      'https://stage.mrlads.com'
     ];
 
     this.io = new Server(server, {

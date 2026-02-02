@@ -64,6 +64,11 @@ class CoreApplication {
       'https://lad-frontend-741719885039.us-central1.run.app',
       'https://lad-frontend-develop-741719885039.us-central1.run.app',
       'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app',
+      'https://lad-frontend-stage-3nddlneyya-uc.a.run.app',
+      'https://www.mrlads.com',
+      'https://app.mrlads.com',
+      'https://dev.mrlads.com',
+      'https://stage.mrlads.com',
       process.env.FRONTEND_URL
     ].filter(Boolean);
 

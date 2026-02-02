@@ -13,7 +13,7 @@
     "test:coverage": "jest --coverage --testPathPattern=features/deals-pipeline/tests"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.18.0",
+    "@google-cloud/storage": "^7.12.0",
     "@google-cloud/tasks": "^6.2.1",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.5.0",
@@ -23,6 +23,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
+    "fast-xml-parser": "^5.3.4",
     "ioredis": "^5.9.2",
     "joi": "^18.0.2",
     "jsonwebtoken": "^9.0.2",
@@ -53,6 +54,9 @@
       "**/tests/**/*.test.js"
     ],
     "verbose": true
+  },
+  "overrides": {
+    "fast-xml-parser": "^5.3.4"
   },
   "engines": {
     "node": ">=18.0.0"
