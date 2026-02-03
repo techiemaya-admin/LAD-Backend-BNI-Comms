@@ -31,9 +31,13 @@ function getSchema(req = null, options = {}) {
     return req.tenant.schema;
   }
 
-  // 4. Check environment variable
+  // 4. Check environment variable (DB_SCHEMA or POSTGRES_SCHEMA)
   if (process.env.DB_SCHEMA) {
     return process.env.DB_SCHEMA;
+  }
+  
+  if (process.env.POSTGRES_SCHEMA) {
+    return process.env.POSTGRES_SCHEMA;
   }
 
   // 5. Default to lad_dev for development
