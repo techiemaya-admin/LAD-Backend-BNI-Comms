@@ -80,17 +80,36 @@ async function saveLeadsToCampaign(campaignId, tenantId, employees) {
           last_name: employee.last_name,
           title: employee.title || employee.job_title || employee.headline,
           email: employee.email || employee.work_email,
-          phone: employee.phone || employee.phone_number,
+          phone: employee.phone || employee.phone_number || employee.sanitized_phone,
           linkedin_url: linkedinUrlValue,
+          // Company information
           company_id: employee.company_id,
           company_name: employee.company_name,
           company_domain: employee.company_domain,
+          // Additional profile fields from Apollo
           photo_url: employee.photo_url || employee.profile_picture_url,
           headline: employee.headline,
           city: employee.city,
           state: employee.state,
           country: employee.country,
+          // Extended Apollo data - store ALL fields
+          personal_emails: employee.personal_emails || [],
+          phone_numbers: employee.phone_numbers || [],
+          sanitized_phone: employee.sanitized_phone,
+          employment_history: employee.employment_history,
+          education: employee.education,
+          seniority: employee.seniority,
+          departments: employee.departments,
+          functions: employee.functions,
+          // Full organization object with all details
+          organization: employee.organization,
+          // Enrichment metadata
+          is_enriched: employee.is_enriched || false,
+          enriched_at: employee.enriched_at,
+          _enriched_data: employee._enriched_data,
+          // Source tracking
           source: source, // Track which source this lead came from
+          // Store complete Apollo response
           _full_data: employee
         };
         // Extract fields and create snapshot

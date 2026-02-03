@@ -10,6 +10,7 @@ const CampaignLeadsRevealController = require('../controllers/CampaignLeadsRevea
 const CampaignStatsController = require('../controllers/campaignStatsController');
 const CampaignAnalyticsController = require('../controllers/campaignAnalyticsController');
 const CampaignsStreamController = require('../controllers/campaignsStreamController');
+const CampaignDailyController = require('../controllers/CampaignDailyController');
 const linkedInRoutes = require('./linkedin');
 const { authenticateToken: jwtAuth, authenticateSSE: sseAuth } = require('../../../core/middleware/auth');
 const {
@@ -21,6 +22,10 @@ const {
 } = require('../middleware/validation');
 // LinkedIn integration (mount before /:id routes to avoid conflicts)
 router.use('/linkedin', linkedInRoutes);
+
+// Daily campaign execution (Cloud Tasks callback - no auth for Cloud Tasks)
+router.post('/run-daily', CampaignDailyController.runDaily);
+
 // Real-time campaigns stream (SSE)
 router.get('/stream', sseAuth, CampaignsStreamController.streamAllCampaigns);
 // Campaign CRUD operations
@@ -51,6 +56,10 @@ router.get('/:id/activities', jwtAuth, validateUuidParam('id'), validatePaginati
 router.post('/:id/start', jwtAuth, validateUuidParam('id'), CampaignController.startCampaign);
 router.post('/:id/pause', jwtAuth, validateUuidParam('id'), CampaignController.pauseCampaign);
 router.post('/:id/stop', jwtAuth, validateUuidParam('id'), CampaignController.stopCampaign);
+
+// Daily scheduling (manual trigger for testing)
+router.post('/:id/schedule-daily', jwtAuth, validateUuidParam('id'), CampaignDailyController.scheduleDaily);
+
 // Campaign steps
 router.get('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.getCampaignSteps);
 router.post('/:id/steps', jwtAuth, validateUuidParam('id'), CampaignController.updateCampaignSteps);

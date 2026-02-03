@@ -486,18 +486,37 @@ class ApolloRevealService {
         };
       }
       
-      // Extract the data we need
+      // Extract the data we need - capture ALL Apollo person fields
       const enrichedPerson = {
         id: person.id,
+        // Contact information
         email: person.email || person.personal_emails?.[0],
         personal_emails: person.personal_emails || [],
+        phone: person.sanitized_phone || person.phone_numbers?.[0]?.sanitized_number,
+        sanitized_phone: person.sanitized_phone,
+        phone_numbers: person.phone_numbers || [],
+        // Profile information
         linkedin_url: person.linkedin_url,
+        photo_url: person.photo_url,
         name: person.name,
         first_name: person.first_name,
         last_name: person.last_name,
         title: person.title,
-        phone: person.sanitized_phone || person.phone_numbers?.[0]?.sanitized_number,
-        organization: person.organization
+        headline: person.headline,
+        // Location
+        city: person.city,
+        state: person.state,
+        country: person.country,
+        // Professional details
+        seniority: person.seniority,
+        departments: person.departments,
+        functions: person.functions,
+        employment_history: person.employment_history,
+        education: person.education,
+        // Organization - store complete organization object
+        organization: person.organization,
+        // Store complete person object for future use
+        _apollo_full_response: person
       };
       
       logger.info('[Apollo Reveal] Person enriched successfully', { 

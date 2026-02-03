@@ -246,11 +246,41 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
     let result;
     // Handle all LinkedIn step types dynamically
     if (stepType === 'linkedin_connect') {
+      // Get campaign to read connection message from config
+      const CampaignModel = require('../models/CampaignModel');
+      const campaign = await CampaignModel.getById(campaignLead.campaign_id, tenantId);
+      const campaignConnectionMessage = campaign?.config?.connectionMessage || null;
+      
       // LinkedIn allows unlimited connection requests WITHOUT messages
       // But only 4-5 connection requests WITH messages per month
       // User can select "send with message" in UI - if limit exceeded, fallback to without message
-      const userWantsMessage = stepConfig.sendWithMessage === true || stepConfig.sendWithMessage === 'true' || stepConfig.connectionMessage !== null;
-      const message = stepConfig.message || stepConfig.connectionMessage || null;
+      let message = stepConfig.message || stepConfig.connectionMessage || campaignConnectionMessage || null;
+      
+      // Clean up message - trim and convert empty strings to null
+      if (message && typeof message === 'string') {
+        message = message.trim();
+        if (message === '') {
+          message = null;
+        }
+      }
+      
+      const userWantsMessage = stepConfig.sendWithMessage === true || stepConfig.sendWithMessage === 'true' || !!message || campaignConnectionMessage !== null;
+      
+      // Replace variables in message if message exists
+      if (message) {
+        const firstName = (leadData.name || leadData.employee_name || 'there').split(' ')[0];
+        const lastName = (leadData.name || leadData.employee_name || '').split(' ').slice(1).join(' ');
+        const title = leadData.title || leadData.employee_data?.title || '';
+        const companyName = leadData.company_name || leadData.employee_data?.organization?.name || '';
+        const industry = leadData.employee_data?.organization?.industry || '';
+        
+        message = message
+          .replace(/\{\{first_name\}\}/g, firstName)
+          .replace(/\{\{last_name\}\}/g, lastName)
+          .replace(/\{\{title\}\}/g, title)
+          .replace(/\{\{company_name\}\}/g, companyName)
+          .replace(/\{\{industry\}\}/g, industry);
+      }
       // Get all available LinkedIn accounts for fallback
       const allAccounts = await getAllLinkedInAccountsForTenant(tenantId, userId);
       // Try connection request with smart fallback logic

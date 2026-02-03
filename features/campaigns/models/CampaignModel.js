@@ -216,7 +216,8 @@ class CampaignModel {
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
         if (key === 'config') {
-          setClause.push(`${key} = $${paramIndex++}::jsonb`);
+          // Merge config with existing config instead of replacing
+          setClause.push(`${key} = COALESCE(${key}, '{}'::jsonb) || $${paramIndex++}::jsonb`);
           values.push(JSON.stringify(value));
         } else if (key === 'last_lead_check_at' || key === 'next_run_at') {
           // Handle timestamp fields

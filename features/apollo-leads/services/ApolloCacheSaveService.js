@@ -49,7 +49,7 @@ async function saveEmployeesToCache(employees, req = null) {
           name: emp.name || null,
           title: emp.title || null,
           email: emp.email || null,
-          phone: emp.phone || null,
+          phone: emp.phone || emp.sanitized_phone || null,
           linkedin_url: emp.linkedin_url || null,
           photo_url: emp.photo_url || null,
           headline: emp.headline || null,
@@ -60,7 +60,23 @@ async function saveEmployeesToCache(employees, req = null) {
           company_name: emp.company_name || null,
           company_domain: emp.company_domain || null,
           data_source: 'apollo_io',
-          employee_data: emp.employee_data || emp || {}
+          // Store complete Apollo data including enrichment fields
+          employee_data: {
+            ...(emp.employee_data || emp || {}),
+            // Ensure enrichment data is preserved
+            personal_emails: emp.personal_emails,
+            phone_numbers: emp.phone_numbers,
+            sanitized_phone: emp.sanitized_phone,
+            employment_history: emp.employment_history,
+            education: emp.education,
+            seniority: emp.seniority,
+            departments: emp.departments,
+            functions: emp.functions,
+            organization: emp.organization,
+            is_enriched: emp.is_enriched,
+            enriched_at: emp.enriched_at,
+            _enriched_data: emp._enriched_data
+          }
         }, schema, effectiveTenantId);
         
         if (result.command === 'INSERT') {

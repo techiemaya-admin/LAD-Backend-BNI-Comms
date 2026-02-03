@@ -81,6 +81,10 @@ steps:
         FOLLOWUP_EXECUTION_ENDPOINT: "$_FOLLOWUP_EXECUTION_ENDPOINT"
         DEFAULT_FOLLOW_UP_AGENT_ID: "$_DEFAULT_FOLLOW_UP_AGENT_ID"
         APOLLO_WEBHOOK_URL: "$_APOLLO_WEBHOOK_URL"
+        GOOGLE_CLOUD_PROJECT: "$_GCP_PROJECT_ID"
+        CLOUD_TASKS_LOCATION: "$_GCP_LOCATION"
+        CLOUD_TASKS_QUEUE_NAME: "$_CLOUD_TASKS_QUEUE_NAME"
+        CLOUD_RUN_SERVICE_URL: "$_BACKEND_URL"
         EOF
         
         echo "Env vars file created:"
@@ -140,3 +144,4 @@ substitutions:
   _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-741719885039.us-central1.run.app/api/deal-pipeline/bookings'
   _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
   _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'
+  _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task'
