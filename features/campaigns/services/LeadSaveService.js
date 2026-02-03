@@ -73,11 +73,45 @@ async function saveLeadsToCampaign(campaignId, tenantId, employees) {
             : employee.employee_data;
           linkedinUrlValue = employeeDataObj.linkedin_url || employeeDataObj.linkedin || employeeDataObj.profile_url;
         }
+        // FIX: Ensure we always have name fields, even if enrichment failed
+        // Extract name from whatever data is available
+        let extractedName = employee.name || employee.employee_name || null;
+        let extractedFirstName = employee.first_name || null;
+        let extractedLastName = employee.last_name || null;
+        
+        // If we have a full name but no first/last, try to parse it
+        if (extractedName && (!extractedFirstName || !extractedLastName)) {
+          const nameParts = extractedName.trim().split(/\s+/);
+          if (nameParts.length > 0 && !extractedFirstName) {
+            extractedFirstName = nameParts[0];
+          }
+          if (nameParts.length > 1 && !extractedLastName) {
+            extractedLastName = nameParts.slice(1).join(' ');
+          }
+        }
+        
+        // If we have first/last but no full name, construct it
+        if (!extractedName && (extractedFirstName || extractedLastName)) {
+          extractedName = [extractedFirstName, extractedLastName].filter(Boolean).join(' ');
+        }
+        
+        // If still no name, use title or email prefix as fallback
+        if (!extractedName) {
+          if (employee.title) {
+            extractedName = `${employee.title} (Lead)`;
+          } else if (employee.email) {
+            const emailPrefix = employee.email.split('@')[0];
+            extractedName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          } else if (employee.headline) {
+            extractedName = employee.headline;
+          }
+        }
+        
         const leadData = {
           id: sourceId,  // Explicitly set id to the source person ID
-          name: employee.name || employee.employee_name,
-          first_name: employee.first_name,
-          last_name: employee.last_name,
+          name: extractedName,
+          first_name: extractedFirstName,
+          last_name: extractedLastName,
           title: employee.title || employee.job_title || employee.headline,
           email: employee.email || employee.work_email,
           phone: employee.phone || employee.phone_number || employee.sanitized_phone,
