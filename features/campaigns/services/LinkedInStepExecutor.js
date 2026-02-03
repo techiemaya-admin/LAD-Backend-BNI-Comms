@@ -256,15 +256,16 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       // User can select "send with message" in UI - if limit exceeded, fallback to without message
       let message = stepConfig.message || stepConfig.connectionMessage || campaignConnectionMessage || null;
       
-      // Clean up message - trim and convert empty strings to null
-      if (message && typeof message === 'string') {
-        message = message.trim();
-        if (message === '') {
-          message = null;
-        }
-      }
+      // FIX: Enhanced message validation with trim
+      // Clean up message - trim whitespace and convert empty strings to null
+      const trimmedMessage = message && typeof message === 'string' ? message.trim() : message;
+      const hasMessage = trimmedMessage && trimmedMessage !== '';
       
-      const userWantsMessage = stepConfig.sendWithMessage === true || stepConfig.sendWithMessage === 'true' || !!message || campaignConnectionMessage !== null;
+      // Replace message with trimmed version (or null if empty)
+      message = hasMessage ? trimmedMessage : null;
+      
+      // User wants message if: explicitly requested OR message content exists
+      const userWantsMessage = !!hasMessage;
       
       // Replace variables in message if message exists
       if (message) {
