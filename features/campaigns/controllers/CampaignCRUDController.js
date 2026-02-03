@@ -179,7 +179,7 @@ class CampaignCRUDController {
           error: 'User ID is required. Please ensure you are authenticated.'
         });
       }
-      const { name, status, config, steps, campaign_type, leads_per_day, inbound_lead_ids } = req.body;
+      const { name, status, config, steps, campaign_type, leads_per_day, inbound_lead_ids, campaign_start_date, campaign_end_date } = req.body;
 
       // Validate required fields
       if (!name) {
@@ -197,6 +197,20 @@ class CampaignCRUDController {
       if (leads_per_day !== undefined) {
         campaignConfig.leads_per_day = leads_per_day;
       }
+      // Add campaign dates to config if provided
+      if (campaign_start_date) {
+        campaignConfig.campaign_start_date = campaign_start_date;
+      }
+      if (campaign_end_date) {
+        campaignConfig.campaign_end_date = campaign_end_date;
+      }
+      
+      logger.info('[CampaignCreate] Creating campaign with config', {
+        tenantId,
+        hasStartDate: !!campaign_start_date,
+        hasEndDate: !!campaign_end_date,
+        configKeys: Object.keys(campaignConfig)
+      });
       // Map frontend status 'active' to database status 'running'
       // Frontend uses: draft, active, paused, completed, stopped
       // Database uses: draft, running, paused, completed, stopped

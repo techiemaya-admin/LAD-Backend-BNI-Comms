@@ -409,10 +409,16 @@ async function searchCompaniesForDomains(searchParams, tenantId = null) {
       requestBody.q_organization_keyword_tags = organization_industries;
     }
     
-    // Add location filter
+    // Add location filter - CRITICAL for finding companies in the right region
     if (organization_locations && organization_locations.length > 0) {
       requestBody.organization_locations = organization_locations;
     }
+    
+    logger.info('[Apollo API] Step 1 request body', {
+      requestBody,
+      hasLocations: !!requestBody.organization_locations,
+      locationCount: requestBody.organization_locations?.length || 0
+    });
     
     const response = await axios.post(
       companySearchEndpoint,
@@ -443,10 +449,16 @@ async function searchCompaniesForDomains(searchParams, tenantId = null) {
       
       const uniqueDomains = [...new Set(domains)];
       
+      // Log company locations to verify filtering worked
+      const companyLocations = companies.map(c => c.city || c.state || c.country).filter(Boolean);
+      const uniqueLocations = [...new Set(companyLocations)];
+      
       logger.info('[Apollo API] Step 1 complete: Found company domains', {
         companiesFound: companies.length,
         domainsExtracted: uniqueDomains.length,
-        sampleDomains: uniqueDomains.slice(0, 5)
+        sampleDomains: uniqueDomains.slice(0, 5),
+        companyLocations: uniqueLocations.slice(0, 10),
+        requestedLocations: organization_locations
       });
       
       // Save to cache if tenantId is provided
