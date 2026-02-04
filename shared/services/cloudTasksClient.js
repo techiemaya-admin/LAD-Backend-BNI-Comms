@@ -82,6 +82,7 @@ class CloudTasksService {
         url,
         headers: {
           'Content-Type': 'application/json',
+          'X-CloudTasks-Secret': process.env.CLOUD_TASKS_SECRET || ''
         },
         body: Buffer.from(JSON.stringify(payload)).toString('base64'),
         oidcToken: {
