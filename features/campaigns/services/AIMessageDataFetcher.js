@@ -54,13 +54,22 @@ class AIMessageDataService {
 
       const messageData = messageRow.message_data;
       
+      logger.info('[AIMessageDataService] RAW message_data from database', {
+        conversationId,
+        messageId: messageRow.id,
+        rawData: JSON.stringify(messageData, null, 2),
+        hasCollectedAnswers: !!messageData.collectedAnswers,
+        topLevelKeys: Object.keys(messageData)
+      });
+      
       // Normalize the message_data structure to handle nested collectedAnswers
       const normalizedData = this.normalizeMessageData(messageData);
       
-      logger.info('[AIMessageDataService] Fetched message_data from ai_messages', {
+      logger.info('[AIMessageDataService] NORMALIZED message_data', {
         conversationId,
         tenantId,
         messageId: messageRow.id,
+        normalizedData: JSON.stringify(normalizedData, null, 2),
         hasTimestamp: !!normalizedData.timestamp,
         hasCampaignDays: !!normalizedData.campaign_days,
         hasWorkingDays: !!normalizedData.working_days,

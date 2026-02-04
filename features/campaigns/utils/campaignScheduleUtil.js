@@ -90,6 +90,17 @@ class CampaignScheduleUtil {
       throw new Error('message_data is required for campaign scheduling');
     }
 
+    logger.info('[CampaignScheduleUtil] Extracting schedule params - RAW INPUT', {
+      messageDataKeys: Object.keys(messageData),
+      hasCollectedAnswers: !!messageData.collectedAnswers,
+      topLevelTimestamp: messageData.timestamp,
+      topLevelCampaignDays: messageData.campaign_days,
+      topLevelWorkingDays: messageData.working_days,
+      nestedCampaignDays: messageData.collectedAnswers?.campaign_days,
+      nestedWorkingDays: messageData.collectedAnswers?.working_days,
+      fullMessageData: JSON.stringify(messageData, null, 2)
+    });
+
     // Handle both normalized (flat) and legacy (nested) structures
     const timestamp = messageData.timestamp;
     const campaignDaysRaw = messageData.campaign_days || messageData.collectedAnswers?.campaign_days || '7';
@@ -111,7 +122,7 @@ class CampaignScheduleUtil {
       throw new Error('timestamp is required in message_data for campaign scheduling');
     }
 
-    logger.info('[CampaignScheduleUtil] Extracted schedule params', {
+    logger.info('[CampaignScheduleUtil] Extracted schedule params - RESULT', {
       timestamp,
       campaignDays,
       campaignDaysRaw,

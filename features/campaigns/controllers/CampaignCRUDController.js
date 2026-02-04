@@ -305,17 +305,31 @@ class CampaignCRUDController {
         hasCalculatedDates: !!calculatedDates,
         configKeys: Object.keys(campaignConfig)
       });
+      
+      // Calculate campaign duration if we have dates
+      let campaignDurationDays = null;
+      if (finalStartDate && finalEndDate) {
+        const start = new Date(finalStartDate);
+        const end = new Date(finalEndDate);
+        campaignDurationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      }
+      
       // Map frontend status 'active' to database status 'running'
       // Frontend uses: draft, active, paused, completed, stopped
       // Database uses: draft, running, paused, completed, stopped
       const dbStatus = status === 'active' ? 'running' : (status || 'draft');
-      // Create campaign
+      
+      // Create campaign with schedule data
       const campaign = await CampaignModel.create({
         name,
         status: dbStatus,
         createdBy: userId,
         config: campaignConfig,
-        inbound_lead_ids  // Pass inbound lead IDs to model
+        inbound_lead_ids,  // Pass inbound lead IDs to model
+        campaign_start_date: finalStartDate || null,
+        campaign_end_date: finalEndDate || null,
+        campaign_duration_days: campaignDurationDays,
+        working_days: calculatedDates?.workingDaysStr || null
       }, tenantId);
       
       logger.info('[CampaignCreate] Campaign created', { 
@@ -376,12 +390,16 @@ class CampaignCRUDController {
             firstDate: calculatedDates.scheduleDates[0].toISOString(),
             lastDate: calculatedDates.scheduleDates[calculatedDates.scheduleDates.length - 1].toISOString()
           });
-
           const schedulingResult = await CampaignSchedulingService.scheduleTasksForDates(
             campaign.id,
             tenantId,
             calculatedDates.scheduleDates
           );
+          
+          console.log('🔍 [DEBUG BACKEND] Cloud Tasks scheduled:', {
+            totalScheduled: schedulingResult.totalScheduled,
+            totalFailed: schedulingResult.totalFailed
+          });
 
           logger.info('[CampaignCreate] Cloud Tasks scheduling completed', {
             campaignId: campaign.id,

@@ -24,13 +24,13 @@ class AIMessageRepository {
           m.id,
           m.message_data,
           m.created_at,
-          c.organization_id as tenant_id
+          c.tenant_id
         FROM ${schema}.ai_messages m
         INNER JOIN ${schema}.ai_conversations c ON m.conversation_id = c.id
         WHERE 
           m.conversation_id = $1 
-          AND c.organization_id = $2
-          AND m.role = 'assistant'
+          AND c.tenant_id = $2
+          AND m.role = 'user'
           AND m.message_data IS NOT NULL
           AND m.message_data::text != '{}'
           AND m.message_data->'collectedAnswers'->'confirmation' IS NOT NULL

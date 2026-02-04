@@ -502,17 +502,28 @@ class AIAssistantController {
       // Save all messages
       const savedMessages = [];
       for (const msg of messages) {
+        // Extract campaign dates from collectedAnswers for easier querying
+        const messageData = {
+          ...msg.messageData,
+          stepIndex: msg.stepIndex,
+          timestamp: msg.timestamp,
+          source: 'icp_buffer'
+        };
+        
+        // If collectedAnswers contains campaign scheduling data, promote it to top level
+        if (msg.messageData?.collectedAnswers) {
+          const collected = msg.messageData.collectedAnswers;
+          if (collected.timestamp) messageData.start_date = collected.timestamp;
+          if (collected.working_days) messageData.working_days = collected.working_days;
+          if (collected.campaign_days) messageData.campaign_days = collected.campaign_days;
+        }
+        
         const savedMessage = await AIMessageRepository.create({
           conversationId: conversation.id,
           tenantId,
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content,
-          messageData: {
-            ...msg.messageData,
-            stepIndex: msg.stepIndex,
-            timestamp: msg.timestamp,
-            source: 'icp_buffer'
-          }
+          messageData
         });
         savedMessages.push(savedMessage);
       }

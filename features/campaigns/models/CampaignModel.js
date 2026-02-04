@@ -16,13 +16,37 @@ class CampaignModel {
       status = 'draft',
       createdBy,
       config = {},
-      inbound_lead_ids
+      inbound_lead_ids,
+      campaign_start_date,
+      campaign_end_date,
+      campaign_duration_days,
+      working_days
     } = campaignData;
     const schema = getSchema(req);
     let campaign = null;
+    
+    // Calculate campaign_duration_days if not provided but dates are
+    let durationDays = campaign_duration_days;
+    if (!durationDays && campaign_start_date && campaign_end_date) {
+      const start = new Date(campaign_start_date);
+      const end = new Date(campaign_end_date);
+      durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    }
+    
     // Try different INSERT queries based on database schema
     // Use created_by (correct column name) first, then fallback to created_by_user_id
     const queries = [
+      {
+        name: 'created_by with config and schedule',
+        query: `INSERT INTO ${schema}.campaigns (
+          tenant_id, name, status, created_by, config, 
+          campaign_start_date, campaign_end_date, campaign_duration_days,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+        RETURNING *`,
+        values: [tenantId, name, status, createdBy, JSON.stringify(config), 
+                 campaign_start_date || null, campaign_end_date || null, durationDays || null]
+      },
       {
         name: 'created_by with config',
         query: `INSERT INTO ${schema}.campaigns (tenant_id, name, status, created_by, config, created_at, updated_at)
