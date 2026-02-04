@@ -3,6 +3,8 @@
  * Handles LinkedIn direct messaging
  */
 const axios = require('axios');
+const { deductCredits } = require('../../../shared/middleware/credit_guard');
+const { CREDIT_COSTS } = require('../../apollo-leads/constants/constants');
 class UnipileMessageService {
     constructor(baseService) {
         this.base = baseService;
@@ -19,7 +21,8 @@ class UnipileMessageService {
      * @param {string} messageText - Message text to send
      * @param {string} accountId - Unipile account ID
      */
-    async sendLinkedInMessage(employee, messageText, accountId) {
+    async sendLinkedInMessage(employee, messageText, accountId, options = {}) {
+        const { tenantId } = options;
         if (!this.base.isConfigured()) {
             throw new Error('Unipile is not configured');
         }
@@ -103,10 +106,26 @@ class UnipileMessageService {
                     timeout: Number(process.env.UNIPILE_PROFILE_TIMEOUT_MS) || 30000
                 }
             );
+            
+            // Deduct credits for successful message
+            let creditsDeducted = 0;
+            if (tenantId && messageText) {
+                try {
+                    const credits = CREDIT_COSTS.TEMPLATE_MESSAGE || 5;
+                    const mockReq = { tenant: { id: tenantId } };
+                    await deductCredits(tenantId, 'campaigns', 'template_message', credits, mockReq);
+                    creditsDeducted = credits;
+                    console.log(`💰 Deducted ${credits} credits for LinkedIn message`);
+                } catch (creditError) {
+                    console.error('❌ Error deducting credits for LinkedIn message:', creditError.message);
+                }
+            }
+            
             return {
                 success: true,
                 data: messageResponse.data,
-                chat_id: chatId
+                chat_id: chatId,
+                credits_used: creditsDeducted
             };
         } catch (error) {
             return {
@@ -116,4 +135,4 @@ class UnipileMessageService {
         }
     }
 }
-module.exports = UnipileMessageService;
+module.exports = UnipileMessageService;

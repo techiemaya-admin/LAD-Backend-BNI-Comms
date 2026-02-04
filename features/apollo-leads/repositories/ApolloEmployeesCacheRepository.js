@@ -79,6 +79,7 @@ class ApolloEmployeesCacheRepository {
     } = searchParams;
 
     // Build query to search employees_cache
+    // JOIN with apollo_companies to access industry data
     // NOTE: When using SELECT DISTINCT, ORDER BY columns must be in SELECT list (created_at is included)
     let dbQuery = `
       SELECT DISTINCT
@@ -102,6 +103,7 @@ class ApolloEmployeesCacheRepository {
         ec.created_at,
         ec.employee_data
       FROM ${schema}.employees_cache ec
+      LEFT JOIN ${schema}.apollo_companies ac ON ec.company_id = ac.apollo_id AND ec.tenant_id = ac.tenant_id
       WHERE ec.is_deleted = false
     `;
     
@@ -151,27 +153,22 @@ class ApolloEmployeesCacheRepository {
     }
     
     // Filter by industry/company keywords
+    // Check both apollo_companies.industry and employee company names
     if (organization_industries && organization_industries.length > 0) {
       const industryConditions = organization_industries.map(industry => {
         const industryPattern = `%${industry.toLowerCase()}%`;
         
         queryParams.push(industryPattern);
-        const orgIndustryParam = paramIndex++;
+        const acIndustryParam = paramIndex++;
         queryParams.push(industryPattern);
         const companyNameParam = paramIndex++;
         queryParams.push(industryPattern);
         const orgNameParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const orgKeywordsParam = paramIndex++;
-        queryParams.push(industryPattern);
-        const orgDescParam = paramIndex++;
         
         return `(
-              LOWER(COALESCE(ec.employee_data->'organization'->>'industry', '')) LIKE $${orgIndustryParam}
+              LOWER(COALESCE(ac.industry, '')) LIKE $${acIndustryParam}
               OR LOWER(ec.company_name) LIKE $${companyNameParam}
               OR LOWER(COALESCE(ec.employee_data->'organization'->>'name', '')) LIKE $${orgNameParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'keywords', '')) LIKE $${orgKeywordsParam}
-              OR LOWER(COALESCE(ec.employee_data->'organization'->>'description', '')) LIKE $${orgDescParam}
             )`;
       });
       dbQuery += ` AND (${industryConditions.join(' OR ')})`;

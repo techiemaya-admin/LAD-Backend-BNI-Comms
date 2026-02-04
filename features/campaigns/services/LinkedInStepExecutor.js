@@ -70,11 +70,14 @@ async function enrichLeadForLinkedIn(leadData, tenantId, databaseLeadId = null) 
     logger.info('[LinkedInStepExecutor] Enriching lead for LinkedIn visit', {
       leadId: leadData.id,
       personId,
+      tenantId,
       needsEmail: !hasEmail,
       needsLinkedIn: !hasLinkedIn
     });
     
-    const enrichResult = await ApolloRevealService.enrichPersonDetails(personId);
+    // Pass tenant context for credit deduction
+    const mockReq = tenantId ? { tenant: { id: tenantId } } : null;
+    const enrichResult = await ApolloRevealService.enrichPersonDetails(personId, mockReq);
     
     if (enrichResult && enrichResult.success && enrichResult.person) {
       const enrichedPerson = enrichResult.person;
@@ -272,7 +275,7 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
         const firstName = (leadData.name || leadData.employee_name || 'there').split(' ')[0];
         const lastName = (leadData.name || leadData.employee_name || '').split(' ').slice(1).join(' ');
         const title = leadData.title || leadData.employee_data?.title || '';
-        const companyName = leadData.company_name || leadData.employee_data?.organization?.name || '';
+        const companyName = leadData.company_name || leadData.organization || leadData.company || leadData.employee_data?.organization?.name || '';
         const industry = leadData.employee_data?.organization?.industry || '';
         
         message = message
@@ -280,17 +283,20 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
           .replace(/\{\{last_name\}\}/g, lastName)
           .replace(/\{\{title\}\}/g, title)
           .replace(/\{\{company_name\}\}/g, companyName)
+          .replace(/\{\{company\}\}/g, companyName)
           .replace(/\{\{industry\}\}/g, industry);
       }
       // Get all available LinkedIn accounts for fallback
       const allAccounts = await getAllLinkedInAccountsForTenant(tenantId, userId);
       // Try connection request with smart fallback logic
+      // Pass tenantId for credit deduction on success
       result = await sendConnectionRequestWithFallback(
         employee,
         message,
         userWantsMessage,
         linkedinAccountId,
-        allAccounts
+        allAccounts,
+        { tenantId }
       );
       
       logger.info('[LinkedInStepExecutor] Connection request result', {
@@ -318,7 +324,23 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       // Delay applies regardless of success/failure to maintain consistent rate
       await new Promise(resolve => setTimeout(resolve, 10000));
     } else if (stepType === 'linkedin_message') {
-      const message = stepConfig.message || stepConfig.body || 'Hello!';
+      let message = stepConfig.message || stepConfig.body || 'Hello!';
+      
+      // Replace variables in message
+      const firstName = (leadData.name || leadData.employee_name || 'there').split(' ')[0];
+      const lastName = (leadData.name || leadData.employee_name || '').split(' ').slice(1).join(' ');
+      const title = leadData.title || leadData.employee_data?.title || '';
+      const companyName = leadData.company_name || leadData.organization || leadData.company || leadData.employee_data?.organization?.name || '';
+      const industry = leadData.employee_data?.organization?.industry || '';
+      
+      message = message
+        .replace(/\{\{first_name\}\}/g, firstName)
+        .replace(/\{\{last_name\}\}/g, lastName)
+        .replace(/\{\{title\}\}/g, title)
+        .replace(/\{\{company_name\}\}/g, companyName)
+        .replace(/\{\{company\}\}/g, companyName)
+        .replace(/\{\{industry\}\}/g, industry);
+      
       // ✅ Check if connection was accepted before sending message
       try {
         const { db } = require('../../../shared/database/connection');
@@ -349,7 +371,7 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       } catch (checkErr) {
         // Continue anyway if check fails (backward compatibility)
       }
-      result = await unipileService.sendLinkedInMessage(employee, message, linkedinAccountId);
+      result = await unipileService.sendLinkedInMessage(employee, message, linkedinAccountId, { tenantId });
       // Track message in campaign_analytics for Live Activity Feed
       try {
         await campaignStatsTracker.trackAction(campaignLead.campaign_id, 'MESSAGE_SENT', {
@@ -481,6 +503,13 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
     }
     return result;
   } catch (error) {
+    const logger = require('../../../core/utils/logger');
+    logger.error('[LinkedInStepExecutor] executeLinkedInStep failed', {
+      stepType,
+      error: error.message,
+      stack: error.stack,
+      campaignLeadId: campaignLead?.id
+    });
     return { success: false, error: error.message };
   }
 }

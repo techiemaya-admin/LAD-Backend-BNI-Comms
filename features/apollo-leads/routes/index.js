@@ -13,18 +13,17 @@
  * 4. HEALTH CHECKS: Feature-specific health monitoring
  * 
  * API ENDPOINTS:
- * - POST /search: Search companies (1 credit)
+ * - POST /search: Search companies (free)
  * - GET /companies/:id: Get company details (free)
  * - POST /companies/:id/leads: Get company employees (free)
- * - GET /leads/:id/email: Reveal email address (1 credit)
- * - GET /leads/:id/phone: Reveal phone number (8 credits)
+ * - GET /leads/:id/email: Reveal email + LinkedIn URL (2 credits)
+ * - GET /leads/:id/phone: Reveal phone number (10 credits)
  * - GET /health: Feature health status (free)
  * 
  * BILLING ENFORCEMENT:
  * Credit costs are enforced at middleware level:
- * - Search operations: 1 credit per search
- * - Email reveals: 1 credit per email
- * - Phone reveals: 8 credits per phone (Apollo.io pricing)
+ * - Email + LinkedIn URL reveals: 2 credits per reveal
+ * - Phone reveals: 10 credits per phone
  * 
  * MIDDLEWARE STACK:
  * 1. requireFeature('apollo-leads'): Check feature access
@@ -70,7 +69,6 @@ router.use(requireFeature('apollo-leads'));
  *     tags: [Apollo Leads]
  */
 router.post('/search', 
-  requireCredits('apollo_search', 1), 
   ApolloLeadsController.searchCompanies
 );
 
@@ -100,7 +98,7 @@ router.post('/companies/:id/leads', ApolloLeadsController.getCompanyLeads);
  *     tags: [Apollo Leads]
  */
 router.get('/leads/:id/email', 
-  requireCredits('apollo_email', 1),
+  requireCredits('apollo_email', 2),
   ApolloLeadsController.revealEmail
 );
 
@@ -112,7 +110,7 @@ router.get('/leads/:id/email',
  *     tags: [Apollo Leads]
  */
 router.get('/leads/:id/phone',
-  requireCredits('apollo_phone', 8),
+  requireCredits('apollo_phone', 10),
   ApolloLeadsController.revealPhone
 );
 
@@ -127,7 +125,7 @@ router.delete('/search-history/:id', ApolloLeadsController.deleteSearchHistory);
  * Request body: { person_id: string, employee_name?: string }
  */
 router.post('/reveal-email', 
-  requireCredits('apollo_email', 1),
+  requireCredits('apollo_email', 2),
   ApolloLeadsController.revealEmail
 );
 
@@ -137,7 +135,7 @@ router.post('/reveal-email',
  * Request body: { person_id: string, employee_name?: string }
  */
 router.post('/reveal-phone',
-  requireCredits('apollo_phone', 8),
+  requireCredits('apollo_phone', 10),
   ApolloLeadsController.revealPhone
 );
 

@@ -44,8 +44,9 @@ const requireBillingView = (req, res, next) => {
   const capabilities = req.user?.capabilities || [];
   const role = req.user?.role;
   
-  // Owner, admin, or billing.view capability
-  if (['owner', 'admin'].includes(role) || 
+  // Owner, admin, member, or billing.view capability can view wallet
+  // All authenticated users should be able to see their own credits
+  if (['owner', 'admin', 'member'].includes(role) || 
       capabilities.includes('billing.admin') || 
       capabilities.includes('billing.view')) {
     return next();
@@ -157,7 +158,9 @@ router.post('/quote', async (req, res) => {
 // =============================================================================
 router.get('/wallet', requireBillingView, async (req, res) => {
   try {
+    console.log('[Billing API] /wallet called with tenantId:', req.tenantId);
     const wallet = await billingService.getWalletBalance(req.tenantId);
+    console.log('[Billing API] Wallet result:', JSON.stringify(wallet));
     
     res.json({
       success: true,

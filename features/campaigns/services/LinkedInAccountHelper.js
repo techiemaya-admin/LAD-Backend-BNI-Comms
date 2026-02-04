@@ -157,21 +157,28 @@ async function getLinkedInAccountForExecution(tenantId, userId) {
  * 2. If limit exceeded: Fallback to without message
  * 3. If still fails: Try another account
  * 4. If all accounts exhausted: Return error for UI
+ * 
+ * @param {Object} options - Options object
+ * @param {string} options.tenantId - Tenant ID for credit deduction
  */
 async function sendConnectionRequestWithFallback(
   employee,
   message,
   userWantsMessage,
   primaryAccountId,
-  allAccounts
+  allAccounts,
+  options = {}
 ) {
+  const { tenantId } = options;
+  
   logger.info('[LinkedInAccountHelper] sendConnectionRequestWithFallback called', {
     employeeUrl: employee.profile_url,
     employeeName: employee.fullname,
     hasMessage: !!message,
     userWantsMessage,
     primaryAccountId,
-    totalAccounts: allAccounts?.length || 0
+    totalAccounts: allAccounts?.length || 0,
+    tenantId
   });
   
   // Filter out the primary account from fallback list
@@ -200,7 +207,7 @@ async function sendConnectionRequestWithFallback(
         employeeName: employee.fullname
       });
       
-      const result = await unipileService.sendConnectionRequest(employee, message, accountId);
+      const result = await unipileService.sendConnectionRequest(employee, message, accountId, { tenantId });
       
       logger.info('[LinkedInAccountHelper] Connection with message result', {
         accountId,
@@ -258,7 +265,7 @@ async function sendConnectionRequestWithFallback(
         employeeName: employee.fullname
       });
       
-      const result = await unipileService.sendConnectionRequest(employee, null, accountId);
+      const result = await unipileService.sendConnectionRequest(employee, null, accountId, { tenantId });
       
       logger.info('[LinkedInAccountHelper] Connection without message result', {
         accountId,

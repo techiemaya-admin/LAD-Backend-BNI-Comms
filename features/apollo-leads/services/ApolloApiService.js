@@ -547,13 +547,17 @@ async function searchEmployeesFromApollo(searchParams, tenantId = null) {
     const companyResult = await searchCompaniesForDomains({
       organization_industries,
       organization_locations,
-      per_page: 50  // Get up to 50 companies for domain list
+      per_page: 100  // Get up to 100 companies for domain list (increased from 50)
     }, tenantId);  // Pass tenantId for caching
     
     if (companyResult.success && companyResult.domains.length > 0) {
-      q_organization_domains_list = companyResult.domains.slice(0, 25);  // Limit to 25 domains
+      // Use all available domains (up to 100) to maximize results per API call
+      // Apollo can handle large domain lists and will return up to 100 people per page
+      q_organization_domains_list = companyResult.domains;
+      
       logger.info('[Apollo API] Step 2: Searching people in discovered companies', {
         domainsToSearch: q_organization_domains_list.length,
+        page: page || 1,
         fromCache: companyResult.fromCache || false
       });
     } else {

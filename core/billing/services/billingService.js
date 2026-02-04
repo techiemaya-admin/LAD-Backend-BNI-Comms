@@ -373,26 +373,33 @@ class BillingService {
         return existing;
       }
       
-      // Get wallet with lock
+      // Get wallet with lock - prefer tenant-level (user_id IS NULL) but accept user-level too
       const walletQuery = `
         SELECT * FROM billing_wallets
-        WHERE tenant_id = $1 AND user_id IS NULL
+        WHERE tenant_id = $1
+        ORDER BY user_id NULLS FIRST
+        LIMIT 1
         FOR UPDATE
       `;
       const walletResult = await client.query(walletQuery, [tenantId]);
       
+      console.log(`[Billing] Wallet lookup for tenant ${tenantId}: found ${walletResult.rows.length} rows`);
+      
       let wallet;
       if (walletResult.rows.length === 0) {
-        // Create wallet if doesn't exist
+        // Create wallet if doesn't exist - explicitly set user_id to NULL
+        console.log(`[Billing] Creating new wallet for tenant ${tenantId}`);
         const createResult = await client.query(
-          `INSERT INTO billing_wallets (tenant_id, current_balance, currency, status)
-           VALUES ($1, 0, 'USD', 'active')
+          `INSERT INTO billing_wallets (tenant_id, user_id, current_balance, currency, status)
+           VALUES ($1, NULL, 0, 'USD', 'active')
            RETURNING *`,
           [tenantId]
         );
         wallet = createResult.rows[0];
+        console.log(`[Billing] Created wallet with id ${wallet.id} for tenant ${tenantId}`);
       } else {
         wallet = walletResult.rows[0];
+        console.log(`[Billing] Using existing wallet with id ${wallet.id}, balance ${wallet.current_balance}`);
       }
       
       const balanceBefore = parseFloat(wallet.current_balance);
@@ -440,15 +447,26 @@ class BillingService {
    * Get wallet balance for tenant
    */
   async getWalletBalance(tenantId) {
+    console.log(`[Billing] getWalletBalance called for tenant: ${tenantId}`);
     const wallet = await billingRepo.getOrCreateWallet(tenantId);
+    console.log(`[Billing] Wallet retrieved:`, { 
+      id: wallet.id, 
+      tenantId: wallet.tenant_id, 
+      balance: wallet.current_balance,
+      reserved: wallet.reserved_balance
+    });
+    
+    const currentBalance = parseFloat(wallet.current_balance) || 0;
+    const reservedBalance = parseFloat(wallet.reserved_balance) || 0;
+    
     return {
       walletId: wallet.id,
       tenantId: wallet.tenant_id,
-      currentBalance: parseFloat(wallet.current_balance),
-      reservedBalance: parseFloat(wallet.reserved_balance),
-      availableBalance: parseFloat(wallet.current_balance) - parseFloat(wallet.reserved_balance),
-      currency: wallet.currency,
-      status: wallet.status,
+      currentBalance: currentBalance,
+      reservedBalance: reservedBalance,
+      availableBalance: currentBalance - reservedBalance,
+      currency: wallet.currency || 'USD',
+      status: wallet.status || 'active',
       lowBalanceThreshold: wallet.low_balance_threshold ? parseFloat(wallet.low_balance_threshold) : null
     };
   }

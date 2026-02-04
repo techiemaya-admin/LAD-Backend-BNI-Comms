@@ -20,6 +20,8 @@ const axios = require('axios');
 const { pool } = require('../../../shared/database/connection');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const logger = require('../../../core/utils/logger');
+const { deductCredits } = require('../../../shared/middleware/credit_guard');
+const { CREDIT_COSTS } = require('../constants/constants');
 
 // LinkedIn Rate Limits (from Unipile documentation)
 const LINKEDIN_LIMITS = {
@@ -351,7 +353,8 @@ class UnipileOutreachSequenceService {
           privateId,
           message,
           headers,
-          baseUrl
+          baseUrl,
+          tenantId
         );
       } else if (relationshipStatus === 'PENDING_INCOMING') {
         // Has pending incoming request - accept and send message
@@ -360,7 +363,8 @@ class UnipileOutreachSequenceService {
           privateId,
           message,
           headers,
-          baseUrl
+          baseUrl,
+          tenantId
         );
       } else {
         // Not connected - send connection request
@@ -369,7 +373,8 @@ class UnipileOutreachSequenceService {
           privateId,
           message,
           headers,
-          baseUrl
+          baseUrl,
+          tenantId
         );
       }
 
@@ -412,7 +417,7 @@ class UnipileOutreachSequenceService {
    * 
    * @private
    */
-  async sendConnectionInvitation(accountId, privateId, message, headers, baseUrl) {
+  async sendConnectionInvitation(accountId, privateId, message, headers, baseUrl, tenantId = null) {
     const response = await axios.post(
       `${baseUrl}/linkedin/invite`,
       {
@@ -423,9 +428,36 @@ class UnipileOutreachSequenceService {
       { headers, timeout: 30000 }
     );
 
+    // Deduct credits for successful connection request
+    if (tenantId) {
+      try {
+        let totalCredits = CREDIT_COSTS.LINKEDIN_CONNECTION || 1;
+        let usageType = 'linkedin_connection';
+        
+        if (message) {
+          totalCredits += CREDIT_COSTS.TEMPLATE_MESSAGE || 5;
+          usageType = 'linkedin_connection_with_message';
+        }
+        
+        const mockReq = { tenant: { id: tenantId } };
+        await deductCredits(tenantId, 'apollo-leads', usageType, totalCredits, mockReq);
+        logger.info('[Outreach Sequence] Credits deducted for connection', { 
+          tenantId, 
+          credits: totalCredits,
+          hasMessage: !!message 
+        });
+      } catch (creditError) {
+        logger.error('[Outreach Sequence] Failed to deduct credits', { 
+          error: creditError.message, 
+          tenantId 
+        });
+      }
+    }
+
     return {
       actionTaken: 'invitation_sent',
-      response: response.data
+      response: response.data,
+      credits_used: (CREDIT_COSTS.LINKEDIN_CONNECTION || 1) + (message ? (CREDIT_COSTS.TEMPLATE_MESSAGE || 5) : 0)
     };
   }
 
@@ -434,7 +466,7 @@ class UnipileOutreachSequenceService {
    * 
    * @private
    */
-  async sendMessage(accountId, privateId, message, headers, baseUrl) {
+  async sendMessage(accountId, privateId, message, headers, baseUrl, tenantId = null) {
     const response = await axios.post(
       `${baseUrl}/linkedin/message`,
       {
@@ -445,9 +477,28 @@ class UnipileOutreachSequenceService {
       { headers, timeout: 30000 }
     );
 
+    // Deduct credits for template message
+    if (tenantId && message) {
+      try {
+        const credits = CREDIT_COSTS.TEMPLATE_MESSAGE || 5;
+        const mockReq = { tenant: { id: tenantId } };
+        await deductCredits(tenantId, 'apollo-leads', 'template_message', credits, mockReq);
+        logger.info('[Outreach Sequence] Credits deducted for message', { 
+          tenantId, 
+          credits 
+        });
+      } catch (creditError) {
+        logger.error('[Outreach Sequence] Failed to deduct credits for message', { 
+          error: creditError.message, 
+          tenantId 
+        });
+      }
+    }
+
     return {
       actionTaken: 'message_sent',
-      response: response.data
+      response: response.data,
+      credits_used: message ? (CREDIT_COSTS.TEMPLATE_MESSAGE || 5) : 0
     };
   }
 
@@ -456,7 +507,7 @@ class UnipileOutreachSequenceService {
    * 
    * @private
    */
-  async acceptAndMessage(accountId, privateId, message, headers, baseUrl) {
+  async acceptAndMessage(accountId, privateId, message, headers, baseUrl, tenantId = null) {
     // Accept incoming connection
     await axios.post(
       `${baseUrl}/linkedin/accept-invitation`,
@@ -478,9 +529,28 @@ class UnipileOutreachSequenceService {
       { headers, timeout: 30000 }
     );
 
+    // Deduct credits for template message (accepting is free)
+    if (tenantId && message) {
+      try {
+        const credits = CREDIT_COSTS.TEMPLATE_MESSAGE || 5;
+        const mockReq = { tenant: { id: tenantId } };
+        await deductCredits(tenantId, 'apollo-leads', 'template_message', credits, mockReq);
+        logger.info('[Outreach Sequence] Credits deducted for accept+message', { 
+          tenantId, 
+          credits 
+        });
+      } catch (creditError) {
+        logger.error('[Outreach Sequence] Failed to deduct credits', { 
+          error: creditError.message, 
+          tenantId 
+        });
+      }
+    }
+
     return {
       actionTaken: 'accepted_and_messaged',
-      response: messageResponse.data
+      response: messageResponse.data,
+      credits_used: message ? (CREDIT_COSTS.TEMPLATE_MESSAGE || 5) : 0
     };
   }
 

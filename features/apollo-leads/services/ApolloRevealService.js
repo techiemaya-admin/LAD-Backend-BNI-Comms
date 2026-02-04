@@ -10,7 +10,7 @@ const axios = require('axios');
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const { requireTenantId } = require('../../../core/utils/tenantHelper');
 const { APOLLO_CONFIG, CACHE_CONFIG, CREDIT_COSTS } = require('../constants/constants');
-const { refundCredits } = require('../../../shared/middleware/credit_guard');
+const { refundCredits, deductCredits } = require('../../../shared/middleware/credit_guard');
 const logger = require('../../../core/utils/logger');
 const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
 
@@ -525,6 +525,25 @@ class ApolloRevealService {
         hasLinkedIn: !!enrichedPerson.linkedin_url,
         credits_used: CREDIT_COSTS.EMAIL_REVEAL
       });
+      
+      // Deduct credits for successful enrichment
+      if (tenantId) {
+        try {
+          await deductCredits(tenantId, 'apollo-leads', 'person_enrichment', CREDIT_COSTS.EMAIL_REVEAL, req);
+          logger.info('[Apollo Reveal] Credits deducted for enrichment', { 
+            tenantId, 
+            credits: CREDIT_COSTS.EMAIL_REVEAL 
+          });
+        } catch (creditError) {
+          logger.error('[Apollo Reveal] Failed to deduct credits', { 
+            error: creditError.message, 
+            tenantId 
+          });
+          // Don't fail the enrichment if credit deduction fails
+        }
+      } else {
+        logger.warn('[Apollo Reveal] No tenantId available for credit deduction', { personId });
+      }
       
       // Update cache with enriched data
       try {

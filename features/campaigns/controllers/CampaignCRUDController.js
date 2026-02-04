@@ -396,7 +396,7 @@ class CampaignCRUDController {
             calculatedDates.scheduleDates
           );
           
-          console.log('🔍 [DEBUG BACKEND] Cloud Tasks scheduled:', {
+          logger.info('🔍 [DEBUG BACKEND] Cloud Tasks scheduled:', {
             totalScheduled: schedulingResult.totalScheduled,
             totalFailed: schedulingResult.totalFailed
           });

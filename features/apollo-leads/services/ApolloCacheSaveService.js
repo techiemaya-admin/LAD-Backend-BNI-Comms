@@ -14,6 +14,7 @@
 const { getSchema } = require('../../../core/utils/schemaHelper');
 const logger = require('../../../core/utils/logger');
 const ApolloEmployeesCacheRepository = require('../repositories/ApolloEmployeesCacheRepository');
+const ApolloCompanyRepository = require('../repositories/ApolloCompanyRepository');
 
 /**
  * Save Apollo employees to database cache
@@ -34,6 +35,9 @@ async function saveEmployeesToCache(employees, req = null) {
     // LAD Architecture: Get dynamic schema (no hardcoded lad_dev)
     const schema = getSchema(req);
     
+    // Track unique companies to save
+    const uniqueCompanies = new Map();
+    
     for (const emp of employees) {
       try {
         const apolloPersonId = String(emp.id || emp.person_id || '');
@@ -41,6 +45,28 @@ async function saveEmployeesToCache(employees, req = null) {
           logger.warn('[Apollo Cache Save] Skipping employee with no apollo_person_id', { name: emp.name });
           errorCount++;
           continue;
+        }
+        
+        // Extract company data from employee
+        const companyId = emp.organization?.id || emp.company_id;
+        const companyData = emp.organization || {};
+        
+        // Save company first if we have company data
+        if (companyId && !uniqueCompanies.has(companyId)) {
+          uniqueCompanies.set(companyId, {
+            apolloId: String(companyId),
+            name: companyData.name || emp.company_name,
+            domain: companyData.primary_domain || companyData.domain || emp.company_domain,
+            industry: companyData.industry || companyData.industries?.[0] || null,
+            employeeCount: companyData.estimated_num_employees || null,
+            revenue: companyData.estimated_annual_revenue || null,
+            location: companyData.city || companyData.state || companyData.country || null,
+            phone: companyData.phone || null,
+            website: companyData.website_url || null,
+            enrichedData: companyData,
+            userId: req?.user?.userId || null,
+            metadata: {}
+          });
         }
         
         // LAD Architecture: Delegate SQL to repository
@@ -97,10 +123,26 @@ async function saveEmployeesToCache(employees, req = null) {
       }
     }
     
+    // Save unique companies to apollo_companies table
+    let companiesSaved = 0;
+    for (const [companyId, companyData] of uniqueCompanies) {
+      try {
+        await ApolloCompanyRepository.upsert(companyData, schema, effectiveTenantId);
+        companiesSaved++;
+      } catch (companyError) {
+        logger.warn('[Apollo Cache Save] Failed to save company', {
+          companyId,
+          name: companyData.name,
+          error: companyError.message
+        });
+      }
+    }
+    
     logger.info('[Apollo Cache Save] Save operation completed', {
       saved: savedCount,
       updated: updatedCount,
       errors: errorCount,
+      companiesSaved,
       total: employees.length
     });
     

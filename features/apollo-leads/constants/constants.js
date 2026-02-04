@@ -47,9 +47,10 @@ const CACHE_CONFIG = {
 
 // Credit Costs for billable operations
 const CREDIT_COSTS = {
-  EMAIL_REVEAL: 1,
-  PHONE_REVEAL: 8,
-  SEARCH: 1
+  EMAIL_REVEAL: 2,           // Email + LinkedIn URL: 2 credits
+  LINKEDIN_CONNECTION: 1,    // LinkedIn connection: 1 credit
+  TEMPLATE_MESSAGE: 5,       // Each template message: 5 credits
+  PHONE_REVEAL: 10           // Phone reveal: 10 credits
 };
 
 // Timeout Configuration

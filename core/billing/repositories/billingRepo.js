@@ -101,12 +101,15 @@ async function listPricing({ tenantId, category, provider }) {
 async function getOrCreateWallet(tenantId, forUpdate = false) {
   const lockClause = forUpdate ? 'FOR UPDATE' : '';
   
-  // Try to get existing wallet
+  // Try to get existing wallet - first check for tenant-level wallet (user_id IS NULL)
+  // then fallback to any wallet for this tenant
   let sql = `
     SELECT id, tenant_id, user_id, current_balance, reserved_balance, currency, 
            status, low_balance_threshold, metadata, created_at, updated_at
     FROM billing_wallets
-    WHERE tenant_id = $1 AND user_id IS NULL
+    WHERE tenant_id = $1
+    ORDER BY user_id NULLS FIRST
+    LIMIT 1
     ${lockClause}
   `;
   
@@ -118,14 +121,34 @@ async function getOrCreateWallet(tenantId, forUpdate = false) {
   
   // Create if doesn't exist (only if not locked)
   if (!forUpdate) {
+    // Use a separate check-then-insert approach since ON CONFLICT doesn't work
+    // reliably with NULL values in the unique constraint
     sql = `
       INSERT INTO billing_wallets (tenant_id, user_id, current_balance, currency, status)
-      VALUES ($1, NULL, 0, 'USD', 'active')
-      ON CONFLICT (tenant_id, user_id) DO UPDATE SET updated_at = NOW()
+      SELECT $1, NULL, 0, 'USD', 'active'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM billing_wallets WHERE tenant_id = $1 AND user_id IS NULL
+      )
       RETURNING *
     `;
     result = await query(sql, [tenantId]);
-    return result.rows[0];
+    
+    // If insert succeeded, return the new row
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
+    
+    // If insert didn't happen (wallet exists), fetch it
+    sql = `
+      SELECT id, tenant_id, user_id, current_balance, reserved_balance, currency, 
+             status, low_balance_threshold, metadata, created_at, updated_at
+      FROM billing_wallets
+      WHERE tenant_id = $1 AND user_id IS NULL
+    `;
+    result = await query(sql, [tenantId]);
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
   }
   
   throw new Error(`Wallet not found for tenant ${tenantId}`);

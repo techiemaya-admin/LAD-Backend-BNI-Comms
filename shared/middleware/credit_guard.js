@@ -14,9 +14,10 @@
  * 
  * CREDIT SYSTEM:
  * Different actions cost different amounts:
- * - Apollo search: 1 credit
- * - Email reveal: 1 credit
- * - Phone reveal: 8 credits
+ * - Email + LinkedIn URL: 2 credits
+ * - LinkedIn connection: 1 credit
+ * - Template message: 5 credits
+ * - Phone reveal: 10 credits
  * - Voice call: 250 credits/minute
  * 
  * MIDDLEWARE USAGE:
@@ -180,32 +181,42 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req) {
       );
     }
     
-    // Log transaction
-    await client.query(
-      `INSERT INTO ${schema}.credit_transactions (
-        user_id,
-        tenant_id,
-        amount,
-        transaction_type,
-        description,
-        metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        req.user?.userId || req.user?.id || tenantId,
-        tenantId,
-        -credits,
-        'deduction',
-        `${featureKey} - ${usageType}`,
-        {
-          usage_type: usageType,
-          feature: featureKey,
-          endpoint: req.path,
-          method: req.method,
-          user_agent: req.headers['user-agent'],
-          timestamp: new Date().toISOString()
-        }
-      ]
-    );
+    // Log transaction - only insert user_id if it's a valid user UUID, not tenantId
+    // For background processes, user_id should be NULL to avoid FK constraint violation
+    const userId = req?.user?.userId || req?.user?.id || null;
+    
+    // Only log to credit_transactions if we have a valid user_id
+    // Background processes without user context will skip this legacy table
+    if (userId) {
+      await client.query(
+        `INSERT INTO ${schema}.credit_transactions (
+          user_id,
+          tenant_id,
+          amount,
+          transaction_type,
+          description,
+          metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          userId,
+          tenantId,
+          -credits,
+          'deduction',
+          `${featureKey} - ${usageType}`,
+          {
+            usage_type: usageType,
+            feature: featureKey,
+            endpoint: req?.path || 'background_process',
+            method: req?.method || 'BACKGROUND',
+            user_agent: req?.headers?.['user-agent'] || 'campaign-processor',
+            timestamp: new Date().toISOString()
+          }
+        ]
+      );
+    } else {
+      // For background processes, log to console instead
+      console.log(`📊 [Credit Guard] Background credit deduction: ${credits} credits for tenant ${tenantId} (${usageType}) - skipping legacy transaction log`);
+    }
     
     await client.query('COMMIT');
     
@@ -273,6 +284,8 @@ const trackUsage = (usageType) => {
  * FIX: Implements credit refund mechanism for failed Apollo API calls
  * When Apollo API returns 4xx errors (client errors like 422), no service should be provided,
  * so credits should be refunded to the user.
+ * 
+ * Updated to support both billing_wallets (new) and user_credits (legacy) systems
  */
 async function refundCredits(tenantId, usageType, credits, req, reason = 'Operation failed') {
   const schema = process.env.DB_SCHEMA || 'lad_dev';
@@ -281,11 +294,22 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
   try {
     await client.query('BEGIN');
     
-    // Refund to balance (add back the credits)
-    await client.query(
-      `UPDATE ${schema}.user_credits SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2 OR tenant_id = $2`,
+    // First try to refund to billing_wallets (new system - preferred)
+    const walletResult = await client.query(
+      `UPDATE ${schema}.billing_wallets 
+       SET current_balance = current_balance + $1, updated_at = NOW() 
+       WHERE tenant_id = $2
+       RETURNING id`,
       [credits, tenantId]
     );
+    
+    // If billing_wallets update failed or no row found, try legacy user_credits
+    if (walletResult.rowCount === 0) {
+      await client.query(
+        `UPDATE ${schema}.user_credits SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2 OR tenant_id = $2`,
+        [credits, tenantId]
+      );
+    }
     
     // Log refund transaction
     await client.query(
@@ -298,7 +322,7 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
         metadata
       ) VALUES ($1, $2, $3, $4, $5, $6)`,
       [
-        req.user?.userId || req.user?.id || tenantId,
+        req?.user?.userId || req?.user?.id || tenantId,
         tenantId,
         credits, // Positive amount for refund
         'refund',
@@ -306,8 +330,8 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
         {
           usage_type: usageType,
           reason: reason,
-          endpoint: req.path,
-          method: req.method,
+          endpoint: req?.path || 'N/A',
+          method: req?.method || 'N/A',
           timestamp: new Date().toISOString()
         }
       ]
@@ -330,5 +354,6 @@ module.exports = {
   requireCredits,
   trackUsage,
   getCreditBalance,
+  deductCredits,
   refundCredits
 };

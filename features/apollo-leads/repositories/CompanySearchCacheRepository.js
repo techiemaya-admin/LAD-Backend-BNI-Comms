@@ -86,6 +86,21 @@ class CompanySearchCacheRepository {
   }
 
   /**
+   * Get cached company names for a search query
+   * @param {string} tenantId - Tenant ID
+   * @param {string} keywords - Search keywords
+   * @param {string|null} location - Location filter
+   * @param {string|null} industry - Industry filter
+   * @returns {Promise<Array<string>>} List of company names
+   */
+  static async getCachedCompanyNames(tenantId, keywords, location = null, industry = null) {
+    const companies = await this.getCachedCompanies(tenantId, keywords, location, industry);
+    return companies
+      .map(c => c.company_name)
+      .filter(name => name && name.length > 0);
+  }
+
+  /**
    * Save companies to cache (upsert - avoid duplicates)
    * @param {string} tenantId - Tenant ID
    * @param {string} keywords - Search keywords
