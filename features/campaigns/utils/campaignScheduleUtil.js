@@ -82,7 +82,7 @@ class CampaignScheduleUtil {
 
   /**
    * Extract schedule parameters from message_data
-   * @param {Object} messageData - The message_data JSONB from ai_messages
+   * @param {Object} messageData - The message_data JSONB from ai_messages (normalized)
    * @returns {Object} Extracted parameters: { timestamp, campaignDays, workingDaysStr, workingDays }
    */
   static extractScheduleParams(messageData) {
@@ -90,16 +90,34 @@ class CampaignScheduleUtil {
       throw new Error('message_data is required for campaign scheduling');
     }
 
-    const collectedAnswers = messageData.collectedAnswers || {};
-    
+    // Handle both normalized (flat) and legacy (nested) structures
     const timestamp = messageData.timestamp;
-    const campaignDays = parseInt(collectedAnswers.campaign_days || '7');
-    const workingDaysStr = collectedAnswers.working_days || 'Monday-Friday (Weekdays only)';
+    const campaignDaysRaw = messageData.campaign_days || messageData.collectedAnswers?.campaign_days || '7';
+    const workingDaysStr = messageData.working_days || messageData.collectedAnswers?.working_days || 'Monday-Friday';
+    
+    // Parse campaign_days - handle both string and number, and extract number from "7 days (1 week)"
+    let campaignDays;
+    if (typeof campaignDaysRaw === 'number') {
+      campaignDays = campaignDaysRaw;
+    } else {
+      // Extract first number from string like "7 days (1 week)" or "7"
+      const match = String(campaignDaysRaw).match(/(\d+)/);
+      campaignDays = match ? parseInt(match[1]) : 7;
+    }
+    
     const workingDays = this.parseWorkingDays(workingDaysStr);
 
     if (!timestamp) {
       throw new Error('timestamp is required in message_data for campaign scheduling');
     }
+
+    logger.info('[CampaignScheduleUtil] Extracted schedule params', {
+      timestamp,
+      campaignDays,
+      campaignDaysRaw,
+      workingDaysStr,
+      workingDaysArray: workingDays
+    });
 
     return {
       timestamp: new Date(timestamp),

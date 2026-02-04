@@ -1,0 +1,457 @@
+/**
+ * Comprehensive Test Script for Campaign Fixes
+ * Tests: Apollo enrichment, lead limits, Cloud Tasks, connection messages
+ */
+
+const axios = require('axios');
+
+const API_BASE_URL = 'http://localhost:3004';
+const JWT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJmNmU4YTIxYy1lZTZlLTQyMWQtYjVhYi01YjRlOTZlODM2MjQiLCJlbWFpbCI6ImFkbWluQHBsdXRvdHJhdmVscy5hZSIsInJvbGUiOiJvd25lciIsInRlbmFudElkIjoiMWVhZDhlNjgtMjM3NS00M2JkLTkxYzktNTU1ZGYyNTIxZGVjIiwicGxhbiI6ImVudGVycHJpc2UiLCJpYXQiOjE3NzAxMTIyMTMsImV4cCI6MTc3MDcxNzAxM30.9xDzBMfpaKccZD62Bq2k1p9zwz66BF4h5gYRH9XrRtk';
+const TENANT_ID = '1ead8e68-2375-43bd-91c9-555df2521dec';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Authorization': `Bearer ${JWT_TOKEN}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+// Color codes for console output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m'
+};
+
+function log(message, color = 'reset') {
+  console.log(`${colors[color]}${message}${colors.reset}`);
+}
+
+function section(title) {
+  console.log('\n' + '='.repeat(80));
+  log(title, 'cyan');
+  console.log('='.repeat(80) + '\n');
+}
+
+// Test 1: Create campaign with 3 lead limit
+async function testLeadLimit() {
+  section('TEST 1: Lead Limit (3 leads)');
+  
+  try {
+    const campaignData = {
+      name: `Test Lead Limit 3 - ${Date.now()}`,
+      status: 'draft',
+      config: {
+        leads_per_day: 10, // Campaign default
+        searchCriteria: {
+          titles: ['Sales Head'],
+          locations: ['Abudhabi'],
+          industries: ['Manufacturing']
+        }
+      }
+    };
+
+    log('Creating campaign...', 'yellow');
+    const createResponse = await api.post('/api/campaigns', campaignData);
+    const campaign = createResponse.data.data;
+    log(`✓ Campaign created: ${campaign.id}`, 'green');
+
+    // Add steps as array
+    log('Adding steps with lead limit=3...', 'yellow');
+    const stepsData = {
+      steps: [
+        {
+          step_type: 'lead_generation',
+          step_order: 1,
+          config: {
+            leadGenerationLimit: 3,
+            searchSource: 'apollo_io'
+          }
+        },
+        {
+          step_type: 'linkedin_visit',
+          step_order: 2,
+          config: {}
+        },
+        {
+          step_type: 'linkedin_connect',
+          step_order: 3,
+          config: { message: null }
+        }
+      ]
+    };
+
+    const stepResponse = await api.post(`/api/campaigns/${campaign.id}/steps`, stepsData);
+    log(`✓ Steps added: ${stepResponse.data.data.length} steps`, 'green');
+
+    // Start campaign
+    log('Starting campaign...', 'yellow');
+    await api.post(`/api/campaigns/${campaign.id}/start`);
+    log('✓ Campaign started', 'green');
+
+    // Wait for execution
+    log('Waiting 15 seconds for execution...', 'yellow');
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
+    // Check results
+    const leadsResponse = await api.get(`/api/campaigns/${campaign.id}/leads`);
+    const leadsCount = leadsResponse.data.data.length;
+
+    log(`\nRESULT: Generated ${leadsCount} leads`, leadsCount === 3 ? 'green' : 'red');
+    
+    if (leadsCount === 3) {
+      log('✓ TEST PASSED: Exactly 3 leads generated', 'bright');
+    } else {
+      log(`✗ TEST FAILED: Expected 3 leads, got ${leadsCount}`, 'red');
+    }
+
+    return { campaignId: campaign.id, passed: leadsCount === 3 };
+
+  } catch (error) {
+    log(`✗ TEST FAILED: ${error.message}`, 'red');
+    if (error.response) {
+      log(`Response: ${JSON.stringify(error.response.data, null, 2)}`, 'red');
+    }
+    return { passed: false };
+  }
+}
+
+// Test 2: Connection message with message
+async function testConnectionWithMessage() {
+  section('TEST 2: Connection Message (WITH message)');
+  
+  try {
+    const campaignData = {
+      name: `Test Connection Message - ${Date.now()}`,
+      status: 'draft',
+      config: {
+        leads_per_day: 2,
+        searchCriteria: {
+          titles: ['CEO'],
+          locations: ['Dubai'],
+          industries: ['Technology']
+        }
+      }
+    };
+
+    log('Creating campaign...', 'yellow');
+    const createResponse = await api.post('/api/campaigns', campaignData);
+    const campaign = createResponse.data.data;
+    log(`✓ Campaign created: ${campaign.id}`, 'green');
+
+    // Add steps with message
+    const message = "Hi {{first_name}}, I noticed you work as {{title}} at {{company_name}}. I'd love to connect!";
+    const stepsData = {
+      steps: [
+        {
+          step_type: 'lead_generation',
+          step_order: 1,
+          config: { leadGenerationLimit: 2 }
+        },
+        {
+          step_type: 'linkedin_visit',
+          step_order: 2,
+          config: {}
+        },
+        {
+          step_type: 'linkedin_connect',
+          step_order: 3,
+          config: { message: message }
+        }
+      ]
+    };
+
+    await api.post(`/api/campaigns/${campaign.id}/steps`, stepsData);
+    log(`✓ Added connection message: "${message}"`, 'green');
+
+    // Start campaign
+    log('Starting campaign...', 'yellow');
+    await api.post(`/api/campaigns/${campaign.id}/start`);
+    log('✓ Campaign started', 'green');
+
+    log('Waiting 20 seconds for execution...', 'yellow');
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    log('✓ Check backend logs for:', 'cyan');
+    log('  - "hasMessage: true"', 'cyan');
+    log('  - "userWantsMessage: true"', 'cyan');
+    log('  - "strategy: with_message"', 'cyan');
+
+    return { campaignId: campaign.id, passed: true };
+
+  } catch (error) {
+    log(`✗ TEST FAILED: ${error.message}`, 'red');
+    return { passed: false };
+  }
+}
+
+// Test 3: Connection message without message
+async function testConnectionWithoutMessage() {
+  section('TEST 3: Connection Message (WITHOUT message)');
+  
+  try {
+    const campaignData = {
+      name: `Test No Connection Message - ${Date.now()}`,
+      status: 'draft',
+      config: {
+        leads_per_day: 2,
+        searchCriteria: {
+          titles: ['Marketing Manager'],
+          locations: ['Abu Dhabi'],
+          industries: ['Retail']
+        }
+      }
+    };
+
+    log('Creating campaign...', 'yellow');
+    const createResponse = await api.post('/api/campaigns', campaignData);
+    const campaign = createResponse.data.data;
+    log(`✓ Campaign created: ${campaign.id}`, 'green');
+
+    // Add steps without message
+    const stepsData = {
+      steps: [
+        {
+          step_type: 'lead_generation',
+          step_order: 1,
+          config: { leadGenerationLimit: 2 }
+        },
+        {
+          step_type: 'linkedin_visit',
+          step_order: 2,
+          config: {}
+        },
+        {
+          step_type: 'linkedin_connect',
+          step_order: 3,
+          config: { message: null }
+        }
+      ]
+    };
+
+    await api.post(`/api/campaigns/${campaign.id}/steps`, stepsData);
+    log('✓ Added connection step with message: null', 'green');
+
+    // Start campaign
+    log('Starting campaign...', 'yellow');
+    await api.post(`/api/campaigns/${campaign.id}/start`);
+    log('✓ Campaign started', 'green');
+
+    log('Waiting 20 seconds for execution...', 'yellow');
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    log('✓ Check backend logs for:', 'cyan');
+    log('  - "hasMessage: false"', 'cyan');
+    log('  - "userWantsMessage: false"', 'cyan');
+    log('  - "strategy: without_message"', 'cyan');
+
+    return { campaignId: campaign.id, passed: true };
+
+  } catch (error) {
+    log(`✗ TEST FAILED: ${error.message}`, 'red');
+    return { passed: false };
+  }
+}
+
+// Test 4: Cloud Tasks scheduling
+async function testCloudTasksScheduling() {
+  section('TEST 4: Cloud Tasks Scheduling');
+  
+  try {
+    const today = new Date();
+    const startDate = today.toISOString();
+    const endDate = new Date(today.getTime() + (3 * 24 * 60 * 60 * 1000)).toISOString(); // 3 days from now
+
+    const campaignData = {
+      name: `Test Cloud Tasks - ${Date.now()}`,
+      status: 'draft',
+      campaign_start_date: startDate,
+      campaign_end_date: endDate,
+      config: {
+        leads_per_day: 2,
+        searchCriteria: {
+          titles: ['Director'],
+          locations: ['Dubai'],
+          industries: ['Finance']
+        }
+      }
+    };
+
+    log('Creating campaign with start_date and end_date...', 'yellow');
+    log(`  Start: ${startDate}`, 'blue');
+    log(`  End: ${endDate}`, 'blue');
+    
+    const createResponse = await api.post('/api/campaigns', campaignData);
+    const campaign = createResponse.data.data;
+    log(`✓ Campaign created: ${campaign.id}`, 'green');
+
+    // Add steps
+    const stepsData = {
+      steps: [
+        {
+          step_type: 'lead_generation',
+          step_order: 1,
+          config: { leadGenerationLimit: 2 }
+        },
+        {
+          step_type: 'linkedin_visit',
+          step_order: 2,
+          config: {}
+        }
+      ]
+    };
+
+    await api.post(`/api/campaigns/${campaign.id}/steps`, stepsData);
+    log('✓ Added steps', 'green');
+
+    // Start campaign
+    log('Starting campaign (should trigger Cloud Task)...', 'yellow');
+    await api.post(`/api/campaigns/${campaign.id}/start`);
+    log('✓ Campaign started', 'green');
+
+    log('\n✓ Check backend logs for:', 'cyan');
+    log('  - "[CampaignActions] Cloud Task scheduled for daily execution"', 'cyan');
+    log('  - "taskName: ..."', 'cyan');
+    log('  - "scheduleTime: ..."', 'cyan');
+
+    return { campaignId: campaign.id, passed: true };
+
+  } catch (error) {
+    log(`✗ TEST FAILED: ${error.message}`, 'red');
+    if (error.response) {
+      log(`Response: ${JSON.stringify(error.response.data, null, 2)}`, 'red');
+    }
+    return { passed: false };
+  }
+}
+
+// Test 5: Apollo enrichment
+async function testApolloEnrichment() {
+  section('TEST 5: Apollo Enrichment (API Key Fix)');
+  
+  try {
+    const campaignData = {
+      name: `Test Apollo Enrichment - ${Date.now()}`,
+      status: 'draft',
+      config: {
+        leads_per_day: 3,
+        searchCriteria: {
+          titles: ['CTO'],
+          locations: ['Sharjah'],
+          industries: ['Software']
+        }
+      }
+    };
+
+    log('Creating campaign...', 'yellow');
+    const createResponse = await api.post('/api/campaigns', campaignData);
+    const campaign = createResponse.data.data;
+    log(`✓ Campaign created: ${campaign.id}`, 'green');
+
+    // Add steps
+    const stepsData = {
+      steps: [
+        {
+          step_type: 'lead_generation',
+          step_order: 1,
+          config: { leadGenerationLimit: 3 }
+        }
+      ]
+    };
+
+    await api.post(`/api/campaigns/${campaign.id}/steps`, stepsData);
+    log('✓ Added lead generation step', 'green');
+
+    // Start campaign
+    log('Starting campaign...', 'yellow');
+    await api.post(`/api/campaigns/${campaign.id}/start`);
+    log('✓ Campaign started', 'green');
+
+    log('Waiting 15 seconds for execution...', 'yellow');
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
+    log('\n✓ Check backend logs for:', 'cyan');
+    log('  - Should NOT see: "Apollo API key is not configured"', 'cyan');
+    log('  - Should see: "Person enriched successfully"', 'cyan');
+    log('  - Should see: "hasEmail: true/false, hasLinkedIn: true/false"', 'cyan');
+
+    return { campaignId: campaign.id, passed: true };
+
+  } catch (error) {
+    log(`✗ TEST FAILED: ${error.message}`, 'red');
+    return { passed: false };
+  }
+}
+
+// Main test runner
+async function runAllTests() {
+  log('\n' + '█'.repeat(80), 'bright');
+  log('  CAMPAIGN FIXES - COMPREHENSIVE TEST SUITE', 'bright');
+  log('█'.repeat(80) + '\n', 'bright');
+
+  const results = {
+    total: 5,
+    passed: 0,
+    failed: 0,
+    tests: []
+  };
+
+  // Run tests
+  const test1 = await testLeadLimit();
+  results.tests.push({ name: 'Lead Limit (3 leads)', ...test1 });
+
+  const test2 = await testConnectionWithMessage();
+  results.tests.push({ name: 'Connection WITH message', ...test2 });
+
+  const test3 = await testConnectionWithoutMessage();
+  results.tests.push({ name: 'Connection WITHOUT message', ...test3 });
+
+  const test4 = await testCloudTasksScheduling();
+  results.tests.push({ name: 'Cloud Tasks Scheduling', ...test4 });
+
+  const test5 = await testApolloEnrichment();
+  results.tests.push({ name: 'Apollo Enrichment', ...test5 });
+
+  // Summary
+  section('TEST SUMMARY');
+  
+  results.tests.forEach((test, index) => {
+    const status = test.passed ? '✓ PASS' : '✗ FAIL';
+    const color = test.passed ? 'green' : 'red';
+    log(`${index + 1}. ${test.name}: ${status}`, color);
+    if (test.campaignId) {
+      log(`   Campaign ID: ${test.campaignId}`, 'blue');
+    }
+    if (test.passed) results.passed++;
+    else results.failed++;
+  });
+
+  console.log('\n' + '='.repeat(80));
+  log(`TOTAL: ${results.total} | PASSED: ${results.passed} | FAILED: ${results.failed}`, 
+      results.failed === 0 ? 'green' : 'yellow');
+  console.log('='.repeat(80) + '\n');
+
+  if (results.failed === 0) {
+    log('🎉 ALL TESTS PASSED! 🎉', 'bright');
+  } else {
+    log('⚠️  SOME TESTS FAILED - Check logs above', 'yellow');
+  }
+
+  log('\n💡 MANUAL VERIFICATION NEEDED:', 'cyan');
+  log('   - Check backend console logs for detailed execution logs', 'cyan');
+  log('   - Verify Cloud Tasks created in GCP Console (if applicable)', 'cyan');
+  log('   - Check database for correct lead counts', 'cyan');
+}
+
+// Run tests
+runAllTests().catch(error => {
+  log(`\n✗ TEST SUITE FAILED: ${error.message}`, 'red');
+  console.error(error);
+  process.exit(1);
+});

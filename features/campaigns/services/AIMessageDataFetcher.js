@@ -54,16 +54,20 @@ class AIMessageDataService {
 
       const messageData = messageRow.message_data;
       
+      // Normalize the message_data structure to handle nested collectedAnswers
+      const normalizedData = this.normalizeMessageData(messageData);
+      
       logger.info('[AIMessageDataService] Fetched message_data from ai_messages', {
         conversationId,
         tenantId,
         messageId: messageRow.id,
-        hasTimestamp: !!messageData.timestamp,
-        hasCampaignDays: !!(messageData.collectedAnswers?.campaign_days),
-        hasWorkingDays: !!(messageData.collectedAnswers?.working_days)
+        hasTimestamp: !!normalizedData.timestamp,
+        hasCampaignDays: !!normalizedData.campaign_days,
+        hasWorkingDays: !!normalizedData.working_days,
+        isNested: !!(messageData.collectedAnswers)
       });
 
-      return messageData;
+      return normalizedData;
     } catch (error) {
       logger.error('[AIMessageDataService] Error fetching message_data', {
         error: error.message,
@@ -73,6 +77,42 @@ class AIMessageDataService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Normalize message_data structure
+   * Handles both flat and nested (collectedAnswers) structures
+   * @param {Object} messageData - Raw message_data from database
+   * @returns {Object} Normalized message_data with top-level fields
+   */
+  static normalizeMessageData(messageData) {
+    if (!messageData) {
+      return null;
+    }
+
+    // If data is already at top level, return as-is
+    if (messageData.campaign_days && messageData.working_days && messageData.timestamp) {
+      return messageData;
+    }
+
+    // If data is nested in collectedAnswers, extract and flatten
+    if (messageData.collectedAnswers) {
+      const { collectedAnswers, timestamp, ...rest } = messageData;
+      
+      return {
+        timestamp: timestamp || collectedAnswers.timestamp || new Date().toISOString(),
+        campaign_days: collectedAnswers.campaign_days,
+        working_days: collectedAnswers.working_days,
+        leads_per_day: collectedAnswers.leads_per_day,
+        campaign_name: collectedAnswers.campaign_name,
+        campaign_goal: collectedAnswers.campaign_goal,
+        ...rest,  // Keep other top-level fields
+        originalCollectedAnswers: collectedAnswers  // Preserve original for reference
+      };
+    }
+
+    // Return as-is if structure doesn't match expected patterns
+    return messageData;
   }
 
   /**
