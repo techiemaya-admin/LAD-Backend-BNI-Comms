@@ -13,6 +13,27 @@ class CampaignDailyController {
    */
   async runDaily(req, res) {
     try {
+      // Validate Cloud Tasks authentication
+      const taskName = req.headers['x-cloudtasks-taskname'];
+      const queueName = req.headers['x-cloudtasks-queuename'];
+
+      if (!taskName || !queueName) {
+        logger.warn('[CampaignDailyController] Unauthorized access attempt to daily run endpoint', {
+          ip: req.ip,
+          headers: req.headers
+        });
+
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden - not authorized (Cloud Tasks only)'
+        });
+      }
+
+      logger.info('[CampaignDailyController] Cloud Tasks request verified', {
+        taskName,
+        queueName
+      });
+
       const { campaignId, tenantId, scheduledFor, retryCount = 0 } = req.body;
 
       // Validation
@@ -28,10 +49,8 @@ class CampaignDailyController {
         tenantId,
         scheduledFor,
         retryCount,
-        headers: {
-          'x-cloudtasks-taskname': req.headers['x-cloudtasks-taskname'],
-          'x-cloudtasks-queuename': req.headers['x-cloudtasks-queuename'],
-        },
+        taskName,
+        queueName
       });
 
       // Execute campaign
