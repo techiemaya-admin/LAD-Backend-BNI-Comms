@@ -19,16 +19,42 @@ class CloudTasksService {
       this.client = new CloudTasksClient();
       this.queuePath = this.client.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
       this.isConfigured = true;
+      this.queueExists = null; // Will be checked on first task creation
       
       if (IS_LOCAL_DEV) {
         logger.warn('[CloudTasks] Running in local development mode - tasks will be simulated');
       }
     } catch (error) {
       this.isConfigured = false;
+      this.queueExists = false;
       logger.warn('[CloudTasks] Cloud Tasks client not initialized - running in simulation mode', {
         error: error.message,
         isLocalDev: IS_LOCAL_DEV
       });
+    }
+  }
+
+  /**
+   * Check if the queue exists in Cloud Tasks
+   */
+  async ensureQueueExists() {
+    if (this.queueExists !== null) {
+      return this.queueExists;
+    }
+
+    try {
+      await this.client.getQueue({ name: this.queuePath });
+      this.queueExists = true;
+      logger.info('[CloudTasks] Queue exists', { queue: this.queuePath });
+      return true;
+    } catch (error) {
+      this.queueExists = false;
+      logger.error('[CloudTasks] Queue does not exist', {
+        queue: this.queuePath,
+        error: error.message,
+        instructions: `Create queue: gcloud tasks queues create ${QUEUE_NAME} --location=${LOCATION} --project=${PROJECT_ID}`
+      });
+      return false;
     }
   }
 
@@ -65,6 +91,21 @@ class CloudTasksService {
         scheduleTime: scheduleTime.toISOString(),
         simulated: true
       };
+    }
+
+    // Check if queue exists before attempting to create task
+    const queueExists = await this.ensureQueueExists();
+    if (!queueExists) {
+      const errorMsg = `Cloud Tasks queue '${QUEUE_NAME}' does not exist. Create it with: gcloud tasks queues create ${QUEUE_NAME} --location=${LOCATION} --project=${PROJECT_ID}`;
+      logger.error('[CloudTasks] Cannot create task - queue missing', {
+        campaignId,
+        tenantId,
+        queue: this.queuePath,
+        queueName: QUEUE_NAME,
+        location: LOCATION,
+        projectId: PROJECT_ID
+      });
+      throw new Error(errorMsg);
     }
 
     const url = `${SERVICE_URL}/api/campaigns/run-daily`;

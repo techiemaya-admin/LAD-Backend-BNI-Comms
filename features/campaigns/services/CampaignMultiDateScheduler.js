@@ -37,6 +37,7 @@ class CampaignSchedulingService {
 
     const scheduledTasks = [];
     const failedTasks = [];
+    let queueMissing = false;
 
     for (let i = 0; i < scheduleDates.length; i++) {
       const scheduleDate = scheduleDates[i];
@@ -63,12 +64,23 @@ class CampaignSchedulingService {
           taskName: taskInfo.taskName
         });
       } catch (error) {
+        // Check if error is due to missing queue
+        if (error.message.includes('does not exist') || error.message.includes('NOT_FOUND')) {
+          queueMissing = true;
+          logger.warn('[CampaignSchedulingService] Queue missing - stopping further attempts', {
+            campaignId,
+            tenantId,
+            error: error.message
+          });
+        }
+        
         logger.error('[CampaignSchedulingService] Failed to schedule task', {
           campaignId,
           tenantId,
           dayNumber: i + 1,
           scheduleDate: scheduleDate.toISOString(),
-          error: error.message
+          error: error.message,
+          isQueueMissing: queueMissing
         });
 
         failedTasks.push({
@@ -76,6 +88,19 @@ class CampaignSchedulingService {
           dayNumber: i + 1,
           error: error.message
         });
+        
+        // If queue is missing, no point trying remaining tasks
+        if (queueMissing) {
+          // Add remaining dates to failed tasks
+          for (let j = i + 1; j < scheduleDates.length; j++) {
+            failedTasks.push({
+              scheduleDate: scheduleDates[j].toISOString(),
+              dayNumber: j + 1,
+              error: 'Skipped due to missing queue'
+            });
+          }
+          break;
+        }
       }
     }
 
