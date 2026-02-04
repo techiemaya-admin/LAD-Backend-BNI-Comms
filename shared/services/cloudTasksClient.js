@@ -10,6 +10,7 @@ const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_I
 const LOCATION = process.env.CLOUD_TASKS_LOCATION || 'us-central1';
 const QUEUE_NAME = process.env.CLOUD_TASKS_QUEUE_NAME || 'campaign-scheduler-task';
 const SERVICE_URL = process.env.CLOUD_RUN_SERVICE_URL || process.env.SERVICE_URL;
+const SERVICE_ACCOUNT_EMAIL = process.env.GCP_SERVICE_ACCOUNT_EMAIL; // Will be auto-detected if not set
 const IS_LOCAL_DEV = process.env.NODE_ENV === 'development' && SERVICE_URL?.includes('localhost');
 
 class CloudTasksService {
@@ -126,11 +127,16 @@ class CloudTasksService {
           'X-CloudTasks-Secret': process.env.CLOUD_TASKS_SECRET || ''
         },
         body: Buffer.from(JSON.stringify(payload)).toString('base64'),
-        oidcToken: {
-          serviceAccountEmail: `${PROJECT_ID}@appspot.gserviceaccount.com`,
-        },
       },
     };
+
+    // Add OIDC token for Cloud Run authentication
+    // Service account must have cloudtasks.enqueuer role
+    if (SERVICE_ACCOUNT_EMAIL) {
+      task.httpRequest.oidcToken = {
+        serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
+      };
+    }
 
     // Schedule task for specific time
     if (scheduleTime) {
