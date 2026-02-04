@@ -165,24 +165,54 @@ class CampaignCRUDController {
    * Create a new campaign
    */
   static async createCampaign(req, res) {
-    ;
+    logger.info('[CampaignCreate] CREATE CAMPAIGN REQUEST RECEIVED', {
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      hasUser: !!req.user,
+      userKeys: req.user ? Object.keys(req.user) : []
+    });
+    
     try {
       const tenantId = req.user?.tenantId;
       const userId = req.user?.userId || req.user?.user_id || req.user?.id;
+      
+      logger.info('[CampaignCreate] Authentication context', {
+        tenantId,
+        userId,
+        hasAuth: !!(tenantId && userId)
+      });
+      
       // Validate authentication
       if (!tenantId) {
+        logger.error('[CampaignCreate] Missing tenant ID');
         return res.status(401).json({
           success: false,
           error: 'Tenant ID is required. Please ensure you are authenticated.'
         });
       }
       if (!userId) {
+        logger.error('[CampaignCreate] Missing user ID');
         return res.status(401).json({
           success: false,
           error: 'User ID is required. Please ensure you are authenticated.'
         });
       }
       const { name, status, config, steps, campaign_type, leads_per_day, inbound_lead_ids, campaign_start_date, campaign_end_date, conversationId } = req.body;
+      
+      logger.info('[CampaignCreate] Request payload parsed', {
+        name,
+        status,
+        hasConfig: !!config,
+        hasSteps: !!(steps && steps.length),
+        stepsCount: steps?.length,
+        campaign_type,
+        leads_per_day,
+        hasInboundLeads: !!(inbound_lead_ids && inbound_lead_ids.length),
+        campaign_start_date,
+        campaign_end_date,
+        conversationId,
+        hasConversationId: !!conversationId
+      });
 
       // Validate required fields
       if (!name) {
