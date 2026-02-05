@@ -429,7 +429,7 @@ async function searchCompaniesForDomains(searchParams, tenantId = null) {
           'Cache-Control': 'no-cache',
           'X-Api-Key': apiKey
         },
-        timeout: 60000
+        timeout: 120000 // 2 minutes for company search operations
       }
     );
     
