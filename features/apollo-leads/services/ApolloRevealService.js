@@ -426,9 +426,11 @@ class ApolloRevealService {
    * 
    * @param {string} personId - Apollo person ID
    * @param {Object} req - Request object (optional)
+   * @param {Object} options - Additional options { campaignId, leadId }
    * @returns {Object} { success, person: { email, linkedin_url, ... }, credits_used }
    */
-  async enrichPersonDetails(personId, req = null) {
+  async enrichPersonDetails(personId, req = null, options = {}) {
+    const { campaignId, leadId } = options;
     try {
       // Don't require tenant for this call - it may be called from background processes
       const tenantId = req?.user?.tenant_id || req?.tenant?.id || req?.headers?.['x-tenant-id'] || null;
@@ -529,10 +531,15 @@ class ApolloRevealService {
       // Deduct credits for successful enrichment
       if (tenantId) {
         try {
-          await deductCredits(tenantId, 'apollo-leads', 'person_enrichment', CREDIT_COSTS.EMAIL_REVEAL, req);
+          await deductCredits(tenantId, 'apollo-leads', 'person_enrichment', CREDIT_COSTS.EMAIL_REVEAL, req, {
+            campaignId: campaignId,
+            leadId: leadId,
+            stepType: 'person_enrichment'
+          });
           logger.info('[Apollo Reveal] Credits deducted for enrichment', { 
             tenantId, 
-            credits: CREDIT_COSTS.EMAIL_REVEAL 
+            credits: CREDIT_COSTS.EMAIL_REVEAL,
+            campaignId: campaignId || 'N/A'
           });
         } catch (creditError) {
           logger.error('[Apollo Reveal] Failed to deduct credits', { 

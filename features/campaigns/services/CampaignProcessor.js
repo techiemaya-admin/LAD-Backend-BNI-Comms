@@ -20,6 +20,7 @@ const {
 } = require('./StepExecutors');
 const { processLeadThroughWorkflow } = require('./WorkflowProcessor');
 const CampaignModel = require('../models/CampaignModel');
+const { getCampaignCreditUsage } = require('../../../shared/middleware/credit_guard');
 /**
  * Execute a campaign step for a specific lead
  */
@@ -551,6 +552,27 @@ async function processCampaign(campaignId, tenantId, authToken = null) {
         });
       }
     }
+    
+    // 📊 LOG CAMPAIGN CREDIT SUMMARY
+    // Aggregate and log total credits used for this campaign execution
+    try {
+      const creditUsage = await getCampaignCreditUsage(campaignId, tenantId);
+      if (creditUsage.totalCredits > 0) {
+        logger.info('📊 [CampaignProcessor] Campaign credit usage summary', {
+          campaignId,
+          tenantId,
+          totalCredits: creditUsage.totalCredits,
+          transactionCount: creditUsage.transactionCount,
+          breakdown: creditUsage.breakdown
+        });
+      }
+    } catch (creditSummaryErr) {
+      // Don't fail if credit summary fails
+      logger.warn('[CampaignProcessor] Failed to get credit usage summary', { 
+        error: creditSummaryErr.message 
+      });
+    }
+    
     // Return success to signal completion to caller
     return { success: true, campaignId, leadCount: leads.length };
   } catch (error) {

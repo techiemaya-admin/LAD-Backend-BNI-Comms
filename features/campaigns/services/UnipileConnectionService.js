@@ -3,6 +3,7 @@
  * Handles LinkedIn connection requests and invitation management
  */
 const axios = require('axios');
+const logger = require('../../../core/utils/logger');
 const { deductCredits, getCreditBalance } = require('../../../shared/middleware/credit_guard');
 const { CREDIT_COSTS } = require('../../apollo-leads/constants/constants');
 
@@ -16,8 +17,9 @@ class UnipileConnectionService {
      * @param {string} tenantId - Tenant ID
      * @param {boolean} hasMessage - Whether connection includes a template message
      * @param {Object} req - Request object for logging
+     * @param {Object} options - Additional options { campaignId, leadId, stepType }
      */
-    async _deductConnectionCredits(tenantId, hasMessage, req = {}) {
+    async _deductConnectionCredits(tenantId, hasMessage, req = {}, options = {}) {
         try {
             // LinkedIn connection: 1 credit
             // Template message: +5 credits (if message included)
@@ -29,12 +31,20 @@ class UnipileConnectionService {
                 usageType = 'linkedin_connection_with_message';
             }
             
-            await deductCredits(tenantId, 'campaigns', usageType, totalCredits, req);
-            console.log(`💰 Deducted ${totalCredits} credits for LinkedIn connection (with message: ${hasMessage})`);
+            await deductCredits(tenantId, 'campaigns', usageType, totalCredits, req, {
+                campaignId: options.campaignId,
+                leadId: options.leadId,
+                stepType: options.stepType || 'linkedin_connect'
+            });
+            logger.info('[UnipileConnectionService] Credits deducted for LinkedIn connection', {
+                credits: totalCredits,
+                hasMessage,
+                campaignId: options.campaignId ? options.campaignId.substring(0, 8) : null
+            });
             
             return { success: true, credits_deducted: totalCredits };
         } catch (error) {
-            console.error('❌ Error deducting credits for LinkedIn connection:', error.message);
+            logger.error('[UnipileConnectionService] Error deducting credits for LinkedIn connection', { error: error.message });
             // Don't throw - connection already sent, just log the error
             return { success: false, error: error.message };
         }

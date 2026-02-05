@@ -20,9 +20,10 @@ class UnipileMessageService {
      * @param {Object} employee - Employee object with LinkedIn profile information
      * @param {string} messageText - Message text to send
      * @param {string} accountId - Unipile account ID
+     * @param {Object} options - Additional options { tenantId, campaignId, leadId }
      */
     async sendLinkedInMessage(employee, messageText, accountId, options = {}) {
-        const { tenantId } = options;
+        const { tenantId, campaignId, leadId } = options;
         if (!this.base.isConfigured()) {
             throw new Error('Unipile is not configured');
         }
@@ -113,11 +114,15 @@ class UnipileMessageService {
                 try {
                     const credits = CREDIT_COSTS.TEMPLATE_MESSAGE || 5;
                     const mockReq = { tenant: { id: tenantId } };
-                    await deductCredits(tenantId, 'campaigns', 'template_message', credits, mockReq);
+                    await deductCredits(tenantId, 'campaigns', 'template_message', credits, mockReq, {
+                        campaignId: campaignId,
+                        leadId: leadId,
+                        stepType: 'linkedin_message'
+                    });
                     creditsDeducted = credits;
-                    console.log(`💰 Deducted ${credits} credits for LinkedIn message`);
+                    // Credit deducted - logged by credit_guard
                 } catch (creditError) {
-                    console.error('❌ Error deducting credits for LinkedIn message:', creditError.message);
+                    // Error logged by credit_guard - don't duplicate
                 }
             }
             

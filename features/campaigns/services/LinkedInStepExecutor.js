@@ -33,9 +33,10 @@ try {
  * @param {Object} leadData - Lead data object
  * @param {string} tenantId - Tenant ID
  * @param {string} databaseLeadId - The actual UUID lead_id from leads table (not Apollo ID)
+ * @param {string} campaignId - Campaign ID for credit tracking (optional)
  * @returns {Object} Enriched lead data with email and linkedin_url
  */
-async function enrichLeadForLinkedIn(leadData, tenantId, databaseLeadId = null) {
+async function enrichLeadForLinkedIn(leadData, tenantId, databaseLeadId = null, campaignId = null) {
   const logger = require('../../../core/utils/logger');
   
   if (!ApolloRevealService) {
@@ -77,7 +78,10 @@ async function enrichLeadForLinkedIn(leadData, tenantId, databaseLeadId = null) 
     
     // Pass tenant context for credit deduction
     const mockReq = tenantId ? { tenant: { id: tenantId } } : null;
-    const enrichResult = await ApolloRevealService.enrichPersonDetails(personId, mockReq);
+    const enrichResult = await ApolloRevealService.enrichPersonDetails(personId, mockReq, {
+      campaignId: campaignId,
+      leadId: databaseLeadId
+    });
     
     if (enrichResult && enrichResult.success && enrichResult.person) {
       const enrichedPerson = enrichResult.person;
@@ -196,10 +200,12 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
         logger.info('[LinkedInStepExecutor] LinkedIn URL not found - triggering auto-enrichment', {
           stepType,
           campaignLeadId: campaignLead.id,
-          databaseLeadId: campaignLead.lead_id
+          databaseLeadId: campaignLead.lead_id,
+          campaignId: campaignLead.campaign_id
         });
         // Pass the actual database lead_id (UUID) for updating the leads table
-        leadData = await enrichLeadForLinkedIn(leadData, tenantId, campaignLead.lead_id);
+        // Also pass campaignId for credit tracking
+        leadData = await enrichLeadForLinkedIn(leadData, tenantId, campaignLead.lead_id, campaignLead.campaign_id);
       }
     }
     

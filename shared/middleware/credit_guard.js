@@ -55,6 +55,7 @@
  */
 
 const { pool } = require('../database/connection');
+const logger = require('../../core/utils/logger');
 
 /**
  * Middleware to check and deduct credits before API calls
@@ -100,7 +101,7 @@ const requireCredits = (usageType, creditsRequired) => {
 
       next();
     } catch (error) {
-      console.error('❌ Error processing credits:', error);
+      logger.error('[Credit Guard] Error processing credits', { error: error.message });
       return res.status(500).json({
         success: false,
         error: 'Credit check failed',
@@ -155,11 +156,24 @@ async function getCreditBalance(tenantId) {
 /**
  * Deduct credits and log usage
  * Updated to support both billing_wallets (new) and user_credits (legacy) systems
+ * 
+ * @param {string} tenantId - Tenant ID
+ * @param {string} featureKey - Feature key (e.g., 'campaigns', 'apollo-leads')
+ * @param {string} usageType - Usage type (e.g., 'linkedin_connection', 'person_enrichment')
+ * @param {number} credits - Number of credits to deduct
+ * @param {Object} req - Request object (optional)
+ * @param {Object} options - Additional options
+ * @param {string} options.campaignId - Campaign ID for tracking (optional)
+ * @param {string} options.leadId - Lead ID for tracking (optional)
+ * @param {string} options.stepType - Step type for tracking (optional)
  */
-async function deductCredits(tenantId, featureKey, usageType, credits, req) {
+async function deductCredits(tenantId, featureKey, usageType, credits, req, options = {}) {
   // LAD Architecture: Use dynamic schema resolution
   const schema = process.env.DB_SCHEMA || 'lad_dev';
   const client = await pool.connect();
+  
+  // Extract options
+  const { campaignId, leadId, stepType } = options;
   
   try {
     await client.query('BEGIN');
@@ -180,6 +194,20 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req) {
         [credits, tenantId]
       );
     }
+    
+    // Build metadata with campaign tracking info
+    const metadata = {
+      usage_type: usageType,
+      feature: featureKey,
+      endpoint: req?.path || 'background_process',
+      method: req?.method || 'BACKGROUND',
+      user_agent: req?.headers?.['user-agent'] || 'campaign-processor',
+      timestamp: new Date().toISOString(),
+      // Campaign tracking fields
+      campaign_id: campaignId || req?.campaignId || null,
+      lead_id: leadId || null,
+      step_type: stepType || null
+    };
     
     // Log transaction - only insert user_id if it's a valid user UUID, not tenantId
     // For background processes, user_id should be NULL to avoid FK constraint violation
@@ -203,29 +231,145 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req) {
           -credits,
           'deduction',
           `${featureKey} - ${usageType}`,
-          {
-            usage_type: usageType,
-            feature: featureKey,
-            endpoint: req?.path || 'background_process',
-            method: req?.method || 'BACKGROUND',
-            user_agent: req?.headers?.['user-agent'] || 'campaign-processor',
-            timestamp: new Date().toISOString()
-          }
+          metadata
         ]
       );
     } else {
-      // For background processes, log to console instead
-      console.log(`📊 [Credit Guard] Background credit deduction: ${credits} credits for tenant ${tenantId} (${usageType}) - skipping legacy transaction log`);
+      // For background processes, log to logger instead
+      logger.info('[Credit Guard] Background credit deduction', { 
+        credits, 
+        tenantId, 
+        usageType,
+        campaignId: campaignId ? campaignId.substring(0, 8) : null,
+        note: 'skipping legacy transaction log'
+      });
+    }
+    
+    // Always log to billing_ledger_transactions for complete audit trail
+    // This captures both foreground and background credit usage
+    try {
+      const walletId = walletResult.rows[0]?.id || null;
+      if (walletId) {
+        await client.query(
+          `INSERT INTO ${schema}.billing_ledger_transactions (
+            tenant_id, wallet_id, transaction_type, amount, balance_before, balance_after,
+            reference_type, reference_id, description, metadata
+          )
+          SELECT 
+            $1, $2, 'debit', $3, 
+            current_balance + $3, current_balance,
+            $4, $5, $6, $7
+          FROM ${schema}.billing_wallets WHERE id = $2`,
+          [
+            tenantId,
+            walletId,
+            credits,
+            campaignId ? 'campaign' : featureKey,
+            campaignId || null,
+            `${usageType}${stepType ? ` (${stepType})` : ''}`,
+            metadata
+          ]
+        );
+      }
+    } catch (ledgerError) {
+      // Don't fail the transaction if ledger logging fails
+      logger.warn('[Credit Guard] Failed to log to billing_ledger', { error: ledgerError.message });
     }
     
     await client.query('COMMIT');
     
-    console.log(`💰 Deducted ${credits} credits for ${tenantId} (${usageType})`);
+    logger.info('[Credit Guard] Credits deducted', { 
+      credits, 
+      tenantId, 
+      usageType,
+      campaignId: campaignId ? campaignId.substring(0, 8) : null 
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Get credit usage summary for a campaign
+ * Aggregates all credits deducted during campaign execution
+ * 
+ * @param {string} campaignId - Campaign ID
+ * @param {string} tenantId - Tenant ID
+ * @returns {Object} Credit usage summary with breakdown by usage type
+ */
+async function getCampaignCreditUsage(campaignId, tenantId) {
+  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  
+  try {
+    // Query billing_ledger_transactions for campaign-specific credits
+    const result = await pool.query(
+      `SELECT 
+        COALESCE(SUM(amount), 0) as total_credits,
+        COUNT(*) as transaction_count,
+        jsonb_object_agg(
+          COALESCE(metadata->>'usage_type', 'unknown'),
+          COALESCE((SELECT SUM(lt2.amount) FROM ${schema}.billing_ledger_transactions lt2 
+            WHERE lt2.reference_id = $1 
+            AND lt2.tenant_id = $2 
+            AND lt2.metadata->>'usage_type' = lt.metadata->>'usage_type'), 0)
+        ) as breakdown_by_type
+       FROM ${schema}.billing_ledger_transactions lt
+       WHERE lt.reference_id = $1 
+       AND lt.tenant_id = $2
+       AND lt.transaction_type = 'debit'`,
+      [campaignId, tenantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return {
+        campaignId,
+        totalCredits: 0,
+        transactionCount: 0,
+        breakdown: {}
+      };
+    }
+    
+    const row = result.rows[0];
+    
+    // Get detailed breakdown by usage type
+    const breakdownResult = await pool.query(
+      `SELECT 
+        COALESCE(metadata->>'usage_type', 'unknown') as usage_type,
+        COALESCE(metadata->>'step_type', 'unknown') as step_type,
+        SUM(amount) as credits,
+        COUNT(*) as count
+       FROM ${schema}.billing_ledger_transactions
+       WHERE reference_id = $1 
+       AND tenant_id = $2
+       AND transaction_type = 'debit'
+       GROUP BY metadata->>'usage_type', metadata->>'step_type'
+       ORDER BY credits DESC`,
+      [campaignId, tenantId]
+    );
+    
+    return {
+      campaignId,
+      totalCredits: parseFloat(row.total_credits) || 0,
+      transactionCount: parseInt(row.transaction_count) || 0,
+      breakdown: breakdownResult.rows.map(r => ({
+        usageType: r.usage_type,
+        stepType: r.step_type,
+        credits: parseFloat(r.credits) || 0,
+        count: parseInt(r.count) || 0
+      }))
+    };
+  } catch (error) {
+    logger.error('[Credit Guard] Error getting campaign credit usage', { campaignId, error: error.message });
+    return {
+      campaignId,
+      totalCredits: 0,
+      transactionCount: 0,
+      breakdown: [],
+      error: error.message
+    };
   }
 }
 
@@ -270,7 +414,7 @@ const trackUsage = (usageType) => {
 
       next();
     } catch (error) {
-      console.error('❌ Error tracking usage:', error);
+      logger.error('[Credit Guard] Error tracking usage', { error: error.message });
       // Don't block request for tracking errors
       next();
     }
@@ -339,11 +483,11 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
     
     await client.query('COMMIT');
     
-    console.log(`💰 Refunded ${credits} credits to ${tenantId} (${usageType}) - Reason: ${reason}`);
+    logger.info('[Credit Guard] Credits refunded', { credits, tenantId, usageType, reason });
     return true;
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error(`❌ Error refunding credits: ${error.message}`);
+    logger.error('[Credit Guard] Error refunding credits', { error: error.message });
     throw error;
   } finally {
     client.release();
@@ -355,5 +499,6 @@ module.exports = {
   trackUsage,
   getCreditBalance,
   deductCredits,
-  refundCredits
+  refundCredits,
+  getCampaignCreditUsage
 };
