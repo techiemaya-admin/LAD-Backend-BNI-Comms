@@ -15,7 +15,14 @@ async function getAllLinkedInAccountsForTenant(tenantId, userId) {
     // Use tenantId directly (LAD standard - no organization_id conversion needed)
     const resolvedTenantId = tenantId || userId;
     const schema = getSchema({ user: { tenant_id: resolvedTenantId } });
-    // Try social_linkedin_accounts table first
+    
+    // CRITICAL: Always filter by tenant_id for tenant isolation
+    if (!tenantId) {
+      logger.warn('[LinkedInAccountHelper] No tenantId provided - cannot retrieve accounts');
+      return accounts;
+    }
+    
+    // Query social_linkedin_accounts table with tenant filter
     try {
       const query = `
         SELECT id, tenant_id, account_name, provider_account_id, status
@@ -32,32 +39,32 @@ async function getAllLinkedInAccountsForTenant(tenantId, userId) {
           unipile_account_id: row.provider_account_id,
           account_name: row.account_name
         })));
+        
+        logger.info('[LinkedInAccountHelper] Found LinkedIn accounts for tenant', {
+          tenantId,
+          accountCount: accounts.length,
+          accountNames: accounts.map(a => a.account_name)
+        });
+      } else {
+        logger.warn('[LinkedInAccountHelper] No LinkedIn accounts found for tenant', {
+          tenantId
+        });
       }
-    } catch (tddError) {
-      // TDD schema not available, continue to global search
+    } catch (queryError) {
+      logger.error('[LinkedInAccountHelper] Error querying LinkedIn accounts', {
+        tenantId,
+        error: queryError.message
+      });
     }
-    // If no accounts found, try global search
-    if (accounts.length === 0) {
-      try {
-        const globalQuery = await pool.query(
-          `SELECT id, provider_account_id, account_name
-           FROM ${schema}.social_linkedin_accounts
-           WHERE status = 'active'
-           AND provider_account_id IS NOT NULL
-           ORDER BY created_at DESC`
-        );
-        if (globalQuery.rows.length > 0) {
-          accounts.push(...globalQuery.rows.map(row => ({
-            id: row.id,
-            unipile_account_id: row.provider_account_id,
-            account_name: row.account_name || 'LinkedIn Account'
-          })));
-        }
-      } catch (globalError) {
-        // Ignore global search errors
-      }
-    }
+    
+    // REMOVED: Global search fallback that violated tenant isolation
+    // Each tenant must have their own LinkedIn accounts configured
+    
   } catch (error) {
+    logger.error('[LinkedInAccountHelper] Error in getAllLinkedInAccountsForTenant', {
+      tenantId,
+      error: error.message
+    });
   }
   return accounts;
 }
