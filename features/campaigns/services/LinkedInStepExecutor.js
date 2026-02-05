@@ -342,20 +342,39 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
         .replace(/\{\{industry\}\}/g, industry);
       
       // ✅ Check if connection was accepted before sending message
+      // Get the lead_id from campaign_leads (the actual lead UUID, not campaign_lead ID)
+      let actualLeadId = campaignLead.lead_id || campaignLead.id;
+      
       try {
         const { db } = require('../../../shared/database/connection');
+        const schema = process.env.DB_SCHEMA || 'lad_dev';
+        
+        logger.info('[LinkedInStepExecutor] Checking connection acceptance', {
+          stepType,
+          campaignId: campaignLead.campaign_id,
+          leadId: actualLeadId,
+          schema
+        });
+        
         const connectionCheck = await db('campaign_analytics')
+          .withSchema(schema)
           .where({
             campaign_id: campaignLead.campaign_id,
-            lead_id: campaignLead.lead_id || campaignLead.id,
+            lead_id: actualLeadId,
             action_type: 'CONNECTION_ACCEPTED',
             status: 'success'
           })
           .first();
+          
         if (!connectionCheck) {
+          logger.info('[LinkedInStepExecutor] Connection not accepted yet - skipping message', {
+            campaignId: campaignLead.campaign_id,
+            leadId: actualLeadId
+          });
+          
           // Track as skipped (not failed, just waiting for acceptance)
           await campaignStatsTracker.trackAction(campaignLead.campaign_id, 'MESSAGE_SKIPPED', {
-            leadId: campaignLead.lead_id || campaignLead.id,
+            leadId: actualLeadId,
             channel: 'linkedin',
             leadName: employee.fullname,
             messageContent: message,
@@ -368,8 +387,18 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
             skipped: true
           };
         }
+        
+        logger.info('[LinkedInStepExecutor] Connection accepted - proceeding with message', {
+          campaignId: campaignLead.campaign_id,
+          leadId: actualLeadId
+        });
       } catch (checkErr) {
-        // Continue anyway if check fails (backward compatibility)
+        // Log the error but continue anyway (backward compatibility)
+        logger.warn('[LinkedInStepExecutor] Error checking connection acceptance - continuing anyway', {
+          error: checkErr.message,
+          campaignId: campaignLead.campaign_id,
+          leadId: actualLeadId
+        });
       }
       result = await unipileService.sendLinkedInMessage(employee, message, linkedinAccountId, { tenantId });
       // Track message in campaign_analytics for Live Activity Feed
