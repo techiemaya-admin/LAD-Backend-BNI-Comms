@@ -12,6 +12,7 @@ const logger = require('../../../core/utils/logger');
 const AIMessageDataService = require('../services/AIMessageDataFetcher');
 const CampaignScheduleUtil = require('../utils/campaignScheduleUtil');
 const CampaignSchedulingService = require('../services/CampaignMultiDateScheduler');
+const { getCampaignCreditSummary } = require('../../../shared/middleware/credit_guard');
 
 class CampaignCRUDController {
   /**
@@ -49,10 +50,18 @@ class CampaignCRUDController {
                 platform_metrics: null
               };
             }
+            
+            // Get credit usage data from campaign metadata
+            let creditData = {
+              total_credits_deducted: parseFloat(campaign.metadata?.total_credits_deducted) || 0,
+              last_credit_update: campaign.metadata?.last_credit_update || null
+            };
+            
             return {
               ...campaign,
               steps: steps || [],
-              ...stats
+              ...stats,
+              credits: creditData
             };
           } catch (error) {
             return {
@@ -65,7 +74,11 @@ class CampaignCRUDController {
               replied_count: parseInt(campaign.replied_count) || 0,
               opened_count: parseInt(campaign.opened_count) || 0,
               clicked_count: parseInt(campaign.clicked_count) || 0,
-              platform_metrics: null
+              platform_metrics: null,
+              credits: {
+                total_credits_deducted: parseFloat(campaign.metadata?.total_credits_deducted) || 0,
+                last_credit_update: campaign.metadata?.last_credit_update || null
+              }
             };
           }
         })

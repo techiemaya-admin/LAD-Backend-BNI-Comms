@@ -18,7 +18,7 @@
  * - LinkedIn connection: 1 credit
  * - Template message: 5 credits
  * - Phone reveal: 10 credits
- * - Voice call: 250 credits/minute
+ * - Voice call: 3 credits/minute
  * 
  * MIDDLEWARE USAGE:
  * router.post('/search', 
@@ -276,6 +276,42 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req, opti
       logger.warn('[Credit Guard] Failed to log to billing_ledger', { error: ledgerError.message });
     }
     
+    // Update campaign metadata with total credits if this is a campaign-related deduction
+    if (campaignId) {
+      try {
+        await client.query(
+          `UPDATE ${schema}.campaigns
+           SET 
+             metadata = jsonb_set(
+               jsonb_set(
+                 COALESCE(metadata, '{}'::jsonb),
+                 '{total_credits_deducted}',
+                 to_jsonb(
+                   COALESCE((metadata->>'total_credits_deducted')::numeric, 0) + $1
+                 )
+               ),
+               '{last_credit_update}',
+               to_jsonb($2::text)
+             ),
+             updated_at = NOW()
+           WHERE id = $3
+           AND tenant_id = $4`,
+          [credits, new Date().toISOString(), campaignId, tenantId]
+        );
+        
+        logger.debug('[Credit Guard] Updated campaign metadata', { 
+          campaignId: campaignId.substring(0, 8), 
+          creditsAdded: credits 
+        });
+      } catch (campaignUpdateError) {
+        // Don't fail the transaction if campaign metadata update fails
+        logger.warn('[Credit Guard] Failed to update campaign metadata', { 
+          error: campaignUpdateError.message,
+          campaignId: campaignId.substring(0, 8)
+        });
+      }
+    }
+    
     await client.query('COMMIT');
     
     logger.info('[Credit Guard] Credits deducted', { 
@@ -494,11 +530,71 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
   }
 }
 
+/**
+ * Get campaign credit summary from metadata
+ * Fast read from campaign metadata instead of aggregating transactions
+ * 
+ * @param {string} campaignId - Campaign ID
+ * @param {string} tenantId - Tenant ID
+ * @returns {Object} Campaign credit summary from metadata
+ */
+async function getCampaignCreditSummary(campaignId, tenantId) {
+  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  
+  try {
+    const result = await pool.query(
+      `SELECT 
+        id,
+        name,
+        status,
+        metadata->>'total_credits_deducted' as total_credits,
+        metadata->>'credit_transaction_count' as transaction_count,
+        metadata->>'first_credit_deduction' as first_deduction,
+        metadata->>'last_credit_deduction' as last_deduction,
+        metadata->>'last_credit_update' as last_update
+       FROM ${schema}.campaigns
+       WHERE id = $1
+       AND tenant_id = $2`,
+      [campaignId, tenantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return {
+        campaignId,
+        error: 'Campaign not found'
+      };
+    }
+    
+    const campaign = result.rows[0];
+    
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignStatus: campaign.status,
+      totalCredits: parseFloat(campaign.total_credits) || 0,
+      transactionCount: parseInt(campaign.transaction_count) || 0,
+      firstDeduction: campaign.first_deduction,
+      lastDeduction: campaign.last_deduction,
+      lastUpdate: campaign.last_update
+    };
+  } catch (error) {
+    logger.error('[Credit Guard] Error getting campaign credit summary', { 
+      campaignId, 
+      error: error.message 
+    });
+    return {
+      campaignId,
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   requireCredits,
   trackUsage,
   getCreditBalance,
   deductCredits,
   refundCredits,
-  getCampaignCreditUsage
+  getCampaignCreditUsage,
+  getCampaignCreditSummary
 };
