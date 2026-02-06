@@ -85,6 +85,7 @@ steps:
         CLOUD_TASKS_LOCATION: "$_GCP_LOCATION"
         CLOUD_TASKS_QUEUE_NAME: "$_CLOUD_TASKS_QUEUE_NAME"
         CLOUD_RUN_SERVICE_URL: "$_BACKEND_URL"
+        POSTGRES_SCHEMA: "$_POSTGRES_SCHEMA"
         EOF
         
         echo "Env vars file created:"
@@ -145,3 +146,4 @@ substitutions:
   _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
   _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'
   _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task'
+  _POSTGRES_SCHEMA: 'lad_prod'

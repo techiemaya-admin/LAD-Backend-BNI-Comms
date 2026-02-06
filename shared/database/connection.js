@@ -1,13 +1,39 @@
 const { Pool } = require('pg');
 const logger = require('../../core/utils/logger');
 
+/**
+ * Parse DATABASE_URL into components
+ * Format: postgresql://user:password@host:port/database
+ */
+function parseDatabaseUrl(databaseUrl) {
+  if (!databaseUrl) return null;
+  
+  try {
+    const url = new URL(databaseUrl);
+    return {
+      host: url.hostname,
+      port: parseInt(url.port) || 5432,
+      database: url.pathname.slice(1), // Remove leading '/'
+      user: url.username,
+      password: url.password,
+    };
+  } catch (error) {
+    logger.error('[Database] Failed to parse DATABASE_URL', { error: error.message });
+    return null;
+  }
+}
+
+// Parse DATABASE_URL if provided (takes priority)
+const urlConfig = parseDatabaseUrl(process.env.DATABASE_URL);
+
 // Database connection configuration
+// Priority: DATABASE_URL > individual POSTGRES_* env vars > defaults
 const dbConfig = {
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: process.env.POSTGRES_PORT || 5432,
-  database: process.env.POSTGRES_DB || 'salesmaya_agent',
-  user: process.env.POSTGRES_USER || 'postgres',
-  password: process.env.POSTGRES_PASSWORD,
+  host: urlConfig?.host || process.env.POSTGRES_HOST || 'localhost',
+  port: urlConfig?.port || parseInt(process.env.POSTGRES_PORT) || 5432,
+  database: urlConfig?.database || process.env.POSTGRES_DB || 'salesmaya_agent',
+  user: urlConfig?.user || process.env.POSTGRES_USER || 'postgres',
+  password: urlConfig?.password || process.env.POSTGRES_PASSWORD,
   max: parseInt(process.env.POSTGRES_MAX_CLIENTS) || 20,
   idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
   connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 10000, // Increased for cloud environments
@@ -18,6 +44,16 @@ const dbConfig = {
   statement_timeout: parseInt(process.env.POSTGRES_STATEMENT_TIMEOUT) || 30000, // 30 second query timeout
   query_timeout: parseInt(process.env.POSTGRES_QUERY_TIMEOUT) || 30000,
 };
+
+// Log which database we're connecting to (without password)
+logger.info('[Database] Configuration loaded', {
+  host: dbConfig.host,
+  port: dbConfig.port,
+  database: dbConfig.database,
+  user: dbConfig.user,
+  schema: process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev',
+  fromUrl: !!urlConfig
+});
 
 const pool = new Pool(dbConfig);
 

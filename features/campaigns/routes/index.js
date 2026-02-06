@@ -50,8 +50,7 @@ const validateCloudTasksAuth = (req, res, next) => {
 // LinkedIn integration (mount before /:id routes to avoid conflicts)
 router.use('/linkedin', linkedInRoutes);
 
-// Daily campaign execution (Cloud Tasks callback - secured)
-router.post('/run-daily', validateCloudTasksAuth, CampaignDailyController.runDaily);
+// NOTE: /run-daily endpoint is now in public.routes.js (mounted without JWT auth for Cloud Tasks)
 
 // Real-time campaigns stream (SSE)
 router.get('/stream', sseAuth, CampaignsStreamController.streamAllCampaigns);

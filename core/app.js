@@ -211,7 +211,12 @@ class CoreApplication {
     this.app.use('/api/stripe', stripeRoutes);
     this.app.use('/api/users', userRoutes);
     
-    // Campaigns routes with authentication and feature flag check
+    // Campaigns public routes FIRST (Cloud Tasks endpoints - no JWT auth required)
+    const campaignsPublicRoutes = require('../features/campaigns/routes/public.routes');
+    this.app.use('/api/campaigns', campaignsPublicRoutes);
+    logger.info('[App] Campaigns public routes mounted (Cloud Tasks endpoints)');
+    
+    // Campaigns protected routes with authentication and feature flag check
     const campaignsRoutes = require('../features/campaigns/routes/index');
     this.app.use('/api/campaigns', authenticateToken, this.createFeatureMiddleware('campaigns'), campaignsRoutes);
     logger.info('[App] Campaigns routes mounted with authentication and feature flag check');
