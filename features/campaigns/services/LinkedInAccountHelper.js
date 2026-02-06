@@ -29,6 +29,7 @@ async function getAllLinkedInAccountsForTenant(tenantId, userId) {
         FROM ${schema}.social_linkedin_accounts
         WHERE tenant_id = $1 
         AND status = 'active'
+        AND is_deleted = false
         AND provider_account_id IS NOT NULL
         ORDER BY created_at DESC
       `;
@@ -125,6 +126,7 @@ async function getLinkedInAccountForExecution(tenantId, userId) {
       `SELECT id, provider_account_id FROM ${schema}.social_linkedin_accounts
        WHERE tenant_id = $1 
        AND status = 'active'
+       AND is_deleted = false
        AND provider_account_id IS NOT NULL
        ORDER BY created_at DESC LIMIT 1`,
       [tenantId]
@@ -141,6 +143,7 @@ async function getLinkedInAccountForExecution(tenantId, userId) {
       accountResult = await pool.query(
         `SELECT id, provider_account_id FROM ${schema}.social_linkedin_accounts 
          WHERE status = 'active'
+         AND is_deleted = false
          AND provider_account_id IS NOT NULL
          ORDER BY created_at DESC LIMIT 1`
       );
@@ -386,7 +389,9 @@ async function verifyAccountReadyForCampaign(unipileAccountId) {
     try {
       const result = await pool.query(
         `SELECT id, status, updated_at FROM ${schema}.social_linkedin_accounts 
-         WHERE provider_account_id = $1 LIMIT 1`,
+         WHERE provider_account_id = $1 
+         AND is_deleted = false
+         LIMIT 1`,
         [unipileAccountId]
       );
       if (result.rows.length > 0) {

@@ -196,6 +196,7 @@ class LinkedInAccountRepository {
     const query = `
       UPDATE ${schema}.social_linkedin_accounts
       SET is_deleted = true,
+          status = 'inactive',
           updated_at = NOW()
       WHERE id = $1
         AND tenant_id = $2

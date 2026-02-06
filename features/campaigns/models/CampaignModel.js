@@ -127,7 +127,9 @@ class CampaignModel {
     const schema = getSchema(req);
     let query = `
       SELECT 
-        c.*,
+        c.id, c.tenant_id, c.name, c.status, c.created_by, c.config, c.metadata,
+        c.campaign_start_date, c.campaign_end_date, c.campaign_duration_days,
+        c.created_at, c.updated_at, c.is_deleted,
         COUNT(DISTINCT cl.id) as leads_count,
         COUNT(DISTINCT CASE WHEN cla.status = 'sent' THEN cla.id END) as sent_count,
         COUNT(DISTINCT CASE WHEN cla.status = 'delivered' THEN cla.id END) as delivered_count,
@@ -150,7 +152,7 @@ class CampaignModel {
       query += ` AND c.name ILIKE $${paramIndex++}`;
       params.push(`%${search}%`);
     }
-    query += ` GROUP BY c.id ORDER BY c.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    query += ` GROUP BY c.id, c.tenant_id, c.name, c.status, c.created_by, c.config, c.metadata, c.campaign_start_date, c.campaign_end_date, c.campaign_duration_days, c.created_at, c.updated_at, c.is_deleted ORDER BY c.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
     params.push(limit, offset);
     try {
       const result = await pool.query(query, params);
@@ -161,7 +163,9 @@ class CampaignModel {
       if (errorMsg.includes('campaign_lead_activities') || errorMsg.includes('does not exist') || errorMsg.includes('relation') || errorMsg.includes('undefined table')) {
         let fallbackQuery = `
           SELECT 
-            c.*,
+            c.id, c.tenant_id, c.name, c.status, c.created_by, c.config, c.metadata,
+            c.campaign_start_date, c.campaign_end_date, c.campaign_duration_days,
+            c.created_at, c.updated_at, c.is_deleted,
             COUNT(DISTINCT cl.id) as leads_count,
             0 as sent_count,
             0 as delivered_count,
@@ -183,7 +187,7 @@ class CampaignModel {
           fallbackQuery += ` AND c.name ILIKE $${fallbackParamIndex++}`;
           fallbackParams.push(`%${search}%`);
         }
-        fallbackQuery += ` GROUP BY c.id ORDER BY c.created_at DESC LIMIT $${fallbackParamIndex++} OFFSET $${fallbackParamIndex++}`;
+        fallbackQuery += ` GROUP BY c.id, c.tenant_id, c.name, c.status, c.created_by, c.config, c.metadata, c.campaign_start_date, c.campaign_end_date, c.campaign_duration_days, c.created_at, c.updated_at, c.is_deleted ORDER BY c.created_at DESC LIMIT $${fallbackParamIndex++} OFFSET $${fallbackParamIndex++}`;
         fallbackParams.push(limit, offset);
         try {
           const result = await pool.query(fallbackQuery, fallbackParams);

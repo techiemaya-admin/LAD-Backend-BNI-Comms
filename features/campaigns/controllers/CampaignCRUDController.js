@@ -52,6 +52,16 @@ class CampaignCRUDController {
             }
             
             // Get credit usage data from campaign metadata
+            // Debug: Log metadata to check if it's being retrieved
+            logger.debug('[Campaign List] Processing campaign credits', {
+              campaignId: campaign.id,
+              campaignName: campaign.name,
+              hasMetadata: !!campaign.metadata,
+              metadataType: typeof campaign.metadata,
+              metadata: campaign.metadata,
+              creditsValue: campaign.metadata?.total_credits_deducted
+            });
+            
             let creditData = {
               total_credits_deducted: parseFloat(campaign.metadata?.total_credits_deducted) || 0,
               last_credit_update: campaign.metadata?.last_credit_update || null
