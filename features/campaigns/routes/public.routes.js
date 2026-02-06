@@ -10,6 +10,16 @@ const router = express.Router();
 const CampaignDailyController = require('../controllers/CampaignDailyController');
 const logger = require('../../../core/utils/logger');
 
+// Log ALL requests to this router for debugging
+router.use((req, res, next) => {
+  logger.info('[CampaignsPublicRoutes] Request received', {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl
+  });
+  next();
+});
+
 /**
  * Cloud Tasks authentication middleware
  * Validates requests from Google Cloud Tasks using shared secret
@@ -18,7 +28,7 @@ const validateCloudTasksAuth = (req, res, next) => {
   const cloudTasksSecret = process.env.CLOUD_TASKS_SECRET;
   
   // Log incoming request for debugging
-  logger.debug('[CloudTasksAuth] Validating request', {
+  logger.info('[CloudTasksAuth] Validating request', {
     hasSecret: !!cloudTasksSecret,
     hasAuthHeader: !!req.headers.authorization,
     hasCloudTasksSecret: !!req.headers['x-cloudtasks-secret'],
@@ -63,6 +73,6 @@ const validateCloudTasksAuth = (req, res, next) => {
  * This endpoint is called by Google Cloud Tasks scheduler, not by users.
  * Authentication is via X-CloudTasks-Secret header or OIDC token.
  */
-router.post('/run-daily', validateCloudTasksAuth, CampaignDailyController.runDaily);
+router.post('/run-daily', validateCloudTasksAuth, (req, res) => CampaignDailyController.runDaily(req, res));
 
 module.exports = router;
