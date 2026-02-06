@@ -106,7 +106,7 @@ class UnipileConnectionService {
                         params: {
                             account_id: accountId
                         },
-                        timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                        timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                     }
                 );
             } catch (lookupError) {
@@ -156,7 +156,7 @@ class UnipileConnectionService {
                     payload,
                     {
                         headers: headers,
-                        timeout: Number(process.env.UNIPILE_PROFILE_TIMEOUT_MS) || 30000
+                        timeout: Number(process.env.UNIPILE_ACTION_TIMEOUT_MS) || 90000
                     }
                 );
                 const statusCode = response.status;

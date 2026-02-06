@@ -51,7 +51,7 @@ class UnipileProfileService {
                 {
                     headers,
                     params: { account_id: accountId },
-                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                 }
             ).catch(async (error) => {
                 // Handle 401 errors with automatic reconnection
@@ -65,7 +65,7 @@ class UnipileProfileService {
                                 {
                                     headers,
                                     params: { account_id: accountId },
-                                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                                 }
                             );
                         }
@@ -166,7 +166,7 @@ class UnipileProfileService {
                 response = await axios.get(endpoint, {
                     headers: headers,
                     params: params,
-                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                 });
             } catch (error) {
                 // Handle 401 errors with automatic reconnection
@@ -180,7 +180,7 @@ class UnipileProfileService {
                             return await axios.get(endpoint, {
                                 headers: headers,
                                 params: params,
-                                timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                                timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                             });
                         }
                     );

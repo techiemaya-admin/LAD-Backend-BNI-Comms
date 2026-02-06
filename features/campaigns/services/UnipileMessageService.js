@@ -59,7 +59,7 @@ class UnipileMessageService {
                 {
                     headers,
                     params: { account_id: accountId },
-                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 15000
+                    timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                 }
             );
             const lookupData = lookupResponse.data?.data || lookupResponse.data || {};
