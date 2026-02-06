@@ -71,7 +71,9 @@ class CampaignCRUDController {
               ...campaign,
               steps: steps || [],
               ...stats,
-              credits: creditData
+              credits: creditData,
+              total_credits_deducted: creditData.total_credits_deducted,
+              last_credit_update: creditData.last_credit_update
             };
           } catch (error) {
             return {
@@ -88,7 +90,9 @@ class CampaignCRUDController {
               credits: {
                 total_credits_deducted: parseFloat(campaign.metadata?.total_credits_deducted) || 0,
                 last_credit_update: campaign.metadata?.last_credit_update || null
-              }
+              },
+              total_credits_deducted: parseFloat(campaign.metadata?.total_credits_deducted) || 0,
+              last_credit_update: campaign.metadata?.last_credit_update || null
             };
           }
         })
