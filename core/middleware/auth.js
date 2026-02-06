@@ -54,7 +54,8 @@ const authenticateToken = (req, res, next) => {
   }
 
   // Skip auth for Cloud Tasks endpoints (they have their own auth via headers)
-  if (req.path.includes('/execute-followup')) {
+  if (req.path.includes('/execute-followup') || req.path.includes('/run-daily')) {
+    logger.debug(`[Auth] Skipping auth for Cloud Tasks endpoint: ${req.path}`);
     return next();
   }
 
