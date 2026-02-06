@@ -161,11 +161,20 @@ class UnipileProfileService {
             const baseUrl = this.base.getBaseUrl();
             const headers = this.base.getAuthHeaders();
             // Use Unipile API to get full profile with contact info
-            const endpoint = `${baseUrl.replace('/api/v1', '')}/api/v1/users/${encodeURIComponent(publicIdentifier)}`;
+            const endpoint = `${baseUrl}/users/${encodeURIComponent(publicIdentifier)}`;
             const params = {
                 account_id: accountId,
                 linkedin_sections: '*'
             };
+            
+            const logger = require('../../../core/utils/logger');
+            logger.debug('[Unipile Profile] Fetching LinkedIn profile', {
+                endpoint,
+                publicIdentifier,
+                accountId: accountId.substring(0, 10) + '...',
+                originalUrl: linkedinUrl
+            });
+            
             // Attempt to fetch with automatic reconnection on 401
             let response;
             try {
@@ -175,6 +184,34 @@ class UnipileProfileService {
                     timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                 });
             } catch (error) {
+                // Log detailed error information for debugging
+                logger.error('[Unipile Profile] Profile lookup failed', {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    errorMessage: error.message,
+                    errorDetail: error.response?.data?.detail || error.response?.data?.message,
+                    endpoint,
+                    publicIdentifier,
+                    accountId: accountId.substring(0, 10) + '...',
+                    hasResponseData: !!error.response?.data
+                });
+                
+                // Handle 404 errors - profile not found in Unipile
+                if (error.response && error.response.status === 404) {
+                    const errorDetail = error.response.data?.detail || error.response.data?.message || 'Profile not found';
+                    return {
+                        success: false,
+                        phone: null,
+                        email: null,
+                        error: `LinkedIn profile not accessible: ${errorDetail}`,
+                        errorType: 'profile_not_found',
+                        statusCode: 404,
+                        accountId: accountId,
+                        linkedinUrl: linkedinUrl,
+                        suggestion: 'The profile may be private, unavailable, or not indexed by Unipile. Try visiting the profile manually on LinkedIn first.'
+                    };
+                }
+                
                 // Handle 401 errors with automatic reconnection
                 if (error.response && error.response.status === 401) {
                     // Try automatic reconnection with retry
