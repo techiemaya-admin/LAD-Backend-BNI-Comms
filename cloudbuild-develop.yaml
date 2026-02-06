@@ -133,4 +133,4 @@ substitutions:
   _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-741719885039.us-central1.run.app/api/deal-pipeline/bookings'
   _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
   _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'
-  _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task'
+  _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task-dev'
