@@ -54,6 +54,12 @@ class UnipileProfileService {
                     timeout: Number(process.env.UNIPILE_LOOKUP_TIMEOUT_MS) || 60000
                 }
             ).catch(async (error) => {
+                // Handle 404 errors - profile not found
+                if (error.response && error.response.status === 404) {
+                    const errorDetail = error.response.data?.detail || error.response.data?.message || 'Profile not found';
+                    throw new Error(`LinkedIn profile not found: ${linkedInUrl} (${errorDetail})`);
+                }
+                
                 // Handle 401 errors with automatic reconnection
                 if (error.response && error.response.status === 401) {
                     const reconnectResult = await this.reconnectionService.handle401Error(

@@ -250,15 +250,21 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req, opti
     try {
       const walletId = walletResult.rows[0]?.id || null;
       if (walletId) {
+        // Generate idempotency key: tenant_campaign_usage_timestamp_random
+        // Format: ensures uniqueness while being deterministic for retries
+        const timestamp = Date.now();
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
+        const idempotencyKey = `${tenantId.substring(0, 8)}_${campaignId ? campaignId.substring(0, 8) : 'nocampaign'}_${usageType}_${timestamp}_${randomSuffix}`;
+        
         await client.query(
           `INSERT INTO ${schema}.billing_ledger_transactions (
             tenant_id, wallet_id, transaction_type, amount, balance_before, balance_after,
-            reference_type, reference_id, description, metadata
+            reference_type, reference_id, description, metadata, idempotency_key
           )
           SELECT 
-            $1, $2, 'debit', $3, 
-            current_balance + $3, current_balance,
-            $4, $5, $6, $7
+            $1, $2, 'debit', -$3::numeric, 
+            current_balance, current_balance - $3::numeric,
+            $4, $5, $6, $7, $8
           FROM ${schema}.billing_wallets WHERE id = $2`,
           [
             tenantId,
@@ -267,7 +273,8 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req, opti
             campaignId ? 'campaign' : featureKey,
             campaignId || null,
             `${usageType}${stepType ? ` (${stepType})` : ''}`,
-            metadata
+            metadata,
+            idempotencyKey
           ]
         );
       }
