@@ -265,7 +265,7 @@ class VAPIWebhookController {
    * Find call log by VAPI call ID
    */
   async findCallByVAPIId(vapiCallId) {
-    const schema = process.env.DB_SCHEMA || 'lad_dev';
+    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
 
     const result = await this.db.query(
       `SELECT id, tenant_id, status, created_at
@@ -282,7 +282,7 @@ class VAPIWebhookController {
    * Deduct credits from tenant balance for completed call
    */
   async deductCallCredits(tenantId, credits, callId, metadata = {}) {
-    const schema = process.env.DB_SCHEMA || 'lad_dev';
+    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
     const client = await this.db.connect();
 
     try {
@@ -348,7 +348,7 @@ class VAPIWebhookController {
    * Refund credits when call fails
    */
   async refundCallCredits(tenantId, credits, callId, reason = '') {
-    const schema = process.env.DB_SCHEMA || 'lad_dev';
+    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
     const client = await this.db.connect();
 
     try {

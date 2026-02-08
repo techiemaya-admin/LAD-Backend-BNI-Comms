@@ -18,7 +18,7 @@ class CompanySearchCacheRepository {
    */
   static async getCachedCompanies(tenantId, keywords, location = null, industry = null) {
     try {
-      const schema = process.env.DB_SCHEMA || 'lad_dev';
+      const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
       
       const query = `
         SELECT 
@@ -115,7 +115,7 @@ class CompanySearchCacheRepository {
       return { inserted: 0, updated: 0 };
     }
     
-    const schema = process.env.DB_SCHEMA || 'lad_dev';
+    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
     let inserted = 0;
     let updated = 0;
     
@@ -236,7 +236,7 @@ class CompanySearchCacheRepository {
    */
   static async hasFreshCache(tenantId, keywords, location = null, industry = null, ttlHours = 24) {
     try {
-      const schema = process.env.DB_SCHEMA || 'lad_dev';
+      const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
       
       const query = `
         SELECT COUNT(*) as count
@@ -265,7 +265,7 @@ class CompanySearchCacheRepository {
    */
   static async getCacheStats(tenantId) {
     try {
-      const schema = process.env.DB_SCHEMA || 'lad_dev';
+      const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
       
       const query = `
         SELECT 
@@ -297,7 +297,7 @@ class CompanySearchCacheRepository {
    */
   static async cleanOldCache(olderThanDays = 30) {
     try {
-      const schema = process.env.DB_SCHEMA || 'lad_dev';
+      const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
       
       const query = `
         DELETE FROM ${schema}.company_search_cache

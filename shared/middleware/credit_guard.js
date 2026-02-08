@@ -117,7 +117,7 @@ const requireCredits = (usageType, creditsRequired) => {
  */
 async function getCreditBalance(tenantId) {
   // LAD Architecture: Use dynamic schema resolution
-  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   
   // First try the new billing_wallets system (preferred)
   const walletQuery = `
@@ -169,7 +169,7 @@ async function getCreditBalance(tenantId) {
  */
 async function deductCredits(tenantId, featureKey, usageType, credits, req, options = {}) {
   // LAD Architecture: Use dynamic schema resolution
-  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   const client = await pool.connect();
   
   // Extract options
@@ -344,7 +344,7 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req, opti
  * @returns {Object} Credit usage summary with breakdown by usage type
  */
 async function getCampaignCreditUsage(campaignId, tenantId) {
-  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   
   try {
     // Query billing_ledger_transactions for campaign-specific credits
@@ -475,7 +475,7 @@ const trackUsage = (usageType) => {
  * Updated to support both billing_wallets (new) and user_credits (legacy) systems
  */
 async function refundCredits(tenantId, usageType, credits, req, reason = 'Operation failed') {
-  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   const client = await pool.connect();
   
   try {
@@ -546,7 +546,7 @@ async function refundCredits(tenantId, usageType, credits, req, reason = 'Operat
  * @returns {Object} Campaign credit summary from metadata
  */
 async function getCampaignCreditSummary(campaignId, tenantId) {
-  const schema = process.env.DB_SCHEMA || 'lad_dev';
+  const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   
   try {
     const result = await pool.query(

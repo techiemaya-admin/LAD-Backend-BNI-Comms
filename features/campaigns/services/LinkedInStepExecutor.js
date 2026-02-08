@@ -353,7 +353,7 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       
       try {
         const { db } = require('../../../shared/database/connection');
-        const schema = process.env.DB_SCHEMA || 'lad_dev';
+        const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
         
         logger.info('[LinkedInStepExecutor] Checking connection acceptance', {
           stepType,

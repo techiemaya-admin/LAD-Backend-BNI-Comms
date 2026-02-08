@@ -10,7 +10,7 @@ const attachmentRepository = require('../repositories/attachment.repository');
 // Use core utils in LAD architecture
 const logger = require('../../../core/utils/logger');
 
-const DEFAULT_SCHEMA = process.env.DB_SCHEMA || 'lad_dev';
+const DEFAULT_SCHEMA = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
 
 /**
  * Get all notes for a lead
