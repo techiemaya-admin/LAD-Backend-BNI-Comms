@@ -59,6 +59,24 @@ const authenticateToken = (req, res, next) => {
     return next();
   }
 
+  // Skip auth for service-to-service calls with x-tenant-id header
+  // These are internal API calls from campaign processor, scheduled tasks, etc.
+  const tenantIdHeader = req.headers['x-tenant-id'];
+  if (tenantIdHeader && (
+    req.path.includes('/api/apollo-leads/search-employees-from-db') ||
+    req.path.includes('/api/apollo-leads/search-employees')
+  )) {
+    logger.debug(`[Auth] Skipping auth for service-to-service call: ${req.path}`, {
+      tenantId: tenantIdHeader
+    });
+    // Set tenant context for downstream processing
+    req.user = { 
+      tenantId: tenantIdHeader,
+      serviceCall: true 
+    };
+    return next();
+  }
+
   // Try to get token from Authorization header first, then from cookies, then from query params
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
