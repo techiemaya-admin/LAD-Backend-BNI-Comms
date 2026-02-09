@@ -352,7 +352,7 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
       let actualLeadId = campaignLead.lead_id || campaignLead.id;
       
       try {
-        const { db } = require('../../../shared/database/connection');
+        const { pool } = require('../../../shared/database/connection');
         const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
         
         logger.info('[LinkedInStepExecutor] Checking connection acceptance', {
@@ -362,15 +362,21 @@ async function executeLinkedInStep(stepType, stepConfig, campaignLead, userId, t
           schema
         });
         
-        const connectionCheck = await db('campaign_analytics')
-          .withSchema(schema)
-          .where({
-            campaign_id: campaignLead.campaign_id,
-            lead_id: actualLeadId,
-            action_type: 'CONNECTION_ACCEPTED',
-            status: 'success'
-          })
-          .first();
+        const connectionCheckQuery = `
+          SELECT * FROM ${schema}.campaign_analytics
+          WHERE campaign_id = $1
+            AND lead_id = $2
+            AND action_type = 'CONNECTION_ACCEPTED'
+            AND status = 'success'
+          LIMIT 1
+        `;
+        
+        const connectionCheckResult = await pool.query(connectionCheckQuery, [
+          campaignLead.campaign_id,
+          actualLeadId
+        ]);
+        
+        const connectionCheck = connectionCheckResult.rows[0];
           
         if (!connectionCheck) {
           logger.info('[LinkedInStepExecutor] Connection not accepted yet - skipping message', {
