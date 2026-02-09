@@ -168,8 +168,8 @@ class CampaignDailyScheduler {
   }
 
   /**
-   * Execute campaign workflow (mock implementation)
-   * TODO: Replace with actual campaign processor
+   * Execute campaign workflow
+   * Integrates with CampaignProcessor for actual lead processing
    */
   async executeCampaignWorkflow(campaign) {
     logger.info('[CampaignDailyScheduler] Executing campaign workflow', {
@@ -177,16 +177,31 @@ class CampaignDailyScheduler {
       campaignName: campaign.name,
     });
 
-    // TODO: Integrate with existing CampaignProcessor
-    // const CampaignProcessor = require('./CampaignProcessor');
-    // return await CampaignProcessor.executeCampaign(campaign.id, campaign.tenant_id);
-
-    // Mock execution for now
-    return {
-      leadGenerated: 10,
-      messagesScheduled: 10,
-      executedSteps: ['lead_generation', 'linkedin_visit', 'linkedin_connect'],
-    };
+    try {
+      // Use the actual CampaignProcessor to execute the campaign
+      const CampaignProcessor = require('./CampaignProcessor');
+      const result = await CampaignProcessor.processCampaign(campaign.id, campaign.tenant_id);
+      
+      return {
+        success: result.success,
+        leadCount: result.leadCount || 0,
+        campaignId: result.campaignId,
+      };
+    } catch (error) {
+      logger.error('[CampaignDailyScheduler] Campaign workflow execution failed', {
+        campaignId: campaign.id,
+        tenantId: campaign.tenant_id,
+        error: error.message,
+        stack: error.stack,
+      });
+      
+      // Return failure but don't throw - let scheduler continue
+      return {
+        success: false,
+        error: error.message,
+        leadCount: 0,
+      };
+    }
   }
 
   /**
