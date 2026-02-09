@@ -79,6 +79,27 @@ class CampaignDailyScheduler {
       // 4. Execute campaign logic
       const executionResult = await this.executeCampaignWorkflow(campaign);
 
+      // Check if execution actually succeeded
+      if (!executionResult.success) {
+        logger.error('[CampaignDailyScheduler] Campaign execution failed', {
+          campaignId,
+          tenantId,
+          executionResult,
+          error: executionResult.error
+        });
+        
+        // Still update last_run_date to prevent retry loops
+        await this.updateLastRunDate(schema, campaignId, tenantId, currentDate);
+        
+        // Return failure status
+        return {
+          success: false,
+          error: executionResult.error || 'Campaign execution failed',
+          leadCount: executionResult.leadCount || 0,
+          executedAt: currentDate.toISOString()
+        };
+      }
+
       // 5. Update last_run_date
       await this.updateLastRunDate(schema, campaignId, tenantId, currentDate);
 

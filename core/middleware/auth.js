@@ -62,11 +62,31 @@ const authenticateToken = (req, res, next) => {
   // Skip auth for service-to-service calls with x-tenant-id header
   // These are internal API calls from campaign processor, scheduled tasks, etc.
   const tenantIdHeader = req.headers['x-tenant-id'];
+  const fullPath = req.originalUrl || req.path;
+  
+  // Log all requests to apollo-leads endpoints for debugging
+  if (fullPath.includes('/apollo-leads/')) {
+    logger.info('[Auth] Apollo-leads request detected', {
+      path: req.path,
+      originalUrl: req.originalUrl,
+      fullPath: fullPath,
+      method: req.method,
+      hasTenantHeader: !!tenantIdHeader,
+      tenantId: tenantIdHeader,
+      hasAuthHeader: !!req.headers['authorization']
+    });
+  }
+  
   if (tenantIdHeader && (
-    req.path.includes('/api/apollo-leads/search-employees-from-db') ||
-    req.path.includes('/api/apollo-leads/search-employees')
+    fullPath.includes('/api/apollo-leads/search-employees-from-db') ||
+    fullPath.includes('/api/apollo-leads/search-employees') ||
+    fullPath.includes('/apollo-leads/search-employees-from-db') ||
+    fullPath.includes('/apollo-leads/search-employees')
   )) {
-    logger.debug(`[Auth] Skipping auth for service-to-service call: ${req.path}`, {
+    logger.info('[Auth] Bypassing auth for service-to-service call', {
+      path: req.path,
+      originalUrl: req.originalUrl,
+      fullPath: fullPath,
       tenantId: tenantIdHeader
     });
     // Set tenant context for downstream processing
