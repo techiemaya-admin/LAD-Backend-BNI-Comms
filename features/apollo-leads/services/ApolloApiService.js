@@ -204,8 +204,8 @@ async function callApolloApi(searchParams) {
   // Build Apollo.io API request - filters go in QUERY PARAMETERS, not body
   // Apollo expects filters as query params with array syntax: param[]=value1&param[]=value2
   const apolloRequestParams = {
-    per_page: 100,  // Fixed: always fetch 100 results (max per page)
-    page: 1,  // Fixed: always get page 1 only
+    per_page: per_page || 100,  // Use requested per_page, default 100 (Apollo max)
+    page: page || 1,  // Use requested page number, default 1 for pagination
     reveal_personal_emails: true,  // Reveal emails directly in search results
     reveal_phone_number: true  // Reveal phones directly in search results
   };
