@@ -249,7 +249,7 @@ class CallController {
 
       res.json({
         success: true,
-        data: stats
+        stats
       });
     } catch (error) {
       logger.error('Get call stats error:', error);
@@ -262,13 +262,13 @@ class CallController {
   }
 
   /**
-   * GET /calllogs
-   * Get call logs with filters
+   * GET /calls
+   * Get call logs with filters and pagination
    */
   async getCallLogs(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const { status, agent_id, start_date, from_date, to_date, limit } = req.query;
+      const { status, agent_id, start_date, from_date, to_date, page, limit } = req.query;
 
       const filters = {};
       if (status) filters.status = status;
@@ -285,14 +285,33 @@ class CallController {
         filters.userId = user.id;
       }
 
-      const parsedLimit = limit ? parseInt(limit, 10) : 50;
-      const calls = await this.callLoggingService.getCallLogs(tenantId, filters, parsedLimit);
+      // Pagination parameters
+      const currentPage = page ? parseInt(page, 10) : 1;
+      const pageSize = limit ? parseInt(limit, 10) : 50;
+      const offset = (currentPage - 1) * pageSize;
+
+      // Get total count and paginated results
+      const { calls, total } = await this.callLoggingService.getCallLogs(
+        tenantId, 
+        filters, 
+        pageSize, 
+        offset
+      );
+
+      const totalPages = Math.ceil(total / pageSize);
 
       res.json({
         success: true,
         logs: calls,
-        data: calls,
-        count: calls.length
+        count: calls.length,
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: total,
+          totalPages: totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1
+        }
       });
     } catch (error) {
       logger.error('Get call logs error:', error);
@@ -302,13 +321,21 @@ class CallController {
         logs: [],
         data: [],
         count: 0,
+        pagination: {
+          page: 1,
+          limit: 50,
+          total: 0,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false
+        },
         warning: 'Voice agent tables not yet migrated'
       });
     }
   }
 
   /**
-   * GET /calllogs/:call_log_id
+   * GET /call/:call_log_id
    * Get a single call log by ID with signed recording URL
    */
   async getCallLogById(req, res) {

@@ -284,7 +284,7 @@ class VoiceCallModel {
     return this.getCallLogs(tenantId, filters, limit);
   }
 
-  async getCallLogs(schema, tenantId, filters = {}, limit = 50) {
+  async getCallLogs(schema, tenantId, filters = {}, limit = 50, offset = 0) {
     const whereClauses = ['tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
@@ -374,12 +374,66 @@ class VoiceCallModel {
       ) vca ON TRUE
       WHERE ${whereClauses.map(c => `vcl.${c}`).join(' AND ')}
       ORDER BY vcl.started_at DESC
-      LIMIT $${paramIndex}
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 
-    values.push(limit);
+    values.push(limit, offset);
     const result = await this.pool.query(query, values);
     return result.rows;
+  }
+
+  /**
+   * Get total count of call logs for pagination
+   * 
+   * @param {string} schema - Schema name
+   * @param {string} tenantId - Tenant ID
+   * @param {Object} filters - Filters (same as getCallLogs)
+   * @returns {Promise<number>} Total count
+   */
+  async getCallLogsCount(schema, tenantId, filters = {}) {
+    const whereClauses = ['tenant_id = $1'];
+    const values = [tenantId];
+    let paramIndex = 2;
+
+    if (filters.status) {
+      whereClauses.push(`status = $${paramIndex}`);
+      values.push(filters.status);
+      paramIndex++;
+    }
+    if (filters.agentId) {
+      whereClauses.push(`agent_id = $${paramIndex}`);
+      values.push(filters.agentId);
+      paramIndex++;
+    }
+    if (filters.startDate) {
+      whereClauses.push(`started_at >= $${paramIndex}`);
+      values.push(filters.startDate);
+      paramIndex++;
+    }
+    if (filters.fromDate) {
+      whereClauses.push(`started_at >= $${paramIndex}`);
+      values.push(filters.fromDate);
+      paramIndex++;
+    }
+    if (filters.toDate) {
+      whereClauses.push(`started_at <= $${paramIndex}`);
+      values.push(filters.toDate);
+      paramIndex++;
+    }
+    if (filters.userId) {
+      whereClauses.push(`initiated_by_user_id = $${paramIndex}`);
+      values.push(filters.userId);
+      paramIndex++;
+    }
+
+    const query = `
+      SELECT COUNT(*) as total
+      FROM ${schema}.voice_call_logs vcl
+      WHERE ${whereClauses.map(c => `vcl.${c}`).join(' AND ')}
+    `;
+
+    const result = await this.pool.query(query, values);
+    return parseInt(result.rows[0].total, 10);
   }
 
   /**
@@ -390,17 +444,17 @@ class VoiceCallModel {
    * @returns {Promise<Object>} Statistics
    */
   async getCallStats(schema, tenantId, dateRange = {}) {
-    const whereClauses = ['tenant_id = $1'];
+    const whereClauses = ['vcl.tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
 
     if (dateRange.startDate) {
-      whereClauses.push(`started_at >= $${paramIndex}`);
+      whereClauses.push(`vcl.started_at >= $${paramIndex}`);
       values.push(dateRange.startDate);
       paramIndex++;
     }
     if (dateRange.endDate) {
-      whereClauses.push(`started_at <= $${paramIndex}`);
+      whereClauses.push(`vcl.started_at <= $${paramIndex}`);
       values.push(dateRange.endDate);
       paramIndex++;
     }
@@ -408,17 +462,41 @@ class VoiceCallModel {
     const query = `
       SELECT 
         COUNT(*) as total_calls,
-        COUNT(CASE WHEN status = 'ended' THEN 1 END) as completed_calls,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_calls,
-        COUNT(CASE WHEN status = 'declined' THEN 1 END) as declined_calls,
-        COUNT(DISTINCT lead_id) as unique_leads,
-        COUNT(DISTINCT agent_id) as agents_used
-      FROM ${schema}.voice_call_logs
+        COUNT(CASE WHEN LOWER(vcl.status) IN ('ended', 'completed') THEN 1 END) as completed_calls,
+        COUNT(CASE WHEN LOWER(vcl.status) = 'failed' THEN 1 END) as failed_calls,
+        COUNT(CASE WHEN LOWER(vcl.status) IN ('ongoing', 'in_progress', 'calling') THEN 1 END) as ongoing,
+        COUNT(CASE WHEN LOWER(vcl.status) IN ('queue', 'queued', 'pending') THEN 1 END) as queue,
+        COUNT(CASE 
+          WHEN LOWER(vca.raw_analysis->'lead_score_full'->>'lead_category') LIKE '%hot%' 
+          THEN 1 
+        END) as hot_leads,
+        COUNT(CASE 
+          WHEN LOWER(vca.raw_analysis->'lead_score_full'->>'lead_category') LIKE '%warm%' 
+          THEN 1 
+        END) as warm_leads,
+        COUNT(CASE 
+          WHEN LOWER(vca.raw_analysis->'lead_score_full'->>'lead_category') LIKE '%cold%' 
+          THEN 1 
+        END) as cold_leads
+      FROM ${schema}.voice_call_logs vcl
+      LEFT JOIN ${schema}.voice_call_analysis vca ON vca.call_log_id = vcl.id
       WHERE ${whereClauses.join(' AND ')}
     `;
 
     const result = await this.pool.query(query, values);
-    return result.rows[0];
+    const stats = result.rows[0];
+    
+    // Convert string numbers to integers
+    return {
+      total_calls: parseInt(stats.total_calls, 10) || 0,
+      completed_calls: parseInt(stats.completed_calls, 10) || 0,
+      failed_calls: parseInt(stats.failed_calls, 10) || 0,
+      ongoing: parseInt(stats.ongoing, 10) || 0,
+      queue: parseInt(stats.queue, 10) || 0,
+      hot_leads: parseInt(stats.hot_leads, 10) || 0,
+      warm_leads: parseInt(stats.warm_leads, 10) || 0,
+      cold_leads: parseInt(stats.cold_leads, 10) || 0
+    };
   }
 }
 

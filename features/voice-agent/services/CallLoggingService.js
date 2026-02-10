@@ -198,9 +198,11 @@ class CallLoggingService {
     return this.callModel.getCallLogs(schema, tenantId, filters, 50);
   }
 
-  async getCallLogs(tenantId, filters = {}, limit = 50) {
+  async getCallLogs(tenantId, filters = {}, limit = 50, offset = 0) {
     const schema = getSchema({ user: { tenant_id: tenantId } });
-    return this.callModel.getCallLogs(schema, tenantId, filters, limit);
+    const calls = await this.callModel.getCallLogs(schema, tenantId, filters, limit, offset);
+    const total = await this.callModel.getCallLogsCount(schema, tenantId, filters);
+    return { calls, total };
   }
 
   /**
