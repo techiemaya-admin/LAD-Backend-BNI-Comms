@@ -52,29 +52,15 @@ function getAuthHeaders(authToken, tenantId = null) {
  */
 async function searchEmployeesFromDatabase(searchParams, page, offsetInPage, dailyLimit, authToken = null, tenantId = null) {
   try {
-    const headers = getAuthHeaders(authToken, tenantId);
-    const backendUrl = getBackendUrl();
-    const fullUrl = `${backendUrl}/api/apollo-leads/search-employees-from-db`;
-    
-    // Log request details for debugging
-    console.log('[LeadSearchService] Making database search request', {
-      url: fullUrl,
-      hasAuthToken: !!authToken,
-      hasTenantId: !!tenantId,
-      tenantId: tenantId,
-      headers: Object.keys(headers),
-      hasXTenantId: !!headers['x-tenant-id']
-    });
-    
     const dbResponse = await axios.post(
-      fullUrl,
+      `${getBackendUrl()}/api/apollo-leads/search-employees-from-db`,
       {
         ...searchParams,
         page: page,
         per_page: 100
       },
       {
-        headers: headers,
+        headers: getAuthHeaders(authToken, tenantId),
         timeout: 120000 // 2 minutes for Apollo API + cache save operations
       }
     );
