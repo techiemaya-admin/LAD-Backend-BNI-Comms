@@ -34,12 +34,12 @@ router.post('/google/start', authenticateToken, async (req, res) => {
 
     logger.info('[Calendar] Starting Google OAuth flow', { userId });
 
-    // Build redirect URI for OAuth callback
-    // Use window.location.origin compatible logic
-    // Frontend handles the callback page. Usually it's /settings or /login
-    // Based on user report, they are landing on /login with params
-    // Let's set it to /settings explicitly if that's where we want them back
-    const redirectUri = `${FRONTEND_URL}/settings`;
+    // Determine frontend URL from request origin to ensure cookies are preserved
+    // (Avoids domain mismatch between dev.mrlads.com and run.app)
+    const requestOrigin = req.get('origin') || FRONTEND_URL;
+    // Strip trailing slash if present
+    const baseUrl = requestOrigin.replace(/\/$/, '');
+    const redirectUri = `${baseUrl}/settings`;
 
     // Call VOAG service to initiate OAuth
     const voagResponse = await axios.post(
@@ -177,12 +177,10 @@ router.post('/microsoft/start', authenticateToken, async (req, res) => {
 
     logger.info('[Calendar] Starting Microsoft OAuth flow', { userId });
 
-    // Build redirect URI for OAuth callback
-    // Use window.location.origin compatible logic
-    // Frontend handles the callback page. Usually it's /settings or /login
-    // Based on user report, they are landing on /login with params
-    // Let's set it to /settings explicitly if that's where we want them back
-    const redirectUri = `${FRONTEND_URL}/settings`;
+    // Determine frontend URL from request origin to ensure cookies are preserved
+    const requestOrigin = req.get('origin') || FRONTEND_URL;
+    const baseUrl = requestOrigin.replace(/\/$/, '');
+    const redirectUri = `${baseUrl}/settings`;
 
     // Call VOAG service to initiate OAuth
     const voagResponse = await axios.post(
