@@ -321,8 +321,13 @@ router.get('/me', async (req, res) => {
     const capabilities = capabilitiesResult.rows.map(r => r.capability_key);
     
     // Get tenant features for primary tenant (active tenant)
+    // Check both tenant_features and feature_flags tables for compatibility
     const tenantFeaturesResult = await query(`
-      SELECT feature_key
+      SELECT DISTINCT feature_key
+      FROM feature_flags
+      WHERE tenant_id = $1 AND is_enabled = true
+      UNION
+      SELECT DISTINCT feature_key
       FROM tenant_features
       WHERE tenant_id = $1 AND enabled = true
     `, [user.primary_tenant_id]);
