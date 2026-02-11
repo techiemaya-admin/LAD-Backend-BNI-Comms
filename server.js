@@ -36,32 +36,6 @@ async function startServer() {
     const app = new CoreApplication();
     await app.start(PORT);
     
-    // Start booking notification listener for Cloud Task scheduling
-    // This is CRITICAL - if it fails, the automatic system won't work
-    logger.info('Starting booking notification listener...');
-    const listener = getListener();
-    await listener.start();
-    
-    // Verify listener is actually working
-    if (!listener.isListening) {
-      throw new Error('Booking notification listener failed to start - automatic Cloud Task creation disabled');
-    }
-    
-    logger.info('✅ Booking notification listener started successfully');
-    
-    // Start call logs notification listener for real-time updates
-    logger.info('Starting call logs notification listener...');
-    const callLogsListener = getCallLogsListener();
-    await callLogsListener.start();
-    
-    // Verify call logs listener is working
-    if (!callLogsListener.isListening) {
-      throw new Error('Call logs notification listener failed to start - real-time updates disabled');
-    }
-    
-    logger.info('✅ Call logs notification listener started successfully');
-    logger.info('✅ Automatic Cloud Task creation system is ACTIVE');
-    
     logger.info('Server successfully started', {
       port: PORT,
       url: process.env.BACKEND_URL || process.env.BASE_URL || `http://localhost:${PORT}`,
@@ -73,6 +47,31 @@ async function startServer() {
         'GET /api/billing/plans',
         'GET /api/apollo-leads/* (with feature flag)'
       ]
+    });
+    
+    // Start booking notification listener for Cloud Task scheduling (non-blocking)
+    logger.info('Starting booking notification listener (background task)...');
+    const listener = getListener();
+    listener.start().then(() => {
+      logger.info('✅ Booking notification listener started successfully');
+    }).catch(error => {
+      logger.warn('⚠️  Booking notification listener failed to start', {
+        error: error.message,
+        note: 'Automatic Cloud Task creation may be temporarily disabled'
+      });
+    });
+    
+    // Start call logs notification listener for real-time updates (non-blocking)
+    logger.info('Starting call logs notification listener (background task)...');
+    const callLogsListener = getCallLogsListener();
+    callLogsListener.start().then(() => {
+      logger.info('✅ Call logs notification listener started successfully');
+      logger.info('✅ Automatic Cloud Task creation system is ACTIVE');
+    }).catch(error => {
+      logger.warn('⚠️  Call logs notification listener failed to start', {
+        error: error.message,
+        note: 'Real-time call log updates may be temporarily disabled'
+      });
     });
     
   } catch (error) {
