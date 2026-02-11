@@ -60,7 +60,7 @@ steps:
         CORS_ORIGINS: "$_CORS_ORIGINS"
         FRONTEND_URL: "$_FRONTEND_URL"
         BACKEND_URL: "$_BACKEND_URL"
-        BASE_URL: "https://voag.techiemaya.com"
+        BASE_URL: "https://voagstg.techiemaya.com"
         BASE_URL_FRONTEND_HEADER: "$_FRONTEND_HEADER"
         BASE_URL_FRONTEND_APIKEY: "$_FRONTEND_APIKEY"
         DEFAULT_TENANT_ID: "00000000-0000-0000-0000-000000000001"

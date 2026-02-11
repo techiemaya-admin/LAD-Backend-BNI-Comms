@@ -12,6 +12,7 @@ const {
   validateStudentUpdate, 
   validateCounsellorAssignment 
 } = require('../validators/student.validator');
+const { requireStudentsFeature } = require('../middleware/educationTenantCheck');
 
 // Try to get auth middleware (core or shared)
 let authenticate, requireCapability;
@@ -37,8 +38,9 @@ try {
   }
 }
 
-// All routes require authentication
+// All routes require authentication and education-students feature flag
 router.use(authenticate);
+router.use(requireStudentsFeature);
 
 /**
  * GET /students
