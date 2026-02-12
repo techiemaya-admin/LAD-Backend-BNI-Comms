@@ -18,7 +18,12 @@ const logger = require('../../../core/utils/logger');
 exports.getBoard = async (req, res) => {
   try {
     const { tenant_id, schema } = getTenantContext(req);
-    const board = await pipelineService.getBoard(tenant_id, schema);
+    
+    // Pagination parameters from query
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    
+    const board = await pipelineService.getBoard(tenant_id, schema, { page, limit });
     res.json(board);
   } catch (error) {
     logger.error('Error getting pipeline board', error, { path: req.path });
@@ -88,5 +93,26 @@ exports.updateLeadStatus = async (req, res) => {
     }
     
     res.status(500).json({ error: 'Failed to update lead status', details: error.message });
+  }
+};
+
+/**
+ * Get pipeline statistics
+ * GET /api/deals-pipeline/pipeline/stats
+ */
+exports.getStats = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    
+    const stats = await pipelineService.getStats(tenant_id, schema);
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting pipeline stats', error, { path: req.path });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch pipeline stats', details: error.message });
   }
 };

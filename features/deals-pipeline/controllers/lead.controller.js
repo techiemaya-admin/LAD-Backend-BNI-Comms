@@ -18,9 +18,15 @@ const logger = require('../../../core/utils/logger');
 exports.list = async (req, res) => {
   try {
     const { tenant_id, schema } = getTenantContext(req);
-    const { stage, status, search } = req.query;
-    const leads = await leadService.list(tenant_id, schema, { stage, status, search });
-    res.json(leads);
+    const { stage, status, search, page, limit } = req.query;
+    
+    const pagination = {
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 50
+    };
+
+    const result = await leadService.list(tenant_id, schema, { stage, status, search }, pagination);
+    res.json(result);
   } catch (error) {
     logger.error('Error listing leads', error, { path: req.path });
     

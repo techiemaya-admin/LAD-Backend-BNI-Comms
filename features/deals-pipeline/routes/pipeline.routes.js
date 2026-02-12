@@ -11,6 +11,9 @@ const pipelineController = require('../controllers/pipeline.controller');
 // GET /api/deals-pipeline/pipeline/board
 router.get('/board', jwtAuth, pipelineController.getBoard);
 
+// GET /api/deals-pipeline/pipeline/stats
+router.get('/stats', jwtAuth, pipelineController.getStats);
+
 // PUT /api/deals-pipeline/pipeline/leads/:id/stage
 router.put('/leads/:id/stage', jwtAuth, pipelineController.moveLeadToStage);
 

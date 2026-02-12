@@ -12,38 +12,73 @@ const mapFieldsToDB = leadDTO.toDatabase;
 const mapFieldsFromDB = leadDTO.fromDatabase;
 
 // Get all leads
-async function getAllLeads(tenant_id, schema = DEFAULT_SCHEMA, filters = {}) {
+async function getAllLeads(tenant_id, schema = DEFAULT_SCHEMA, filters = {}, pagination = {}) {
   if (!tenant_id) {
     throw new Error('tenant_id is required for getAllLeads');
   }
 
-  let sql = `
-    SELECT l.*
-    FROM ${schema}.leads l
-    WHERE l.tenant_id = $1 AND l.is_deleted = FALSE
-  `;
+  const { page = 1, limit = 0 } = pagination;
+
+  // Base conditions
+  let whereClause = `WHERE l.tenant_id = $1 AND l.is_deleted = FALSE`;
   let params = [tenant_id];
   let paramIndex = 2;
 
   // Add filters
   if (filters.stage) {
-    sql += ` AND l.stage = $${paramIndex}`;
+    whereClause += ` AND l.stage = $${paramIndex}`;
     params.push(filters.stage);
     paramIndex++;
   }
   if (filters.status) {
-    sql += ` AND l.status = $${paramIndex}`;
+    whereClause += ` AND l.status = $${paramIndex}`;
     params.push(filters.status);
     paramIndex++;
   }
+  if (filters.search) {
+    whereClause += ` AND (l.first_name ILIKE $${paramIndex} OR l.last_name ILIKE $${paramIndex} OR l.email ILIKE $${paramIndex} OR l.company_name ILIKE $${paramIndex})`;
+    params.push(`%${filters.search}%`);
+    paramIndex++;
+  }
 
-  sql += ' ORDER BY l.created_at DESC';
+  // Get total count first (Fast index scan)
+  let countSql = `SELECT COUNT(*) FROM ${schema}.leads l ${whereClause}`;
+  const countResult = await query(countSql, params);
+  const total = parseInt(countResult.rows[0].count);
+
+  // Get data (Fast index order + limit)
+  let dataSql = `
+    SELECT l.*
+    FROM ${schema}.leads l
+    ${whereClause}
+    ORDER BY l.created_at DESC
+  `;
+
+  if (limit > 0) {
+    const offset = (page - 1) * limit;
+    dataSql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, offset);
+  }
   
-  const result = await query(sql, params);
-  return result.rows.map(lead => ({
+  const result = await query(dataSql, params);
+  const leads = result.rows.map(lead => ({
     ...mapFieldsFromDB(lead),
-    tags: lead.tags || [] // Use existing tags from DB
+    tags: lead.tags || [] 
   }));
+
+  if (limit > 0) {
+    return {
+      leads,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  return leads;
 }
 
 // Get lead by ID
@@ -213,11 +248,70 @@ async function getLeadConversionStats(tenant_id, schema = DEFAULT_SCHEMA) {
   return result.rows;
 }
 
+// Get pipeline statistics
+async function getPipelineStats(tenant_id, schema = DEFAULT_SCHEMA) {
+  if (!tenant_id) {
+    throw new Error('tenant_id is required for getPipelineStats');
+  }
+
+  // Query 1: Total leads
+  const totalLeadsSql = `
+    SELECT COUNT(*) as total
+    FROM ${schema}.leads
+    WHERE tenant_id = $1 AND is_deleted = FALSE
+  `;
+
+  // Query 2: Connections sent (LinkedIn connect/message sent status)
+  const connectionsSentSql = `
+    SELECT COUNT(DISTINCT cla.campaign_lead_id) as total
+    FROM ${schema}.campaign_lead_activities cla
+    WHERE cla.tenant_id = $1 
+      AND (cla.step_type = 'linkedin_connect' OR cla.step_type = 'linkedin_message')
+      AND cla.status IN ('sent', 'delivered', 'connected')
+  `;
+
+  // Query 3: Messages sent (all channels)
+  const messagesSentSql = `
+    SELECT COUNT(DISTINCT cla.campaign_lead_id) as total
+    FROM ${schema}.campaign_lead_activities cla
+    WHERE cla.tenant_id = $1 
+      AND cla.action_type = 'message'
+      AND cla.status = 'sent'
+  `;
+
+  // Query 4: Successful interactions (replied or connected)
+  const successSql = `
+    SELECT COUNT(DISTINCT cla.campaign_lead_id) as total
+    FROM ${schema}.campaign_lead_activities cla
+    WHERE cla.tenant_id = $1 
+      AND cla.status IN ('replied', 'connected', 'delivered')
+  `;
+
+  // Execute all queries in parallel
+  const [totalLeads, connectionsSent, messagesSent, success] = await Promise.all([
+    query(totalLeadsSql, [tenant_id]),
+    query(connectionsSentSql, [tenant_id]),
+    query(messagesSentSql, [tenant_id]),
+    query(successSql, [tenant_id])
+  ]);
+
+  return {
+    totalLeads: parseInt(totalLeads.rows[0]?.total || 0),
+    connectionsSent: parseInt(connectionsSent.rows[0]?.total || 0),
+    messagesSent: parseInt(messagesSent.rows[0]?.total || 0),
+    successfulInteractions: parseInt(success.rows[0]?.total || 0),
+    successRate: totalLeads.rows[0]?.total > 0 
+      ? ((parseInt(success.rows[0]?.total || 0) / parseInt(totalLeads.rows[0].total)) * 100).toFixed(2)
+      : 0
+  };
+}
+
 module.exports = {
   getAllLeads,
   getLeadById,
   createLead,
   updateLead,
   deleteLead,
-  getLeadConversionStats
+  getLeadConversionStats,
+  getPipelineStats
 };
