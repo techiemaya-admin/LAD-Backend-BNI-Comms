@@ -209,6 +209,26 @@ router.post(
 );
 
 /**
+ * GET /calls/:id/recording-signed-url
+ * Get signed URL for call recording
+ */
+router.get(
+  '/calls/:id/recording-signed-url',
+  tenantMiddleware,
+  (req, res) => callController.getCallRecordingSignedUrl(req, res)
+);
+
+/**
+ * GET /calls/recent
+ * Get recent calls with filters
+ */
+router.get(
+  '/calls/recent',
+  tenantMiddleware,
+  (req, res) => callController.getRecentCalls(req, res)
+);
+
+/**
  * GET /calls/stats
  * Get call statistics
  */
