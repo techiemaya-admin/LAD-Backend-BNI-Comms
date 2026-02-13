@@ -41,6 +41,7 @@ module.exports = {
     
     // Pipeline
     '/pipeline/board',
+    '/pipeline/stats',
     '/pipeline/leads/:id/stage',
     '/pipeline/leads/:id/status',
     

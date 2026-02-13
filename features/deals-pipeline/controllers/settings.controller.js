@@ -21,7 +21,7 @@ exports.getSettings = async (req, res) => {
     // TODO: Implement database storage for pipeline preferences
     // For now, return default settings in the format expected by frontend
     const defaultSettings = {
-      viewMode: 'kanban',
+      viewMode: 'list',
       visibleColumns: {
         name: true,
         email: true,
