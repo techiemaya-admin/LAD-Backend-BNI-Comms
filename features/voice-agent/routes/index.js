@@ -209,6 +209,20 @@ router.post(
 );
 
 /**
+ * GET /calls/:id
+ * Get a single call log by ID
+ */
+router.get(
+  '/calls/:id',
+  jwtAuth,
+  (req, res) => {
+    // Map :id param to :call_log_id for the controller
+    req.params.call_log_id = req.params.id;
+    return callController.getCallLogById(req, res);
+  }
+);
+
+/**
  * GET /calllogs
  * Get call logs (for testing / general listing)
  */
