@@ -132,22 +132,17 @@ class VAPIWebhookController {
       }
 
       // Calculate cost based on duration
-      // Voice calls charge per minute (rounded up)
+      // Voice calls charge 3 credits per minute (rounded up)
       const durationMinutes = Math.ceil(duration / 60);
-      const costPerMinute = parseFloat(process.env.VOICE_COST_PER_MINUTE || '0.05'); // $0.05 per minute default
-      const totalCost = durationMinutes * costPerMinute;
-
-      // Convert cost to credits (assuming $0.01 = 1 credit)
-      const creditsPerDollar = 100;
-      const creditsToDeduct = Math.ceil(totalCost * creditsPerDollar);
+      const creditsPerMinute = parseInt(process.env.VOICE_CREDITS_PER_MINUTE || '3', 10);
+      const creditsToDeduct = durationMinutes * creditsPerMinute;
 
       logger.info('[VAPI Webhook] Calculated call cost', {
         callId: callLog.id,
         duration: `${duration}s`,
         durationMinutes,
-        costPerMinute,
-        totalCost: `$${totalCost.toFixed(4)}`,
-        creditsToDeduct
+        creditsPerMinute,
+        totalCredits: creditsToDeduct
       });
 
       const schema = getSchema({ user: { tenant_id: callLog.tenant_id } });
@@ -167,14 +162,13 @@ class VAPIWebhookController {
         [
           status,
           duration,
-          totalCost,
+          creditsToDeduct,
           recordingUrl,
           JSON.stringify({
             duration_seconds: duration,
             duration_minutes: durationMinutes,
-            cost_per_minute: costPerMinute,
-            total_cost: totalCost,
-            credits_deducted: creditsToDeduct,
+            credits_per_minute: creditsPerMinute,
+            total_credits_deducted: creditsToDeduct,
             calculation_time: new Date().toISOString()
           }),
           callLog.id,
@@ -191,7 +185,8 @@ class VAPIWebhookController {
           {
             duration,
             durationMinutes,
-            cost: totalCost,
+            creditsPerMinute,
+            creditsDeducted: creditsToDeduct,
             vapiCallId
           }
         );
