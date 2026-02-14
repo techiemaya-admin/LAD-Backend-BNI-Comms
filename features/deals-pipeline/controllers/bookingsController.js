@@ -81,13 +81,27 @@ class BookingsController {
         });
       }
 
-      // Resolve schema from tenant
+      // Validate tenant_id format (UUID)
+      if (!isValidUUID(tenantId)) {
+        logger.error('[BookingsController] Invalid tenant_id format:', {
+          tenantId,
+          bookingId
+        });
+        
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid tenant_id format (must be UUID)'
+        });
+      }
+
+      // Resolve schema from tenant (LAD architecture)
       const schema = getSchema({ user: { tenant_id: tenantId } });
 
       logger.info('Executing follow-up call from Cloud Task:', {
         tenantId,
         bookingId,
         leadId,
+        schema,
         idempotencyKey
       });
 

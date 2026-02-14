@@ -100,14 +100,21 @@ class BookingsRepository {
   /**
    * Lock booking for execution (SELECT FOR UPDATE)
    * Used to prevent concurrent execution
+   * Enforces tenant isolation for multi-tenancy
    * 
    * @param {string} schema - Schema name
    * @param {string} bookingId - Booking ID
    * @param {string} tenantId - Tenant ID for isolation
    * @param {Object} client - Database client for transaction
    * @returns {Promise<Object|null>} Locked booking or null
+   * @throws {Error} If tenant mismatch or booking not found
    */
   async lockBookingForExecution(schema, bookingId, tenantId, client = null) {
+    // Validate inputs
+    if (!schema || !bookingId || !tenantId) {
+      throw new Error(`Missing parameters: schema=${schema}, bookingId=${bookingId}, tenantId=${tenantId}`);
+    }
+
     const query = `
       SELECT 
         id,
@@ -128,7 +135,16 @@ class BookingsRepository {
 
     const db = client || this.pool;
     const result = await db.query(query, [bookingId, tenantId]);
-    return result.rows[0] || null;
+    
+    if (!result.rows[0]) {
+      // Provide diagnostic error message for debugging tenant mismatches
+      throw new Error(
+        `Booking not found or tenant mismatch: ` +
+        `bookingId=${bookingId}, tenantId=${tenantId}, schema=${schema}`
+      );
+    }
+    
+    return result.rows[0];
   }
 
   /**

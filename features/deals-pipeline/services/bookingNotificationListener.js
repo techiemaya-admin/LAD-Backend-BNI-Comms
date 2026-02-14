@@ -70,36 +70,55 @@ class BookingNotificationListener {
     try {
       const booking = JSON.parse(payload);
       
+      // Validate tenant_id from booking
+      if (!booking.tenant_id) {
+        logger.error('[BookingListener] Booking notification missing tenant_id:', {
+          bookingId: booking.booking_id,
+          payload
+        });
+        return;
+      }
+
       logger.info('[BookingListener] Received booking notification:', {
         bookingId: booking.booking_id,
         bookingType: booking.booking_type,
         tenantId: booking.tenant_id
       });
 
-      // Resolve schema from tenant
-      const schema = process.env.POSTGRES_SCHEMA || 'lad_dev';
+      // Derive schema from tenant_id (LAD architecture compliant)
+      // Schema should be in format: tenant_{tenant_id} or just {tenant_id}
+      const tenantId = booking.tenant_id;
+      const schema = `tenant_${tenantId}`;
 
-      // Schedule the Cloud Task
+      logger.info('[BookingListener] Resolved schema:', {
+        tenantId,
+        schema,
+        bookingId: booking.booking_id
+      });
+
+      // Schedule the Cloud Task with CORRECT tenant context
       const scheduleResult = await this.scheduler.scheduleFollowUpCall({
-        tenantId: booking.tenant_id,
+        tenantId: tenantId,  // Use tenant_id from booking (not from request)
         bookingId: booking.booking_id,
         leadId: booking.lead_id,
         assignedUserId: booking.assigned_user_id,
         scheduledAt: booking.scheduled_at,
         timezone: booking.timezone,
         bookingType: booking.booking_type,
-        schema: schema
+        schema: schema  // Use derived schema
       });
 
       if (scheduleResult.success && scheduleResult.scheduled) {
         logger.info('[BookingListener] Successfully scheduled Cloud Task:', {
           bookingId: booking.booking_id,
+          tenantId: tenantId,  // Log tenant to verify it's correct
           taskName: scheduleResult.taskName,
           scheduleTime: scheduleResult.scheduleTime
         });
       } else {
         logger.warn('[BookingListener] Cloud Task not scheduled:', {
           bookingId: booking.booking_id,
+          tenantId: tenantId,
           reason: scheduleResult.reason || scheduleResult.error
         });
       }

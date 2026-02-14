@@ -66,6 +66,29 @@ class FollowUpSchedulerService {
       throw new Error('tenantId, bookingId, leadId, and scheduledAt are required');
     }
 
+    // Validate schema matches tenant (LAD multi-tenancy enforcement)
+    if (schema && !schema.includes(tenantId)) {
+      logger.warn('[FollowUpScheduler] Schema does not match tenant - using derived schema:', {
+        tenantId,
+        providedSchema: schema
+      });
+      // Override with correct schema
+      schema = `tenant_${tenantId}`;
+    }
+
+    // Double-check schema is provided
+    if (!schema) {
+      schema = `tenant_${tenantId}`;
+      logger.info('[FollowUpScheduler] Schema derived from tenantId:', { tenantId, schema });
+    }
+
+    logger.info('[FollowUpScheduler] Starting follow-up call schedule:', {
+      tenantId,
+      bookingId,
+      schema,
+      scheduledAt
+    });
+
     // Check if this booking type qualifies for follow-up calls
     if (!this.shouldScheduleFollowUp(bookingType)) {
       logger.info('Booking type does not require follow-up call:', {

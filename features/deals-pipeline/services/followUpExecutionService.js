@@ -85,7 +85,14 @@ class FollowUpExecutionService {
 
       if (!booking) {
         await client.query('ROLLBACK');
-        throw new Error('Booking not found or tenant mismatch');
+        const errorMsg = `Booking not found or tenant mismatch: bookingId=${bookingId}, tenantId=${tenantId}`;
+        logger.error('[FollowUpExecution] Booking lookup failed:', {
+          tenantId,
+          bookingId,
+          schema,
+          error: errorMsg
+        });
+        throw new Error(errorMsg);
       }
 
       // IDEMPOTENCY CHECK: If already executed, return success
