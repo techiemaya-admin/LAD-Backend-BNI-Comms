@@ -17,6 +17,8 @@ const VAPIWebhookController = require('../controllers/VAPIWebhookController');
 const { pool } = require('../../../shared/database/connection');
 const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
 const { requireCredits } = require('../../../shared/middleware/credit_guard');
+const { requireFeature } = require('../../../shared/middleware/feature_guard');
+const { validateVoiceCallPrerequisites } = require('../middleware/voiceCallValidation');
 
 // Initialize controllers with shared database pool
 const voiceAgentController = new VoiceAgentController(pool);
@@ -239,6 +241,17 @@ router.get(
 );
 
 /**
+ * POST /calls/update-credits
+ * Recalculate and update credits for completed calls
+ * Used for credit reconciliation
+ */
+router.post(
+  '/calls/update-credits',
+  jwtAuth,
+  (req, res) => callController.updateCallCredits(req, res)
+);
+
+/**
  * GET /calls/:id
  * Get a single call log by ID
  */
@@ -324,12 +337,21 @@ router.post(
 /**
  * POST /calls/start-call (V2)
  * Initiate a single voice call - V2 endpoint with UUID support
- * Requires 1 credit for call initiation (additional credits charged based on duration)
+ * 
+ * MIDDLEWARE PIPELINE (LAD Architecture Compliant):
+ * 1. jwtAuth - Authenticate user & extract tenantId/userId from JWT
+ * 2. requireFeature - Verify tenant has 'voice-agent' feature enabled
+ * 3. validateVoiceCallPrerequisites - Check business hours, credits (3 min), rate limits
+ * 4. callInitiationController.initiateCallV2 - Execute call
+ * 
+ * NOTE: requireCredits removed as credit check happens in validateVoiceCallPrerequisites
+ * (Credits deducted after call completion based on actual duration)
  */
 router.post(
   '/calls/start-call',
   jwtAuth,
-  requireCredits('voice_call', 1),
+  requireFeature('voice-agent'),
+  validateVoiceCallPrerequisites,
   (req, res) => callInitiationController.initiateCallV2(req, res)
 );
 

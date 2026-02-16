@@ -5,6 +5,7 @@
  * Handles call initiation, assistant configuration, and dynamic greetings
  * 
  * VAPI API: https://api.vapi.ai/call
+ * Need to deprecate old VAPIService and refactor to this new class with better structure and error handling
  */
 
 const axios = require('axios');

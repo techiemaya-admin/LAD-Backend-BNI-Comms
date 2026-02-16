@@ -504,6 +504,79 @@ class VoiceCallModel {
       cold_leads: parseInt(stats.cold_leads, 10) || 0
     };
   }
+
+  /**
+   * Get completed/ended calls for credit reconciliation
+   * Tenant-isolated query
+   * 
+   * @param {string} schema - Schema name
+   * @param {string} tenantId - Tenant ID for isolation
+   * @returns {Promise<Array>} Array of call logs with id, duration_seconds, credits_charged, metadata, lead_id
+   */
+  async getCompletedCallsForTenant(schema, tenantId) {
+    const query = `
+      SELECT 
+        id,
+        duration_seconds,
+        credits_charged,
+        metadata,
+        lead_id,
+        status,
+        started_at,
+        ended_at
+      FROM ${schema}.voice_call_logs
+      WHERE tenant_id = $1 
+        AND LOWER(status) IN ('ended', 'completed')
+        AND duration_seconds IS NOT NULL
+        AND duration_seconds > 0
+      ORDER BY ended_at DESC
+    `;
+
+    const result = await this.pool.query(query, [tenantId]);
+    return result.rows;
+  }
+
+  /**
+   * Update credits charged for a specific call
+   * Tenant-isolated update
+   * 
+   * @param {string} schema - Schema name
+   * @param {string} callId - Call log ID
+   * @param {string} tenantId - Tenant ID for isolation
+   * @param {number} newCredits - New credits amount
+   * @param {Object} metadataUpdate - Optional metadata updates
+   * @returns {Promise<Object>} Updated call log
+   */
+  async updateCallCredits(schema, callId, tenantId, newCredits, metadataUpdate = null) {
+    let query;
+    let values;
+
+    if (metadataUpdate) {
+      query = `
+        UPDATE ${schema}.voice_call_logs
+        SET 
+          credits_charged = $1,
+          metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+          updated_at = NOW()
+        WHERE id = $3 AND tenant_id = $4
+        RETURNING id, duration_seconds, credits_charged, metadata
+      `;
+      values = [newCredits, JSON.stringify(metadataUpdate), callId, tenantId];
+    } else {
+      query = `
+        UPDATE ${schema}.voice_call_logs
+        SET 
+          credits_charged = $1,
+          updated_at = NOW()
+        WHERE id = $2 AND tenant_id = $3
+        RETURNING id, duration_seconds, credits_charged, metadata
+      `;
+      values = [newCredits, callId, tenantId];
+    }
+
+    const result = await this.pool.query(query, values);
+    return result.rows[0];
+  }
 }
 
 module.exports = VoiceCallModel;

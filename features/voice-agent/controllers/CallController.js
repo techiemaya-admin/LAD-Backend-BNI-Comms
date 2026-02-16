@@ -8,6 +8,8 @@ require('dotenv')
 const axios = require('axios');
 const { VoiceCallModel, PhoneResolverModel, VoiceAgentModel } = require('../models');
 const { VAPIService, CallLoggingService, RecordingService } = require('../services');
+const { getSchema } = require('../../../core/utils/schemaHelper');
+const { deductCredits } = require('../../../shared/middleware/credit_guard');
 let logger;
 try {
   logger = require('../../../core/utils/logger');
@@ -489,6 +491,195 @@ class CallController {
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch call log',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Update/Recalculate credits for completed calls
+   * 
+   * This endpoint recalculates credits for all completed/ended calls based on their duration.
+   * Formula: Math.ceil(duration_seconds / 60) * 3 credits per minute
+   * 
+   * Use case: Credit reconciliation after calls complete
+   * 
+   * @route POST /api/voiceagents/calls/update-credits
+   * @access Protected (requires authentication)
+   */
+  async updateCallCredits(req, res) {
+    try {
+      const tenantId = req.user?.tenantId;
+      const schema = getSchema(req);
+
+      if (!tenantId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Tenant context required'
+        });
+      }
+
+      logger.info('[CallController] Starting credit reconciliation', { tenantId, schema });
+
+      // Get all completed calls for this tenant
+      const completedCalls = await this.callModel.getCompletedCallsForTenant(schema, tenantId);
+
+      logger.info('[CallController] Found completed calls', { 
+        tenantId, 
+        count: completedCalls.length 
+      });
+
+      if (completedCalls.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No completed calls found to update',
+          stats: {
+            total_calls_checked: 0,
+            calls_updated: 0,
+            credits_recalculated: 0,
+            discrepancies_found: 0
+          }
+        });
+      }
+
+      // Recalculate credits for each call
+      const CREDITS_PER_MINUTE = 3;
+      const updatedCalls = [];
+      let totalCreditsRecalculated = 0;
+      let totalCreditsAdjusted = 0; // Net adjustment to billing wallet
+      let discrepanciesFound = 0;
+
+      for (const call of completedCalls) {
+        // Calculate correct credits: Math.ceil(duration_seconds / 60) * 3
+        const durationMinutes = Math.ceil(call.duration_seconds / 60);
+        const correctCredits = durationMinutes * CREDITS_PER_MINUTE;
+        const currentCredits = parseFloat(call.credits_charged) || 0;
+
+        // Check if there's a discrepancy
+        if (correctCredits !== currentCredits) {
+          discrepanciesFound++;
+          const creditDifference = correctCredits - currentCredits;
+          
+          logger.info('[CallController] Credit discrepancy found', {
+            call_id: call.id,
+            duration_seconds: call.duration_seconds,
+            current_credits: currentCredits,
+            correct_credits: correctCredits,
+            difference: creditDifference
+          });
+
+          try {
+            // Update the call with correct credits
+            const metadataUpdate = {
+              credit_recalculation: {
+                performed_at: new Date().toISOString(),
+                old_credits: currentCredits,
+                new_credits: correctCredits,
+                duration_seconds: call.duration_seconds,
+                duration_minutes: durationMinutes,
+                difference: creditDifference
+              }
+            };
+
+            await this.callModel.updateCallCredits(
+              schema,
+              call.id,
+              tenantId,
+              correctCredits,
+              metadataUpdate
+            );
+
+            // Use Credit Guard for billing wallet and ledger updates
+            // If creditDifference > 0: we undercharged, need to deduct MORE
+            // If creditDifference < 0: we overcharged, need to REFUND (negative deduction)
+            const usageType = creditDifference > 0 
+              ? 'call_credit_reconciliation_charge'
+              : 'call_credit_reconciliation_refund';
+
+            await deductCredits(
+              tenantId,
+              'voice-agent',
+              usageType,
+              creditDifference, // Positive = debit, Negative = credit
+              null, // No req object for background reconciliation
+              {
+                callId: call.id,
+                leadId: call.lead_id,
+                stepType: 'credit_adjustment',
+                reconciliation: true,
+                old_credits: currentCredits,
+                new_credits: correctCredits,
+                duration_seconds: call.duration_seconds,
+                duration_minutes: durationMinutes
+              }
+            );
+
+            logger.info('[CallController] Billing updated via Credit Guard', {
+              call_id: call.id,
+              tenant_id: tenantId,
+              credit_adjustment: creditDifference,
+              usage_type: usageType
+            });
+
+            updatedCalls.push({
+              call_id: call.id,
+              old_credits: currentCredits,
+              new_credits: correctCredits,
+              duration_seconds: call.duration_seconds,
+              duration_minutes: durationMinutes,
+              credit_adjustment: creditDifference,
+              billing_updated: true
+            });
+
+            totalCreditsRecalculated += correctCredits;
+            totalCreditsAdjusted += creditDifference;
+
+          } catch (updateError) {
+            logger.error('[CallController] Update failed for call', {
+              call_id: call.id,
+              error: updateError.message
+            });
+            // Continue with next call even if one fails
+          }
+        }
+      }
+
+      logger.info('[CallController] Credit reconciliation completed', {
+        tenantId,
+        total_calls_checked: completedCalls.length,
+        calls_updated: updatedCalls.length,
+        credits_recalculated: totalCreditsRecalculated,
+        credits_adjusted: totalCreditsAdjusted,
+        discrepancies_found: discrepanciesFound
+      });
+
+      return res.json({
+        success: true,
+        message: `Successfully recalculated credits for ${updatedCalls.length} calls`,
+        stats: {
+          total_calls_checked: completedCalls.length,
+          calls_updated: updatedCalls.length,
+          credits_recalculated: totalCreditsRecalculated,
+          credits_adjusted: totalCreditsAdjusted,
+          discrepancies_found: discrepanciesFound
+        },
+        billing: {
+          wallet_debits: totalCreditsAdjusted > 0 ? totalCreditsAdjusted : 0,
+          wallet_credits: totalCreditsAdjusted < 0 ? Math.abs(totalCreditsAdjusted) : 0,
+          net_adjustment: totalCreditsAdjusted
+        },
+        updated_calls: updatedCalls.slice(0, 10) // Return first 10 for review
+      });
+
+    } catch (error) {
+      logger.error('[CallController] Update call credits failed', {
+        error: error.message,
+        stack: error.stack
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update call credits',
         message: error.message
       });
     }

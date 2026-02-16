@@ -14,7 +14,15 @@ class TemplateProcessorService {
    * Process template answer
    */
   processTemplateAnswer({ userAnswer, currentIntentKey, collectedAnswers }) {
-    const platformKey = currentIntentKey.replace('_template', '');
+    // Handle LinkedIn connection/followup templates
+    let platformKey = currentIntentKey;
+    if (currentIntentKey.includes('_connection_template')) {
+      platformKey = currentIntentKey.replace('_connection_template', '');
+    } else if (currentIntentKey.includes('_followup_template')) {
+      platformKey = currentIntentKey.replace('_followup_template', '');
+    } else {
+      platformKey = currentIntentKey.replace('_template', '');
+    }
     const normalizedPlatformKey = String(platformKey).toLowerCase();
     const platformHandlerService = require('./platform-handler.service');
     const selectedPlatforms = platformHandlerService.normalizePlatforms(
@@ -38,6 +46,34 @@ class TemplateProcessorService {
       ...collectedAnswers,
       [currentIntentKey]: templateValue,
     };
+    
+    // For LinkedIn, check if we need to ask for the other message
+    if (normalizedPlatformKey === 'linkedin') {
+      const actionsKey = `${normalizedPlatformKey}_actions`;
+      const platformActions = updatedAnswers[actionsKey] || '';
+      const actionsLower = String(platformActions).toLowerCase();
+      const hasConnectionAction = actionsLower.includes('connection') && actionsLower.includes('request');
+      const hasFollowupAction = actionsLower.includes('message') && (actionsLower.includes('after accepted') || actionsLower.includes('send message'));
+      const hasConnectionTemplate = updatedAnswers.linkedin_connection_template !== undefined;
+      const hasFollowupTemplate = updatedAnswers.linkedin_followup_template !== undefined;
+      
+      // If both actions selected but only one template provided, ask for the other
+      if (hasConnectionAction && hasFollowupAction) {
+        if (hasConnectionTemplate && !hasFollowupTemplate) {
+          // Ask for followup message
+          const followupQuestion = templateHandlerService.createTemplateQuestion('linkedin', 'Send message (after accepted)');
+          return {
+            clarificationNeeded: false,
+            message: null,
+            nextStepIndex: 5,
+            nextQuestion: followupQuestion,
+            completed: false,
+            updatedCollectedAnswers: updatedAnswers,
+          };
+        }
+      }
+    }
+    
     // Mark platform as completed
     const completedActions = (updatedAnswers.completed_platform_actions || [])
       .map(p => String(p).toLowerCase());

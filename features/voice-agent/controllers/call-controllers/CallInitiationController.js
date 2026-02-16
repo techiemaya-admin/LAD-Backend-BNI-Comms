@@ -187,6 +187,21 @@ class CallInitiationController {
    * V2: Initiate a single voice call with UUID support
    * POST /calls/start-call
    * Directly uses backend voice calling service (no VAPI)
+   * 
+   * PREREQUISITES (validated by middleware):
+   * 1. ✅ Authentication (JWT token via authenticateToken middleware)
+   * 2. ✅ Feature Access (voice-agent feature via requireFeature middleware)
+   * 3. ✅ Business Hours (configurable hours via validateVoiceCallPrerequisites)
+   * 4. ✅ Credit Availability (minimum 3 credits via validateVoiceCallPrerequisites)
+   * 5. ✅ Rate Limiting (calls per hour/day via validateVoiceCallPrerequisites)
+   * 
+   * USAGE IN ROUTES:
+   * router.post('/calls/start-call',
+   *   authenticateToken,                      // Step 1: Extract tenantId/userId from JWT
+   *   requireFeature('voice-agent'),          // Step 2: Check feature access
+   *   validateVoiceCallPrerequisites,         // Step 3-5: Business hours + Credits + Rate limit
+   *   CallInitiationController.initiateCallV2 // Step 6: Execute call
+   * );
    */
   async initiateCallV2(req, res) {
     try {
