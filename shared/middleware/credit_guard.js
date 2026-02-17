@@ -172,6 +172,17 @@ async function deductCredits(tenantId, featureKey, usageType, credits, req, opti
   const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
   const client = await pool.connect();
   
+  // LAD SECURITY FIX: Validate tenant context matches request
+  const requestTenantId = req?.user?.tenantId || req?.user?.tenant_id || req?.tenant?.id;
+  if (requestTenantId && requestTenantId !== tenantId) {
+    logger.error('[Credit Guard] Tenant mismatch detected', {
+      requestTenant: requestTenantId,
+      targetTenant: tenantId,
+      usageType
+    });
+    throw new Error('Tenant context mismatch: cannot deduct credits for different tenant');
+  }
+  
   // Extract options
   const { campaignId, leadId, stepType } = options;
   

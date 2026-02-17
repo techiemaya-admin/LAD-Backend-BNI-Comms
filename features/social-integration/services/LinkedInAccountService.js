@@ -67,8 +67,22 @@ class LinkedInAccountService {
       throw new Error(`Failed to connect to LinkedIn: ${unipileError.message}`);
     }
 
+    // Log full Unipile response for debugging
+    logger.info('[LinkedInAccountService] Unipile connection response received', {
+      unipileResponseKeys: Object.keys(unipileResult),
+      unipileResponseObject: unipileResult.object,
+      unipileResponseStatus: unipileResult.status,
+      hasCheckpoint: !!unipileResult.checkpoint,
+      responseString: JSON.stringify(unipileResult)
+    });
+    
     // Extract account ID from various possible fields
     const unipileAccountId = unipileResult.account_id || unipileResult.id || unipileResult._id || unipileResult.accountId;
+    
+    logger.info('[LinkedInAccountService] Extracted account ID from Unipile response', {
+      unipileAccountId,
+      source: unipileResult.account_id ? 'account_id' : unipileResult.id ? 'id' : unipileResult._id ? '_id' : 'accountId'
+    });
     
     // Check if checkpoint required (checkpoint response has object === 'Checkpoint')
     if (unipileResult.object === 'Checkpoint' && unipileResult.checkpoint) {
@@ -110,9 +124,15 @@ class LinkedInAccountService {
       
       let savedAccount;
       try {
+        logger.info('[LinkedInAccountService] Saving checkpoint account to database', {
+          accountDataKeys: Object.keys(accountData),
+          accountData: JSON.stringify(accountData)
+        });
         savedAccount = await linkedInAccountRepo.create(req, accountData);
         logger.info('[LinkedInAccountService] Checkpoint account saved successfully', {
           accountId: savedAccount.id,
+          savedAccountKeys: Object.keys(savedAccount),
+          savedAccount: JSON.stringify(savedAccount),
           providerAccountId: unipileAccountId,
           tenantId,
           userId
@@ -365,20 +385,29 @@ class LinkedInAccountService {
       if (account) {
         unipileAccountId = account.provider_account_id;
       }
+    } else {
+      // accountId is not a UUID, so it must be a Unipile account ID
+      // Try direct lookup by provider_account_id (Unipile ID)
+      account = await linkedInAccountRepo.findByProviderAccountId(req, accountId, tenantId);
+      if (account) {
+        unipileAccountId = account.provider_account_id;
+        logger.info('[LinkedInAccountService] Account found by Unipile ID', {
+          databaseId: account.id,
+          unipileAccountId,
+          tenantId
+        });
+      } else {
+        // If still not found, use accountId as unipile_account_id directly
+        // This allows Unipile verification to proceed even if DB lookup fails
+        unipileAccountId = accountId;
+        logger.warn('[LinkedInAccountService] Account not found by Unipile ID, proceeding with Unipile verification only', {
+          unipileAccountId,
+          tenantId
+        });
+      }
     }
 
-    // If not found by UUID, try to find by unipile_account_id
-    if (!account && !isUUID) {
-      // accountId might be unipile_account_id, try to find account by provider_account_id
-      const accounts = await linkedInAccountRepo.findByUser(req, req.user?.userId || req.user?.id, tenantId);
-      account = accounts.find(acc => acc.provider_account_id === accountId || acc.unipile_account_id === accountId);
-      if (account) {
-        unipileAccountId = account.provider_account_id || account.unipile_account_id || accountId;
-      } else {
-        // Use accountId as unipile_account_id directly
-        unipileAccountId = accountId;
-      }
-    } else if (!account && isUUID) {
+    if (!account && isUUID) {
       throw new Error('Account not found');
     }
 
@@ -388,17 +417,87 @@ class LinkedInAccountService {
 
     // Call Unipile to verify OTP
     try {
-      await this._verifyOTPToUnipile(unipileAccountId, otp);
+      const otpVerifyResponse = await this._verifyOTPToUnipile(unipileAccountId, otp);
+      
+      logger.info('[LinkedInAccountService] OTP verified in Unipile - Response from Unipile', {
+        responseKeys: otpVerifyResponse ? Object.keys(otpVerifyResponse) : [],
+        responseStatus: otpVerifyResponse?.status,
+        responseObject: otpVerifyResponse?.object,
+        responseString: JSON.stringify(otpVerifyResponse)
+      });
+      
+      logger.info('[LinkedInAccountService] OTP verified in Unipile', {
+        accountId,
+        unipileAccountId,
+        accountFound: !!account,
+        accountDatabaseId: account?.id,
+        tenantId
+      });
       
       // Update account status to active if we found the account in our database
       if (account) {
-        await linkedInAccountRepo.updateStatus(req, account.id, tenantId, 'active');
+        logger.info('[LinkedInAccountService] Updating account status to active', {
+          databaseId: account.id,
+          tenantId,
+          currentStatus: account.status
+        });
+        
+        const updatedAccount = await linkedInAccountRepo.updateStatus(req, account.id, tenantId, 'active');
+        
+        logger.info('[LinkedInAccountService] Account status updated successfully', {
+          databaseId: account.id,
+          newStatus: updatedAccount?.status,
+          tenantId
+        });
+        
+        // Also try to update account with any additional data from Unipile response
+        // (e.g., new tokens, session data, etc.)
+        if (otpVerifyResponse && (otpVerifyResponse.session_cookies || otpVerifyResponse.access_token || otpVerifyResponse.refresh_token)) {
+          logger.info('[LinkedInAccountService] Updating account with Unipile response data after OTP', {
+            hasSessionCookies: !!otpVerifyResponse.session_cookies,
+            hasAccessToken: !!otpVerifyResponse.access_token,
+            hasRefreshToken: !!otpVerifyResponse.refresh_token,
+            databaseId: account.id
+          });
+          try {
+            const enrichedAccount = await linkedInAccountRepo.updateWithUnipileResponse(
+              req,
+              account.id,
+              tenantId,
+              {
+                session_cookies: otpVerifyResponse.session_cookies,
+                access_token: otpVerifyResponse.access_token,
+                refresh_token: otpVerifyResponse.refresh_token,
+                token_expires_at: otpVerifyResponse.token_expires_at,
+                status: 'active'
+              }
+            );
+            logger.info('[LinkedInAccountService] Account enriched with Unipile response data', {
+              databaseId: account.id,
+              enrichedAccountKeys: Object.keys(enrichedAccount || {})
+            });
+          } catch (enrichError) {
+            logger.warn('[LinkedInAccountService] Failed to enrich account with Unipile response data', {
+              error: enrichError.message,
+              databaseId: account.id
+            });
+            // Not a fatal error - account status is already updated
+          }
+        }
+      } else {
+        logger.warn('[LinkedInAccountService] Account not found in database for status update', {
+          accountId,
+          unipileAccountId,
+          isUUID,
+          tenantId
+        });
       }
       
       logger.info('[LinkedInAccountService] OTP verified successfully', {
         accountId,
         unipileAccountId,
-        tenantId
+        tenantId,
+        accountUpdated: !!account
       });
       
       return { success: true };
@@ -693,6 +792,12 @@ class LinkedInAccountService {
             account_id: unipileAccountId,
             code: otp
           });
+          logger.info('[LinkedInAccountService] SDK solveCodeCheckpoint returned', {
+            responseKeys: Object.keys(verificationResponse || {}),
+            responseStatus: verificationResponse?.status,
+            responseObject: verificationResponse?.object,
+            responseString: JSON.stringify(verificationResponse)
+          });
           logger.info('[LinkedInAccountService] OTP verified successfully via Unipile SDK');
           return verificationResponse;
         } else {
@@ -771,7 +876,22 @@ class LinkedInAccountService {
       throw new Error('Answer must be YES or NO');
     }
 
-    const account = await linkedInAccountRepo.findById(req, accountId, tenantId);
+    // accountId can be either database UUID or unipile_account_id
+    let account = null;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+    
+    if (isUUID) {
+      // Try to find by database UUID
+      account = await linkedInAccountRepo.findById(req, accountId, tenantId);
+    } else {
+      // Try to find by Unipile account ID
+      account = await linkedInAccountRepo.findByProviderAccountId(req, accountId, tenantId);
+      logger.info('[LinkedInAccountService] Account found by Unipile ID for checkpoint', {
+        databaseId: account?.id,
+        unipileAccountId: accountId,
+        tenantId
+      });
+    }
     
     if (!account) {
       throw new Error('Account not found');
@@ -788,17 +908,84 @@ class LinkedInAccountService {
 
     // Call Unipile to solve checkpoint
     try {
-      await this._solveCheckpointToUnipile(account.provider_account_id, answer, checkpointType);
+      logger.info('[LinkedInAccountService] Solving checkpoint in Unipile', {
+        accountId,
+        providerAccountId: account.provider_account_id,
+        answer,
+        checkpointType
+      });
+      
+      const solveCheckpointResponse = await this._solveCheckpointToUnipile(account.provider_account_id, answer, checkpointType);
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved in Unipile - Response from Unipile', {
+        responseKeys: solveCheckpointResponse ? Object.keys(solveCheckpointResponse) : [],
+        responseStatus: solveCheckpointResponse?.status,
+        responseObject: solveCheckpointResponse?.object,
+        responseString: JSON.stringify(solveCheckpointResponse)
+      });
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved in Unipile', {
+        accountId,
+        providerAccountId: account.provider_account_id
+      });
       
       // Update account status to active
-      await linkedInAccountRepo.updateStatus(req, accountId, tenantId, 'active');
+      logger.info('[LinkedInAccountService] Updating account status to active after checkpoint solve', {
+        databaseId: account.id,
+        tenantId,
+        currentStatus: account.status
+      });
+      
+      const updatedAccount = await linkedInAccountRepo.updateStatus(req, account.id, tenantId, 'active');
+      
+      logger.info('[LinkedInAccountService] Checkpoint account status updated successfully', {
+        databaseId: account.id,
+        newStatus: updatedAccount?.status,
+        tenantId
+      });
+      
+      // Also try to update account with any additional data from Unipile response
+      // (e.g., new tokens, session data, etc.)
+      if (solveCheckpointResponse && (solveCheckpointResponse.session_cookies || solveCheckpointResponse.access_token || solveCheckpointResponse.refresh_token)) {
+        logger.info('[LinkedInAccountService] Updating account with Unipile response data after checkpoint solve', {
+          hasSessionCookies: !!solveCheckpointResponse.session_cookies,
+          hasAccessToken: !!solveCheckpointResponse.access_token,
+          hasRefreshToken: !!solveCheckpointResponse.refresh_token,
+          databaseId: account.id
+        });
+        try {
+          const enrichedAccount = await linkedInAccountRepo.updateWithUnipileResponse(
+            req,
+            account.id,
+            tenantId,
+            {
+              session_cookies: solveCheckpointResponse.session_cookies,
+              access_token: solveCheckpointResponse.access_token,
+              refresh_token: solveCheckpointResponse.refresh_token,
+              token_expires_at: solveCheckpointResponse.token_expires_at,
+              status: 'active'
+            }
+          );
+          logger.info('[LinkedInAccountService] Account enriched with Unipile response data', {
+            databaseId: account.id,
+            enrichedAccountKeys: Object.keys(enrichedAccount || {})
+          });
+        } catch (enrichError) {
+          logger.warn('[LinkedInAccountService] Failed to enrich account with Unipile response data', {
+            error: enrichError.message,
+            databaseId: account.id
+          });
+          // Not a fatal error - account status is already updated
+        }
+      }
       
       logger.info('[LinkedInAccountService] Checkpoint solved successfully', {
         accountId,
         providerAccountId: account.provider_account_id,
         answer,
         checkpointType,
-        tenantId
+        tenantId,
+        statusUpdated: updatedAccount?.status === 'active'
       });
       
       return { success: true };
@@ -929,6 +1116,12 @@ class LinkedInAccountService {
             account_id: unipileAccountId,
             type: checkpointType,
             answer: answer
+          });
+          logger.info('[LinkedInAccountService] SDK solveCheckpoint returned', {
+            responseKeys: Object.keys(solveResponse || {}),
+            responseStatus: solveResponse?.status,
+            responseObject: solveResponse?.object,
+            responseString: JSON.stringify(solveResponse)
           });
           logger.info('[LinkedInAccountService] Checkpoint solved successfully via SDK');
           return solveResponse;

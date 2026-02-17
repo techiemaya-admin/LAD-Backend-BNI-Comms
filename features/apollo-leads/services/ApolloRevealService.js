@@ -528,19 +528,46 @@ class ApolloRevealService {
         credits_used: CREDIT_COSTS.EMAIL_REVEAL
       });
       
-      // Deduct credits for successful enrichment
+      // LAD ARCHITECTURE FIX: Add idempotency check before deducting credits
       if (tenantId) {
         try {
-          await deductCredits(tenantId, 'apollo-leads', 'person_enrichment', CREDIT_COSTS.EMAIL_REVEAL, req, {
-            campaignId: campaignId,
-            leadId: leadId,
-            stepType: 'person_enrichment'
-          });
-          logger.info('[Apollo Reveal] Credits deducted for enrichment', { 
-            tenantId, 
-            credits: CREDIT_COSTS.EMAIL_REVEAL,
-            campaignId: campaignId || 'N/A'
-          });
+          const { pool } = require('../../../shared/database/connection');
+          const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_prod';
+          
+          // Check if credits already deducted for this specific enrichment (within last hour)
+          const existingCharge = await pool.query(
+            `SELECT id, credits_used, created_at FROM ${schema}.credits_usage
+             WHERE tenant_id = $1 
+               AND usage_type = 'person_enrichment'
+               AND metadata->>'leadId' = $2
+               AND created_at > NOW() - INTERVAL '1 hour'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [tenantId, String(leadId)]
+          );
+          
+          if (existingCharge.rows.length > 0) {
+            logger.warn('[Apollo Reveal] Credits already deducted for this enrichment (idempotency)', { 
+              tenantId,
+              leadId,
+              existingChargeId: existingCharge.rows[0].id,
+              chargedAt: existingCharge.rows[0].created_at,
+              creditsSaved: CREDIT_COSTS.EMAIL_REVEAL
+            });
+            // Skip credit deduction - already charged
+          } else {
+            // Proceed with credit deduction
+            await deductCredits(tenantId, 'apollo-leads', 'person_enrichment', CREDIT_COSTS.EMAIL_REVEAL, req, {
+              campaignId: campaignId,
+              leadId: leadId,
+              stepType: 'person_enrichment'
+            });
+            logger.info('[Apollo Reveal] Credits deducted for enrichment', { 
+              tenantId, 
+              credits: CREDIT_COSTS.EMAIL_REVEAL,
+              campaignId: campaignId || 'N/A'
+            });
+          }
         } catch (creditError) {
           logger.error('[Apollo Reveal] Failed to deduct credits', { 
             error: creditError.message, 

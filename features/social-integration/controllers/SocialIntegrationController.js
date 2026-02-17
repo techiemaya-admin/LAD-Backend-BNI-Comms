@@ -776,10 +776,24 @@ class SocialIntegrationController {
       try {
         const result = await LinkedInAccountService.verifyOTP(req, accountId, otp);
         
+        // Fetch updated account data to return to frontend
+        let updatedAccount = null;
+        try {
+          const accounts = await LinkedInAccountService.getUserAccounts(req);
+          // Find the account by either database ID or provider_account_id
+          updatedAccount = accounts.find(acc => acc.id === accountId || acc.provider_account_id === accountId);
+        } catch (fetchError) {
+          logger.warn('[SocialIntegrationController] Failed to fetch updated account after OTP verification', {
+            error: fetchError.message,
+            accountId
+          });
+        }
+        
         return res.json({
           success: true,
-          message: 'OTP verified successfully',
-          result
+          message: 'OTP verified successfully. Account is now active.',
+          result,
+          account: updatedAccount  // Return updated account to frontend for UI refresh
         });
       } catch (verifyError) {
         logger.error('[SocialIntegrationController] OTP verification failed', {
@@ -869,10 +883,23 @@ class SocialIntegrationController {
 
       const result = await LinkedInAccountService.solveCheckpoint(req, accountId, answer, checkpointType);
       
+      // Fetch updated account data to return to frontend
+      let updatedAccount = null;
+      try {
+        const accounts = await LinkedInAccountService.getUserAccounts(req);
+        updatedAccount = accounts.find(acc => acc.id === accountId);
+      } catch (fetchError) {
+        logger.warn('[SocialIntegrationController] Failed to fetch updated account after checkpoint solve', {
+          error: fetchError.message,
+          accountId
+        });
+      }
+      
       res.json({
         success: true,
-        message: 'Checkpoint solved successfully',
-        result
+        message: 'Checkpoint solved successfully. Account is now active.',
+        result,
+        account: updatedAccount  // Return updated account to frontend for UI refresh
       });
     } catch (error) {
       res.status(500).json({
@@ -906,6 +933,7 @@ class SocialIntegrationController {
       const LinkedInAccountService = require('../services/LinkedInAccountService');
       
       let unipileAccountId = account_id;
+      let databaseAccountId = null;
       
       if (!unipileAccountId) {
         // Try to get first checkpoint account for user
@@ -919,6 +947,7 @@ class SocialIntegrationController {
           });
         }
         unipileAccountId = checkpointAccount.provider_account_id || checkpointAccount.unipile_account_id;
+        databaseAccountId = checkpointAccount.id;
       } else {
         // account_id might be a database UUID, try to resolve it
         // Check if it looks like a UUID (contains dashes)
@@ -928,6 +957,7 @@ class SocialIntegrationController {
             const account = accounts.find(acc => acc.id === account_id);
             if (account) {
               unipileAccountId = account.provider_account_id || account.unipile_account_id;
+              databaseAccountId = account.id;
             }
             // If not found, assume account_id is already a Unipile account ID
           } catch (resolveError) {
@@ -950,7 +980,25 @@ class SocialIntegrationController {
 
       const result = await LinkedInAccountService.getCheckpointStatus(req, unipileAccountId);
       
-      res.json(result);
+      // If account is connected, fetch the updated database account record
+      let updatedAccount = null;
+      if (result.connected && databaseAccountId) {
+        try {
+          const accounts = await LinkedInAccountService.getUserAccounts(req);
+          updatedAccount = accounts.find(acc => acc.id === databaseAccountId);
+        } catch (fetchError) {
+          logger.warn('[SocialIntegrationController] Failed to fetch updated account after checkpoint status check', {
+            error: fetchError.message,
+            databaseAccountId
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        ...result,
+        account: updatedAccount  // Return updated account if it's now active (for UI refresh)
+      });
     } catch (error) {
       logger.error('[SocialIntegrationController] getCheckpointStatus error', {
         error: error.message,

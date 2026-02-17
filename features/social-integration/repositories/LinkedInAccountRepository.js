@@ -231,6 +231,97 @@ class LinkedInAccountRepository {
     const result = await pool.query(query, [JSON.stringify(metadata), id, tenant_id]);
     return result.rows[0];
   }
+
+  /**
+   * Update account with Unipile response data (after OTP/checkpoint verification)
+   * Update tokens, session data, and other fields from Unipile response
+   * @param {Object} req - Request object
+   * @param {string} id - Account ID
+   * @param {string} tenant_id - Tenant ID
+   * @param {Object} unipileData - Data from Unipile response
+   * @returns {Promise<Object>} Updated account
+   */
+  async updateWithUnipileResponse(req, id, tenant_id, unipileData) {
+    const schema = getSchema(req);
+    
+    // Extract only updateable fields from Unipile response
+    const {
+      account_name,
+      session_cookies,
+      access_token,
+      refresh_token,
+      token_expires_at,
+      status,
+      metadata = {}
+    } = unipileData;
+    
+    // Build dynamic update fields
+    let updateFields = [];
+    let values = [];
+    let paramCount = 1;
+    
+    if (account_name !== undefined) {
+      updateFields.push(`account_name = $${paramCount}`);
+      values.push(account_name);
+      paramCount++;
+    }
+    
+    if (session_cookies !== undefined) {
+      updateFields.push(`session_cookies = $${paramCount}`);
+      values.push(session_cookies);
+      paramCount++;
+    }
+    
+    if (access_token !== undefined) {
+      updateFields.push(`access_token = $${paramCount}`);
+      values.push(access_token);
+      paramCount++;
+    }
+    
+    if (refresh_token !== undefined) {
+      updateFields.push(`refresh_token = $${paramCount}`);
+      values.push(refresh_token);
+      paramCount++;
+    }
+    
+    if (token_expires_at !== undefined) {
+      updateFields.push(`token_expires_at = $${paramCount}`);
+      values.push(token_expires_at);
+      paramCount++;
+    }
+    
+    if (status !== undefined && status !== 'checkpoint') {
+      updateFields.push(`status = $${paramCount}`);
+      values.push(status);
+      paramCount++;
+    }
+    
+    // Always update metadata and timestamps
+    if (Object.keys(metadata).length > 0) {
+      updateFields.push(`metadata = metadata || $${paramCount}::jsonb`);
+      values.push(JSON.stringify(metadata));
+      paramCount++;
+    }
+    
+    updateFields.push(`last_verified_at = NOW()`);
+    updateFields.push(`updated_at = NOW()`);
+    
+    // Add WHERE clause parameters
+    values.push(id);
+    values.push(tenant_id);
+    
+    const query = `
+      UPDATE ${schema}.social_linkedin_accounts
+      SET ${updateFields.join(', ')}
+      WHERE id = $${paramCount}
+        AND tenant_id = $${paramCount + 1}
+        AND is_deleted = false
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    return result.rows[0];
+  }
 }
 
 module.exports = new LinkedInAccountRepository();
