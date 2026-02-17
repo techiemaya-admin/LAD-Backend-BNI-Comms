@@ -532,14 +532,17 @@ class ApolloRevealService {
       if (tenantId) {
         try {
           const { pool } = require('../../../shared/database/connection');
-          const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_prod';
-          
+          const { getSchema } = require('../../../core/utils/schemaHelper');
+          const schema = getSchema(req) || process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_prod';
+
           // Check if credits already deducted for this specific enrichment (within last hour)
+          // Use billing_ledger_transactions as the canonical ledger table (tenant-scoped)
           const existingCharge = await pool.query(
-            `SELECT id, credits_used, created_at FROM ${schema}.credits_usage
-             WHERE tenant_id = $1 
-               AND usage_type = 'person_enrichment'
-               AND metadata->>'leadId' = $2
+            `SELECT id, (-amount) AS credits_used, created_at FROM ${schema}.billing_ledger_transactions
+             WHERE tenant_id = $1
+               AND transaction_type = 'debit'
+               AND COALESCE(metadata->>'usage_type', '') = 'person_enrichment'
+               AND COALESCE(metadata->>'lead_id', metadata->>'leadId', '') = $2
                AND created_at > NOW() - INTERVAL '1 hour'
              ORDER BY created_at DESC
              LIMIT 1`,
