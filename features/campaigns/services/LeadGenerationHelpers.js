@@ -124,7 +124,7 @@ async function saveLeadToCampaign(campaignId, tenantId, leadId, snapshot, leadDa
      (tenant_id, campaign_id, lead_id, status, snapshot, lead_data, 
       first_name, last_name, email, linkedin_url, company_name, title, phone, created_at)
      VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
-     ON CONFLICT ON CONSTRAINT uk_campaign_leads_tenant_campaign_apollo DO NOTHING
+    ON CONFLICT DO NOTHING
      RETURNING id`,
     [tenantId, campaignId, leadId, snapshot, JSON.stringify(leadData),
      firstName, lastName, email, linkedinUrl, companyName, title, phone]
