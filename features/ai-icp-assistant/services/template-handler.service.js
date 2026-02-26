@@ -78,34 +78,15 @@ class TemplateHandlerService {
   createTemplateQuestion(platformKey, actions = '') {
     const displayName = platformHandlerService.getPlatformDisplayName(platformKey);
     const normalizedKey = platformKey.toLowerCase();
-    const actionsLower = String(actions).toLowerCase();
-    
-    // For LinkedIn, determine if this is connection or followup message
-    let intentKeySuffix = '_template';
-    if (normalizedKey === 'linkedin') {
-      const isConnectionRequest = actionsLower.includes('connection') && actionsLower.includes('request');
-      const isFollowupMessage = actionsLower.includes('message') && (actionsLower.includes('after accepted') || actionsLower.includes('send message'));
-      
-      if (isConnectionRequest && !isFollowupMessage) {
-        intentKeySuffix = '_connection_template';
-      } else if (isFollowupMessage && !isConnectionRequest) {
-        intentKeySuffix = '_followup_template';
-      } else if (isConnectionRequest && isFollowupMessage) {
-        // Both selected - prioritize connection message first
-        intentKeySuffix = '_connection_template';
-      }
-    }
-    
     return {
       question: this.generateTemplateQuestion(platformKey, actions),
       helperText: null,
       stepIndex: stepsConfig.PLATFORM_ACTIONS,
-      intentKey: `${normalizedKey}${intentKeySuffix}`,
+      intentKey: `${normalizedKey}_template`,
       title: `${displayName} Template`,
       questionType: 'text',
       askingForTemplate: true,
       currentPlatform: normalizedKey,
-      platformActions: actions,
     };
   }
   /**

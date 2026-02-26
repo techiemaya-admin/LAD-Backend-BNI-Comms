@@ -65,29 +65,7 @@ class PlatformProgressionService {
       // Skip if already completed
       if (completed.includes(normalizedKey)) continue;
       const actionKey = `${normalizedKey}_actions`;
-      // Check for both LinkedIn template types
-      let templateKey = `${normalizedKey}_template`;
-      if (normalizedKey === 'linkedin') {
-        const actionsKey = `${normalizedKey}_actions`;
-        const actions = collectedAnswers[actionsKey] || '';
-        const actionsLower = String(actions).toLowerCase();
-        const hasConnectionAction = actionsLower.includes('connection') && actionsLower.includes('request');
-        const hasFollowupAction = actionsLower.includes('message') && (actionsLower.includes('after accepted') || actionsLower.includes('send message'));
-        
-        // Check if both templates exist when both actions are selected
-        if (hasConnectionAction && hasFollowupAction) {
-          const hasConnectionTemplate = collectedAnswers.linkedin_connection_template !== undefined;
-          const hasFollowupTemplate = collectedAnswers.linkedin_followup_template !== undefined;
-          if (!hasConnectionTemplate || !hasFollowupTemplate) {
-            return normalizedKey; // LinkedIn needs templates
-          }
-          continue; // Both templates exist, continue to next platform
-        } else if (hasConnectionAction) {
-          templateKey = 'linkedin_connection_template';
-        } else if (hasFollowupAction) {
-          templateKey = 'linkedin_followup_template';
-        }
-      }
+      const templateKey = `${normalizedKey}_template`;
       const hasActions = collectedAnswers[actionKey] !== undefined && String(collectedAnswers[actionKey]).trim() !== '';
       const hasTemplate = collectedAnswers[templateKey] !== undefined;
       // Only check if platform has actions but no template
@@ -113,4 +91,4 @@ class PlatformProgressionService {
     };
   }
 }
-module.exports = new PlatformProgressionService();
+module.exports = new PlatformProgressionService();
