@@ -25,155 +25,13 @@ const logger = require('../../../core/utils/logger');
  * Stored in metadata or environment variables
  * Format: { start: '09:00', end: '18:00', timezone: 'Asia/Dubai', days: [1,2,3,4,5] }
  */
+
 const DEFAULT_BUSINESS_HOURS = {
-  start: '19:00', // 9 AM
-  end: '18:00',   // 6 PM
+  start: '8:00', // 7:00 PM
+  end: '22:00',   // 8:00 PM
   timezone: 'Asia/Dubai',
-  days: [0, 1, 2, 3, 4, 5] // Monday-Friday (0=Sunday, 6=Saturday)
+  days: [ 1, 2, 3, 4, 5] // All days (Monday-Friday)
 };
-
-const UAE_TIMEZONE = 'Asia/Dubai'; // UTC+4
-const UAE_OFFSET_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
-
-/**
- * Get timezone from request
- * Priority: 1. Request body (timezone), 2. Request headers (x-timezone), 3. User context (timezone), 4. Default to UTC
- * @param {Object} req - Express request object
- * @returns {string} Timezone identifier (e.g., 'America/New_York', 'Asia/Dubai')
- */
-function getRequestTimezone(req) {
-  try {
-    // Priority 1: From request body
-    if (req.body?.timezone) {
-      return req.body.timezone;
-    }
-
-    // Priority 2: From request headers
-    if (req.headers['x-timezone']) {
-      return req.headers['x-timezone'];
-    }
-
-    // Priority 3: From user context/metadata
-    if (req.user?.timezone) {
-      return req.user.timezone;
-    }
-
-    // Priority 4: From cookies
-    if (req.cookies?.timezone) {
-      return req.cookies.timezone;
-    }
-
-    // Default to UTC if not provided
-    logger.debug('[getRequestTimezone] No timezone found in request, defaulting to UTC');
-    return 'UTC';
-  } catch (error) {
-    logger.error('[getRequestTimezone] Error extracting timezone', { error: error.message });
-    return 'UTC';
-  }
-}
-
-/**
- * Convert current time from any timezone to UAE time (Asia/Dubai)
- * @param {string} sourceTimezone - Source timezone (e.g., 'America/New_York', 'Asia/Kolkata')
- * @returns {Object} { uaeTime: Date, formattedTime: string, offset: number, sourceTimezone: string }
- */
-function convertToUAETime(sourceTimezone = 'UTC') {
-  try {
-    // Create formatter to get time in source timezone
-    const now = new Date();
-    
-    // Get offset of source timezone
-    const sourceTime = new Date(now.toLocaleString('en-US', { timeZone: sourceTimezone }));
-    const sourceOffset = (now - sourceTime) / (1000 * 60 * 60); // in hours
-
-    // Get offset of UAE timezone
-    const uaeTime = new Date(now.toLocaleString('en-US', { timeZone: UAE_TIMEZONE }));
-    const uaeOffset = (now - uaeTime) / (1000 * 60 * 60); // in hours
-
-    // Calculate difference
-    const offsetDifference = (sourceOffset - uaeOffset); // hours
-    
-    // Create UAE time by adding the offset difference
-    const convertedTime = new Date(now.getTime() + (offsetDifference * 60 * 60 * 1000));
-
-    // Format the time
-    const formattedOptions = {
-      timeZone: UAE_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    };
-
-    const formattedTime = new Date(convertedTime).toLocaleString('en-US', formattedOptions);
-
-    return {
-      uaeTime: convertedTime,
-      formattedTime,
-      sourceTimezone,
-      uaeTimezone: UAE_TIMEZONE,
-      offsetHours: sourceOffset - uaeOffset,
-      timestamp: convertedTime.toISOString()
-    };
-  } catch (error) {
-    logger.error('[convertToUAETime] Error converting timezone', { 
-      sourceTimezone, 
-      error: error.message 
-    });
-    return {
-      uaeTime: new Date(),
-      formattedTime: new Date().toISOString(),
-      sourceTimezone,
-      uaeTimezone: UAE_TIMEZONE,
-      error: error.message
-    };
-  }
-}
-
-/**
- * Get current time in specific timezone
- * @param {string} timezone - Target timezone (e.g., 'America/New_York')
- * @returns {Object} { time: string, date: Date, timezone: string }
- */
-function getCurrentTimeInTimezone(timezone = 'UTC') {
-  try {
-    const now = new Date();
-    const options = {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    };
-
-    const timeString = new Date(now.toLocaleString('en-US', options));
-    
-    return {
-      time: now.toLocaleString('en-US', options),
-      date: timeString,
-      timezone,
-      isoString: now.toISOString()
-    };
-  } catch (error) {
-    logger.error('[getCurrentTimeInTimezone] Error getting time in timezone', {
-      timezone,
-      error: error.message
-    });
-    return {
-      time: new Date().toISOString(),
-      date: new Date(),
-      timezone,
-      error: error.message
-    };
-  }
-}
-
 /**
  * Check if current time is within business hours
  * @param {Object} config - Business hours configuration
@@ -181,12 +39,39 @@ function getCurrentTimeInTimezone(timezone = 'UTC') {
  */
 function isWithinBusinessHours(config = DEFAULT_BUSINESS_HOURS) {
   try {
+    logger.info('[Business Hours] Checking business hours', {
+      timezone: config?.timezone || DEFAULT_BUSINESS_HOURS.timezone,
+      startTime: config?.start || DEFAULT_BUSINESS_HOURS.start,
+      endTime: config?.end || DEFAULT_BUSINESS_HOURS.end,
+      allowedDays: config?.days || DEFAULT_BUSINESS_HOURS.days
+    });
+    
     const now = new Date();
+
+    const timeZone = config?.timezone || DEFAULT_BUSINESS_HOURS.timezone;
+
+    const weekdayShort = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short'
+    }).format(now);
+
+    const weekdayToNumber = {
+
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+    };
+
+    const currentDay = weekdayToNumber[weekdayShort];
+    if (typeof currentDay !== 'number') {
+      throw new Error(`Unable to resolve weekday for timezone: ${timeZone}`);
+    }
     
     // Check day of week
-    const currentDay = now.getDay();
     if (!config.days.includes(currentDay)) {
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       return {
         withinHours: false,
         reason: `Calls are not allowed on ${dayNames[currentDay]}. Allowed days: ${config.days.map(d => dayNames[d]).join(', ')}`
@@ -194,9 +79,32 @@ function isWithinBusinessHours(config = DEFAULT_BUSINESS_HOURS) {
     }
     
     // Check time range
-    // Convert to tenant timezone if needed (simplified - using system time for now)
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    const timeParts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(now);
+
+    const currentHour = Number(timeParts.find((p) => p.type === 'hour')?.value);
+    const currentMinute = Number(timeParts.find((p) => p.type === 'minute')?.value);
+
+    if (Number.isNaN(currentHour) || Number.isNaN(currentMinute)) {
+      throw new Error(`Unable to resolve time for timezone: ${timeZone}`);
+    }
+
+    if (process.env.NODE_ENV === 'development' || process.env.LOG_BUSINESS_HOURS === 'true') {
+      logger.info('[Business Hours]  Timezone conversion check', {
+        serverTimeIso: now.toISOString(),
+        timeZone,
+        tzWeekdayShort: weekdayShort,
+        tzDayNumber: currentDay,
+        tzHour: currentHour,
+        tzMinute: currentMinute,
+        currentTime: `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`
+      });
+    }
+
     const currentTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
     
     const [startHour, startMinute] = config.start.split(':').map(Number);
@@ -209,7 +117,7 @@ function isWithinBusinessHours(config = DEFAULT_BUSINESS_HOURS) {
     if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
       return {
         withinHours: false,
-        reason: `Calls are only allowed between ${config.start} and ${config.end} (${config.timezone}). Current time: ${currentTime}`
+        reason: `Calls are only allowed between ${config.start} and ${config.end} (${timeZone}). Current time: ${currentTime}`
       };
     }
     
@@ -285,17 +193,7 @@ const validateVoiceCallPrerequisites = async (req, res, next) => {
 
     logger.debug('[Voice Call Validation] ✓ Feature access verified');
 
-    // VALIDATION 2: Business Hours Check - Convert request timezone to UAE
-    const requestTimezone = getRequestTimezone(req);
-    const uaeTimeInfo = convertToUAETime(requestTimezone);
-    
-    logger.info('[Voice Call Validation] Timezone Information', {
-      requestTimezone,
-      uaeTime: uaeTimeInfo.formattedTime,
-      offsetHours: uaeTimeInfo.offsetHours,
-      requestTimestamp: new Date().toISOString()
-    });
-    
+    // VALIDATION 2: Business Hours Check
     const businessHours = await getTenantBusinessHours(tenantId);
     if (businessHours) {
       const { withinHours, reason } = isWithinBusinessHours(businessHours);
@@ -303,8 +201,6 @@ const validateVoiceCallPrerequisites = async (req, res, next) => {
         logger.warn('[Voice Call Validation] Outside business hours', { 
           tenantId, 
           reason,
-          requestTimezone,
-          uaeTime: uaeTimeInfo.formattedTime,
           businessHours 
         });
         return res.status(403).json({
@@ -316,11 +212,6 @@ const validateVoiceCallPrerequisites = async (req, res, next) => {
             end: businessHours.end,
             timezone: businessHours.timezone,
             allowed_days: businessHours.days
-          },
-          user_timezone: {
-            requested: requestTimezone,
-            uae_time: uaeTimeInfo.formattedTime,
-            offset_from_uae: `${uaeTimeInfo.offsetHours > 0 ? '+' : ''}${uaeTimeInfo.offsetHours} hours`
           }
         });
       }
@@ -363,13 +254,7 @@ const validateVoiceCallPrerequisites = async (req, res, next) => {
       userId,
       creditBalance,
       businessHoursChecked: !!businessHours,
-      validatedAt: new Date().toISOString(),
-      timezone: {
-        requested: requestTimezone,
-        uaeTime: uaeTimeInfo.formattedTime,
-        uaeTimestamp: uaeTimeInfo.timestamp,
-        offsetFromUAE: uaeTimeInfo.offsetHours
-      }
+      validatedAt: new Date().toISOString()
     };
 
     logger.info('[Voice Call Validation] ✓ All prerequisites validated', {
@@ -397,10 +282,5 @@ module.exports = {
   validateVoiceCallPrerequisites,
   isWithinBusinessHours,
   getTenantBusinessHours,
-  getRequestTimezone,
-  convertToUAETime,
-  getCurrentTimeInTimezone,
-  MIN_CREDITS_FOR_CALL,
-  UAE_TIMEZONE,
-  DEFAULT_BUSINESS_HOURS
+  MIN_CREDITS_FOR_CALL
 };
