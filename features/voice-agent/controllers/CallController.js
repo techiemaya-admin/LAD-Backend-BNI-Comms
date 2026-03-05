@@ -199,6 +199,7 @@ class CallController {
   async getRecentCalls(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
       const { status, agent_id, start_date } = req.query;
 
       const filters = {};
@@ -217,7 +218,7 @@ class CallController {
         filters.userId = user.id;
       }
 
-      const calls = await this.callLoggingService.getRecentCalls(tenantId, filters);
+      const calls = await this.callLoggingService.getRecentCalls(schema, tenantId, filters);
 
       res.json({
         success: true,
@@ -241,13 +242,14 @@ class CallController {
   async getCallStats(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
       const { start_date, end_date } = req.query;
 
       const dateRange = {};
       if (start_date) dateRange.startDate = new Date(start_date);
       if (end_date) dateRange.endDate = new Date(end_date);
 
-      const stats = await this.callLoggingService.getCallStats(tenantId, dateRange);
+      const stats = await this.callLoggingService.getCallStats(schema, tenantId, dateRange);
 
       res.json({
         success: true,
@@ -270,6 +272,7 @@ class CallController {
   async getCallLogs(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
       const { status, agent_id, start_date, from_date, to_date, page, limit } = req.query;
 
       const filters = {};
@@ -294,9 +297,10 @@ class CallController {
 
       // Get total count and paginated results
       const { calls, total } = await this.callLoggingService.getCallLogs(
-        tenantId, 
-        filters, 
-        pageSize, 
+        schema,
+        tenantId,
+        filters,
+        pageSize,
         offset
       );
 
@@ -343,6 +347,7 @@ class CallController {
   async getCallLogById(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
       const { call_log_id } = req.params;
 
       if (!call_log_id) {
@@ -352,7 +357,7 @@ class CallController {
         });
       }
 
-      const callLog = await this.callLoggingService.getCallLog(call_log_id, tenantId);
+      const callLog = await this.callLoggingService.getCallLog(schema, call_log_id, tenantId);
 
       if (!callLog) {
         return res.status(404).json({
@@ -364,7 +369,7 @@ class CallController {
       logger.info(`[CallController] Call log fetched for ${call_log_id}`);
       logger.info(`[CallController] Transcripts segments in DB result: ${callLog.transcripts?.segments?.length || 0}`);
       logger.info(`[CallController] Full transcripts object keys: ${callLog.transcripts ? Object.keys(callLog.transcripts).join(', ') : 'none'}`);
-      
+
       // Check if user has access to this call log
       const user = req.user;
       const isAdmin = user?.role === 'admin';
@@ -680,6 +685,79 @@ class CallController {
       return res.status(500).json({
         success: false,
         error: 'Failed to update call credits',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * GET /calls/:call_log_id/lead
+   * Get a call log's full details (with analysis & transcripts) plus the complete lead record
+   */
+  async getLeadByCallLogId(req, res) {
+    try {
+      const tenantId = req.tenantId || req.user?.tenantId;
+      const schema = getSchema(req);
+      const { call_log_id } = req.params;
+
+      if (!call_log_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'call_log_id parameter is required'
+        });
+      }
+
+      // 1. Fetch full call log (analysis + transcripts via getCallById)
+      const callLog = await this.callLoggingService.getCallLog(schema, call_log_id, tenantId);
+
+      if (!callLog) {
+        return res.status(404).json({
+          success: false,
+          error: 'Call log not found'
+        });
+      }
+
+      // 2. Fetch the full lead record from the leads table
+      const lead = await this.callLoggingService.getLeadByCallLogId(schema, call_log_id, tenantId);
+
+      // 3. Attach signed recording URL (same as getCallLogById)
+      if (callLog.recording_url) {
+        try {
+          const signingEndpoint = `${process.env.BASE_URL}/recordings/calls/${callLog.recording_url}/signed-url`;
+          const response = await axios.get(signingEndpoint, {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Frontend-ID': process.env.BASE_URL_FRONTEND_HEADER,
+              'X-API-Key': process.env.BASE_URL_FRONTEND_APIKEY
+            }
+          });
+          const signedUrl = response?.data?.signed_url || response?.data?.url || response?.data;
+          if (signedUrl && typeof signedUrl === 'string') {
+            callLog.signed_recording_url = signedUrl;
+          }
+        } catch (urlError) {
+          logger.error('[CallController] Error generating signed URL in getLeadByCallLogId:', urlError.message);
+          // Non-fatal — continue without signed URL
+        }
+      }
+
+      // 4. Return full call log data + complete lead record
+      return res.json({
+        success: true,
+        data: {
+          ...callLog,
+          lead: lead || null
+        }
+      });
+
+    } catch (error) {
+      logger.error('[CallController] getLeadByCallLogId failed', {
+        error: error.message,
+        call_log_id: req.params.call_log_id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch lead for call log',
         message: error.message
       });
     }

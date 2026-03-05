@@ -7,9 +7,11 @@
 const VAPIService = require('./VAPIService');
 const CallLoggingService = require('./CallLoggingService');
 const RecordingService = require('./RecordingService');
+const BatchService = require('./BatchService');
 
 module.exports = {
   VAPIService,
   CallLoggingService,
-  RecordingService
+  RecordingService,
+  BatchService
 };
