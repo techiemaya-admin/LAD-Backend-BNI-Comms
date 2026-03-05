@@ -21,6 +21,13 @@ try {
   ({ getSchema } = require('../utils/schemaHelper'));
 }
 
+let sanitizeSchema;
+try {
+  ({ sanitizeSchema } = require('../../../core/utils/schemaHelper'));
+} catch (e) {
+  ({ sanitizeSchema } = require('../utils/schemaHelper'));
+}
+
 class VAPIWebhookController {
   constructor(db = pool) {
     this.db = db;
@@ -145,7 +152,7 @@ class VAPIWebhookController {
         totalCredits: creditsToDeduct
       });
 
-      const schema = getSchema({ user: { tenant_id: callLog.tenant_id } });
+      const schema = sanitizeSchema(getSchema());
 
       // Update call log with final status, duration, cost, recording
       await this.db.query(
@@ -227,7 +234,7 @@ class VAPIWebhookController {
         return;
       }
 
-      const schema = getSchema({ user: { tenant_id: callLog.tenant_id } });
+      const schema = sanitizeSchema(getSchema());
 
       // Update call log status to failed
       await this.db.query(
@@ -260,7 +267,7 @@ class VAPIWebhookController {
    * Find call log by VAPI call ID
    */
   async findCallByVAPIId(vapiCallId) {
-    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
+    const schema = sanitizeSchema(getSchema());
 
     const result = await this.db.query(
       `SELECT id, tenant_id, status, created_at
@@ -277,7 +284,7 @@ class VAPIWebhookController {
    * Deduct credits from tenant balance for completed call
    */
   async deductCallCredits(tenantId, credits, callId, metadata = {}) {
-    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
+    const schema = sanitizeSchema(getSchema());
     const client = await this.db.connect();
 
     try {
@@ -343,7 +350,7 @@ class VAPIWebhookController {
    * Refund credits when call fails
    */
   async refundCallCredits(tenantId, credits, callId, reason = '') {
-    const schema = process.env.POSTGRES_SCHEMA || process.env.DB_SCHEMA || 'lad_dev';
+    const schema = sanitizeSchema(getSchema());
     const client = await this.db.connect();
 
     try {

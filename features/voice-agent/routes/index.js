@@ -17,6 +17,7 @@ const {
   CallLogUpdatesController
 } = require('../controllers');
 const VAPIWebhookController = require('../controllers/VAPIWebhookController');
+const SettingsController = require('../controllers/SettingsController');
 const { pool } = require('../../../shared/database/connection');
 const { authenticateToken: jwtAuth } = require('../../../core/middleware/auth');
 const { requireCredits } = require('../../../shared/middleware/credit_guard');
@@ -32,6 +33,7 @@ const leadTagsController = new LeadTagsController(pool);
 const vapiWebhookController = new VAPIWebhookController(pool);
 const callCancellationController = new CallCancellationController(pool);
 const callLogUpdatesController = new CallLogUpdatesController();
+const settingsController = new SettingsController(pool);
 
 // Tenant middleware - extracts tenant ID from request
 const tenantMiddleware = (req, res, next) => {
@@ -97,6 +99,148 @@ router.get(
 // ============================================
 // Settings Endpoints
 // ============================================
+
+// Voice Agent Management
+/**
+ * GET /settings/agents
+ * Get all voice agents for tenant
+ */
+router.get(
+  '/settings/agents',
+  jwtAuth,
+  (req, res) => settingsController.getVoiceAgents(req, res)
+);
+
+/**
+ * GET /settings/agents/:agentId
+ * Get voice agent by ID
+ */
+router.get(
+  '/settings/agents/:agentId',
+  jwtAuth,
+  (req, res) => settingsController.getVoiceAgentById(req, res)
+);
+
+/**
+ * POST /settings/agents
+ * Create new voice agent
+ */
+router.post(
+  '/settings/agents',
+  jwtAuth,
+  (req, res) => settingsController.createVoiceAgent(req, res)
+);
+
+/**
+ * PUT /settings/agents/:agentId
+ * Update voice agent
+ */
+router.put(
+  '/settings/agents/:agentId',
+  jwtAuth,
+  (req, res) => settingsController.updateVoiceAgent(req, res)
+);
+
+/**
+ * DELETE /settings/agents/:agentId
+ * Delete voice agent
+ */
+router.delete(
+  '/settings/agents/:agentId',
+  jwtAuth,
+  (req, res) => settingsController.deleteVoiceAgent(req, res)
+);
+
+/**
+ * GET /settings/agents/search
+ * Search voice agents
+ */
+router.get(
+  '/settings/agents/search',
+  jwtAuth,
+  (req, res) => settingsController.searchVoiceAgents(req, res)
+);
+
+// Voice Voices Management
+/**
+ * GET /settings/voices
+ * Get all voice voices for tenant
+ */
+router.get(
+  '/settings/voices',
+  jwtAuth,
+  (req, res) => settingsController.getVoiceVoices(req, res)
+);
+
+/**
+ * GET /settings/voices/:voiceId
+ * Get voice by ID
+ */
+router.get(
+  '/settings/voices/:voiceId',
+  jwtAuth,
+  (req, res) => settingsController.getVoiceById(req, res)
+);
+
+/**
+ * POST /settings/voices
+ * Create new voice
+ */
+router.post(
+  '/settings/voices',
+  jwtAuth,
+  (req, res) => settingsController.createVoice(req, res)
+);
+
+/**
+ * PUT /settings/voices/:voiceId
+ * Update voice
+ */
+router.put(
+  '/settings/voices/:voiceId',
+  jwtAuth,
+  (req, res) => settingsController.updateVoice(req, res)
+);
+
+/**
+ * DELETE /settings/voices/:voiceId
+ * Delete voice
+ */
+router.delete(
+  '/settings/voices/:voiceId',
+  jwtAuth,
+  (req, res) => settingsController.deleteVoice(req, res)
+);
+
+/**
+ * GET /settings/voices/provider/:provider
+ * Get voices by provider
+ */
+router.get(
+  '/settings/voices/provider/:provider',
+  jwtAuth,
+  (req, res) => settingsController.getVoicesByProvider(req, res)
+);
+
+/**
+ * GET /settings/voices/search
+ * Search voice voices
+ */
+router.get(
+  '/settings/voices/search',
+  jwtAuth,
+  (req, res) => settingsController.searchVoiceVoices(req, res)
+);
+
+/**
+ * GET /settings/voices/:voiceId/agents
+ * Get agents using a specific voice
+ */
+router.get(
+  '/settings/voices/:voiceId/agents',
+  jwtAuth,
+  (req, res) => settingsController.getAgentsByVoiceId(req, res)
+);
 
 /**
  * GET /settings
