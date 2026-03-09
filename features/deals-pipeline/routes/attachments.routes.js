@@ -33,6 +33,9 @@ router.delete('/notes/:noteId', jwtAuth, attachmentController.deleteNote);
 // GET /api/deals-pipeline/leads/:id/attachments
 router.get('/attachments', jwtAuth, attachmentController.listAttachments);
 
+// GET /api/deals-pipeline/leads/:id/attachments/signed-url?file_url=gs://...
+router.get('/attachments/signed-url', jwtAuth, attachmentController.getAttachmentSignedUrl);
+
 // POST /api/deals-pipeline/leads/:id/attachments
 // Form field name should be `file`
 router.post('/attachments', jwtAuth, upload.single('file'), attachmentController.uploadAttachment);

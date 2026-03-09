@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const { Pool } = require('pg');
+const { jwtAuth } = require('../middleware/auth');
 
 // Get database connection
 const pool = new Pool({
@@ -23,6 +24,6 @@ const setupBookingRoutes = require('./bookingsRoutes');
 const bookingRoutes = setupBookingRoutes(pool);
 
 // Mount only the public booking routes (execute-followup)
-router.use('/bookings', bookingRoutes);
+router.use('/bookings', jwtAuth, bookingRoutes);
 
 module.exports = router;

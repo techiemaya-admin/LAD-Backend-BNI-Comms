@@ -10,7 +10,9 @@ const { PRIORITY_TO_INT, INT_TO_PRIORITY } = require('../constants/priority');
 const FIELD_MAPPING = {
   name: 'first_name',
   company: 'company_name',
-  value: 'estimated_value'
+  value: 'estimated_value',
+  assignee: 'assigned_user_id',
+  assigned_to_id: 'assigned_user_id'
 };
 
 /**
@@ -27,6 +29,11 @@ function toDatabase(data) {
     // Convert priority string to integer for DB
     if (key === 'priority' && typeof value === 'string') {
       value = PRIORITY_TO_INT[value] || 2; // default to medium
+    }
+    
+    // Stringify JSONB fields (tags, raw_data)
+    if ((key === 'tags' || key === 'raw_data') && typeof value !== 'string') {
+      value = JSON.stringify(value);
     }
     
     mapped[dbField] = value;
@@ -59,6 +66,11 @@ function fromDatabase(data) {
   // Map estimated_value → value
   if (data.estimated_value !== undefined) {
     mapped.value = data.estimated_value;
+  }
+  
+  // Map assigned_user_id → assignee
+  if (data.assigned_user_id !== undefined) {
+    mapped.assignee = data.assigned_user_id;
   }
   
   // Convert priority integer to string

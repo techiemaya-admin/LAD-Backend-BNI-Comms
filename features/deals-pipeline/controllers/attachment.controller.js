@@ -149,6 +149,48 @@ exports.listAttachments = async (req, res) => {
   }
 };
 
+exports.getAttachmentSignedUrl = async (req, res) => {
+  try {
+    getTenantContext(req);
+
+    const fileUrl = req.query.file_url;
+    if (!fileUrl) {
+      return res.status(400).json({ error: 'file_url query parameter is required' });
+    }
+
+    if (!fileUrl.startsWith('gs://')) {
+      return res.status(400).json({ error: 'file_url must be a gs:// URI' });
+    }
+
+    const match = /^gs:\/\/([^/]+)\/(.+)$/.exec(fileUrl);
+    if (!match) {
+      return res.status(400).json({ error: 'Invalid gs:// URI format' });
+    }
+
+    const uriBucket = match[1];
+    const objectPath = match[2];
+
+    if (process.env.GCP_BUCKET_NAME && uriBucket !== process.env.GCP_BUCKET_NAME) {
+      return res.status(400).json({
+        error: 'Bucket mismatch',
+        details: `URI bucket (${uriBucket}) does not match configured GCP_BUCKET_NAME (${process.env.GCP_BUCKET_NAME})`
+      });
+    }
+
+    const signedUrl = await gcpStorage.getSignedUrl(objectPath, 60);
+    res.json({ signed_url: signedUrl, expires_in_minutes: 60 });
+  } catch (error) {
+    logger.error('Error generating attachment signed URL', error, { file_url: req.query.file_url });
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.code === 'GCP_STORAGE_NOT_CONFIGURED') {
+      return res.status(500).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to generate signed URL', details: error.message });
+  }
+};
+
 exports.uploadAttachment = async (req, res) => {
   try {
     const { tenant_id, schema } = getTenantContext(req);

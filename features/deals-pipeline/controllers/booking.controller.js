@@ -361,3 +361,56 @@ exports.getAvailability = async (req, res) => {
     });
   }
 };
+
+// DELETE /api/deals-pipeline/bookings/:id/followup
+exports.deleteFollowup = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        error: 'Booking ID is required'
+      });
+    }
+
+    logger.info('BookingController deleting followup booking', {
+      bookingId: id,
+      tenantId: tenant_id,
+      schema
+    });
+
+    const deletedBooking = await bookingService.deleteFollowup(id, tenant_id, schema);
+
+    logger.info('BookingController followup booking deleted successfully', {
+      bookingId: id,
+      tenantId: tenant_id
+    });
+
+    res.json({
+      success: true,
+      message: 'Followup booking deleted successfully',
+      data: deletedBooking
+    });
+  } catch (error) {
+    logger.error('Delete followup booking error', {
+      error: error.message,
+      bookingId: req.params.id,
+      stack: error.stack
+    });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      const { response, status } = ERROR_RESPONSES.TENANT_ACCESS_DENIED();
+      return res.status(status).json(response);
+    }
+    
+    if (error.message.includes('not found or tenant mismatch')) {
+      return res.status(404).json({
+        error: 'Followup booking not found'
+      });
+    }
+    
+    const { response, status } = ERROR_RESPONSES.DATABASE_ERROR('Failed to delete followup booking');
+    res.status(status).json(response);
+  }
+};

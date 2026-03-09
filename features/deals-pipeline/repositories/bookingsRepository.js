@@ -336,6 +336,55 @@ class BookingsRepository {
     const result = await this.pool.query(query, [tenantId, taskStatus, limit]);
     return result.rows;
   }
+
+  /**
+   * Delete followup booking from lead_bookings table
+   * Enforces tenant isolation for multi-tenancy safety
+   * 
+   * @param {string} schema - Schema name
+   * @param {string} bookingId - Booking ID to delete
+   * @param {string} tenantId - Tenant ID for isolation
+   * @returns {Promise<Object>} Deleted booking record
+   * @throws {Error} If booking not found or tenant mismatch
+   */
+  async deleteFollowup(schema, bookingId, tenantId) {
+    // Validate inputs
+    if (!schema || !bookingId || !tenantId) {
+      throw new Error(`Missing parameters: schema=${schema}, bookingId=${bookingId}, tenantId=${tenantId}`);
+    }
+
+    const query = `
+      DELETE FROM ${schema}.lead_bookings
+      WHERE id = $1 AND tenant_id = $2
+      RETURNING 
+        id,
+        tenant_id,
+        lead_id,
+        assigned_user_id,
+        scheduled_at,
+        booking_type,
+        status,
+        task_name,
+        task_status,
+        task_scheduled_at,
+        executed_at,
+        execution_attempts,
+        created_at,
+        updated_at
+    `;
+
+    const result = await this.pool.query(query, [bookingId, tenantId]);
+
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Followup booking not found or tenant mismatch: ` +
+        `bookingId=${bookingId}, tenantId=${tenantId}, schema=${schema}`
+      );
+    }
+
+    logger.info(`Deleted followup booking: ${bookingId} for tenant: ${tenantId}`);
+    return result.rows[0];
+  }
 }
 
 module.exports = BookingsRepository;
