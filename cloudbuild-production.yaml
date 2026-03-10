@@ -1,0 +1,89 @@
+# Cloud Build configuration for LAD Backend - Production Environment
+# Project: LAD-Develop (or move to LAD-Production when ready)
+# Trigger: Push to main/master branch or manual trigger with approval
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lad-backend:production'
+      - '.'
+    timeout: 600s
+
+  # Step 2: Push images to Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/lad-backend:production'
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'lad-backend-production'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '2'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '50'
+      - '--concurrency'
+      - '80'
+      - '--timeout'
+      - '300'
+      - '--service-account'
+      - 'cloud-run-service@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars'
+      - |
+        NODE_ENV=production,
+        POSTGRES_HOST=${_POSTGRES_HOST},
+        POSTGRES_PORT=${_POSTGRES_PORT},
+        POSTGRES_USER=${_POSTGRES_USER},
+        POSTGRES_DB=${_POSTGRES_DB},
+        POSTGRES_SCHEMA=${_POSTGRES_SCHEMA}
+      - '--set-secrets'
+      - |
+        POSTGRES_PASSWORD=POSTGRES_PASSWORD:latest,
+        JWT_SECRET=JWT_SECRET:latest,
+        GEMINI_API_KEY=GEMINI_API_KEY:latest
+    timeout: 600s
+
+# Substitution variables (can be overridden at build time)
+substitutions:
+  _POSTGRES_HOST: '165.22.221.77'
+  _POSTGRES_PORT: '5432'
+  _POSTGRES_USER: 'dbadmin'
+  _POSTGRES_DB: 'salesmaya_bni'
+  _POSTGRES_SCHEMA: 'public'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'
+
+timeout: 1200s
+
+images:
+  - 'gcr.io/$PROJECT_ID/lad-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lad-backend:production'

@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+*.test.js
+coverage/
+.nyc_output/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CHANGELOG.md
+*.md
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Scripts (if not needed in container)
+scripts/migrate_bni_data.py
+scripts/migrate_bni_data.sql
+scripts/migrate_to_lad_dev.py
+scripts/migrate_to_lad_dev.sql
+scripts/run_migration.sh
+scripts/LAD_MIGRATION_GUIDE.md
+scripts/MIGRATION_GUIDE.md
+scripts/MIGRATION_SUMMARY.txt
+
+# SQL files (if not needed)
+*.sql
+
+# Deployment files
+cloudbuild*.yaml
+deploy*.sh
+Dockerfile
+.dockerignore
