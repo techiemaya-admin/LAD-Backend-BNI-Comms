@@ -1,40 +1,35 @@
-const { VoiceCallRepository } = require('../repositories');
-const CallLoggingService = require('../services/CallLoggingService');
-
-const logger = require('../../../core/utils/logger');
-const { getSchema } = require('../../../core/utils/schemaHelper');
+const { CallLoggingService } = require('../services');
 
 class VoiceAgentController {
   constructor(db) {
+    this.db = db;
     this.callLoggingService = new CallLoggingService(db);
-    this.voiceCallRepository = new VoiceCallRepository(db);
   }
 
-    /**
+  /**
    * GET /user/available-agents
    * Get available agents for the authenticated user
-   * JWT Auth Required
    */
   async getUserAvailableAgents(req, res) {
     try {
-      const userId = req.user.id; // From JWT middleware
-      const tenantId = req.user.tenantId; // From JWT middleware
-      const schema = getSchema(req);
+      const { tenant_id, id: userId } = req.user;
+      const schema = req.schema || req.user.schema;
 
-      logger.info(`Fetching available agents for tenant: ${tenantId}, schema: ${schema}, userId: ${userId}`);
+      // Get agents from repository
+      const { VoiceCallRepository } = require('../repositories');
+      const voiceCallRepository = new VoiceCallRepository(this.db);
+      
+      const agents = await voiceCallRepository.getAvailableAgentsForUser(
+        schema,
+        userId,
+        tenant_id
+      );
 
-      const agents = await this.voiceCallRepository.getAvailableAgentsForUser(schema, userId, tenantId);
-
-      res.json({
-        success: true,
-        data: agents,
-        count: agents.length
-      });
+      res.json({ agents });
     } catch (error) {
-      logger.error('Get user available agents error:', error);
+      console.error('Error fetching available agents:', error);
       res.status(500).json({
-        success: false,
-        error: 'Failed to fetch available agents',
+        error: 'Internal server error',
         message: error.message
       });
     }
@@ -42,46 +37,37 @@ class VoiceAgentController {
 
   /**
    * GET /calls
-   * Get call logs with optional filters (status, agentId, startDate/from_date, endDate/to_date, userId)
-   * JWT Auth Required
+   * Get call logs with optional filters
    */
   async getCallLogs(req, res) {
     try {
-      const tenantId = req.user.tenantId; // From JWT middleware
-      const schema = getSchema(req);
+      const { tenant_id } = req.user;
+      const { startDate, endDate, status, agentId, userId } = req.query;
+      const limit = parseInt(req.query.limit) || 50;
 
-      // Extract filters from query parameters (support both startDate/endDate and from_date/to_date)
-      const filters = {};
-      if (req.query.status) filters.status = req.query.status;
-      if (req.query.agentId) filters.agentId = req.query.agentId;
-      if (req.query.startDate) filters.startDate = req.query.startDate;
-      if (req.query.from_date) filters.startDate = req.query.from_date;
-      if (req.query.endDate) filters.endDate = req.query.endDate;
-      if (req.query.to_date) filters.endDate = req.query.to_date;
-      if (req.query.userId) filters.userId = req.query.userId;
+      const filters = {
+        status,
+        agentId,
+        userId,
+        startDate,
+        endDate
+      };
 
-      // No limit when date range is provided, otherwise default to 50
-      const limit = (filters.startDate && filters.endDate) ? 999999 : (req.query.limit ? parseInt(req.query.limit) : 50);
+      const calls = await this.callLoggingService.getCallLogs(
+        tenant_id,
+        filters,
+        limit
+      );
 
-      logger.info(`Fetching call logs for tenant: ${tenantId}, schema: ${schema}, filters:`, filters, `limit: ${limit}`);
-
-      const callLogs = await this.callLoggingService.getCallLogs(tenantId, filters, limit);
-
-      res.json({
-        success: true,
-        data: callLogs,
-        count: callLogs.length
-      });
+      res.json({ calls });
     } catch (error) {
-      logger.error('Get call logs error:', error);
+      console.error('Error fetching call logs:', error);
       res.status(500).json({
-        success: false,
-        error: 'Failed to fetch call logs',
+        error: 'Internal server error',
         message: error.message
       });
     }
   }
-
 }
 
 module.exports = VoiceAgentController;
