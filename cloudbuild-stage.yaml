@@ -26,22 +26,25 @@ steps:
     id: 'push'
 
   # Step 3: Deploy to Cloud Run (staging)
-  - name: 'gcr.io/cloud-builders/run'
+  - name: 'gcr.io/cloud-builders/gcloud'
     args:
+      - 'run'
       - 'deploy'
       - 'lad-backend-stage'
       - '--image=gcr.io/$PROJECT_ID/lad-backend-stage:latest'
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--port=8080'
-      - '--memory=512Mi'
+      - '--port=3004'
+      - '--memory=1Gi'
       - '--cpu=1'
       - '--min-instances=1'
       - '--max-instances=10'
       - '--concurrency=80'
       - '--timeout=300'
-      - '--set-env-vars=NODE_ENV=staging'
+      - '--set-env-vars=NODE_ENV=staging,JWT_EXPIRES_IN=7d,BRANCH=$BRANCH_NAME,COMMIT_SHA=$COMMIT_SHA,CORS_ORIGINS=https://lad-frontend-stage-3nddlneyya-uc.a.run.app;https://lad-frontend-stage-344049867257.us-central1.run.app;https://stage.mrlads.com;https://app.mrlads.com,FRONTEND_URL=https://lad-frontend-stage-344049867257.us-central1.run.app,BACKEND_URL=https://lad-backend-stage-344049867257.us-central1.run.app,BASE_URL=https://voagstg.techiemaya.com,BASE_URL_FRONTEND_HEADER=settings,BASE_URL_FRONTEND_APIKEY=_L5cf6UXDkGTcWRaHka9Q13Kmu4k5dxaKEPRH165U8U,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001,GCP_PROJECT_ID=$PROJECT_ID,GCP_LOCATION=us-central1,FOLLOWUP_QUEUE_NAME=follow-up-voag-calls-v2,FOLLOWUP_EXECUTION_ENDPOINT=https://lad-backend-stage-344049867257.us-central1.run.app/api/deal-pipeline/bookings,DEFAULT_FOLLOW_UP_AGENT_ID=24,APOLLO_WEBHOOK_URL=https://apollo-phone-service-344049867257.us-central1.run.app/api/webhook/apollo-phone,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,CLOUD_TASKS_LOCATION=us-central1,CLOUD_TASKS_QUEUE_NAME=campaign-scheduler-task-stage,CLOUD_RUN_SERVICE_URL=https://lad-backend-stage-344049867257.us-central1.run.app'
+      - '--set-secrets=DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest'
+      - '--service-account=$PROJECT_ID-deploy@$PROJECT_ID.iam.gserviceaccount.com'
     id: 'deploy'
 
 # Build configuration
