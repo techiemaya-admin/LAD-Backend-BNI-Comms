@@ -1,72 +1,137 @@
 steps:
-  # Step 1: Build Docker image for development
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lad-backend-develop:$BRANCH_NAME'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lad-backend-develop:latest'
-      - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/lad-backend-develop:latest'
-      - '--build-arg'
-      - 'BUILDKIT_INLINE_CACHE=1'
-      - '-f'
-      - 'Dockerfile'
-      - '.'
-    id: 'build'
-
-  # Step 2: Push image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'gcr.io/$PROJECT_ID/lad-backend-develop:latest'
-    id: 'push'
-
-  # Step 3: Deploy to Cloud Run
+  # Create lowercase branch name for GCP labels (which require lowercase)
   - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
     args:
-      - 'run'
-      - 'deploy'
-      - 'lad-backend-develop'
-      - '--image=gcr.io/$PROJECT_ID/lad-backend-develop:latest'
-      - '--region=us-central1'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--port=3004'
-      - '--memory=1Gi'
-      - '--cpu=1'
-      - '--min-instances=0'
-      - '--max-instances=10'
-      - '--concurrency=80'
-      - '--timeout=300'
-      - '--set-env-vars=NODE_ENV=development,JWT_EXPIRES_IN=7d,BRANCH=$BRANCH_NAME,COMMIT_SHA=$COMMIT_SHA,CORS_ORIGINS=https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app;https://lad-frontend-develop-160078175457.us-central1.run.app;https://dev.mrlads.com;https://stage.mrlads.com;https://app.mrlads.com;https://www.mrlads.com,FRONTEND_URL=https://lad-frontend-develop-160078175457.us-central1.run.app,BACKEND_URL=https://lad-backend-develop-160078175457.us-central1.run.app,BASE_URL=https://voagstg.techiemaya.com,BASE_URL_FRONTEND_HEADER=settings,BASE_URL_FRONTEND_APIKEY=_L5cf6UXDkGTcWRaHka9Q13Kmu4k5dxaKEPRH165U8U,DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001,GCP_PROJECT_ID=$PROJECT_ID,GCP_LOCATION=us-central1,FOLLOWUP_QUEUE_NAME=follow-up-voag-calls-v2,FOLLOWUP_EXECUTION_ENDPOINT=https://lad-backend-develop-160078175457.us-central1.run.app/api/deal-pipeline/bookings,DEFAULT_FOLLOW_UP_AGENT_ID=24,APOLLO_WEBHOOK_URL=https://apollo-phone-service-160078175457.us-central1.run.app/api/webhook/apollo-phone,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,CLOUD_TASKS_LOCATION=us-central1,CLOUD_TASKS_QUEUE_NAME=campaign-scheduler-task-dev,CLOUD_RUN_SERVICE_URL=https://lad-backend-develop-160078175457.us-central1.run.app'
-      - '--set-secrets=DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest'
-      - '--service-account=$PROJECT_ID-deploy@$PROJECT_ID.iam.gserviceaccount.com'
-    id: 'deploy'
+      - '-c'
+      - |
+        echo "${BRANCH_NAME,,}" > /workspace/branch_lower.txt
+        cat /workspace/branch_lower.txt
 
-# Build configuration
-options:
-  machineType: 'N1_HIGHCPU_8'
-  logging: CLOUD_LOGGING_ONLY
-  sourceProvenanceHash:
-    - SHA256
+  # Build the Docker image with buildkit for better caching
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend-develop:$SHORT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend-develop:$BRANCH_NAME',
+      '-t', 'gcr.io/$PROJECT_ID/lad-backend-develop:latest',
+      '--cache-from', 'gcr.io/$PROJECT_ID/lad-backend-develop:latest',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '.'
+    ]
 
-# Images to push to Container Registry
+  # Push the Docker images to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend-develop:$SHORT_SHA']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend-develop:$BRANCH_NAME']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lad-backend-develop:latest']
+
+  # Deploy to Cloud Run with automatic deployment for develop branch
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        echo "========================================"
+        echo "Starting Cloud Run deployment..."
+        echo "Service: $_SERVICE_NAME"
+        echo "Region: $_REGION"
+        echo "Image: gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA"
+        echo "========================================"
+        
+        BRANCH_LOWER=$(cat /workspace/branch_lower.txt)
+        
+        # Create env vars file to handle special characters properly
+        cat > /workspace/env-vars.yaml <<EOF
+        NODE_ENV: "development"
+        JWT_EXPIRES_IN: "7d"
+        BRANCH: "$BRANCH_NAME"
+        COMMIT_SHA: "$SHORT_SHA"
+        BUILD_ID: "$BUILD_ID"
+        CORS_ORIGINS: "$_CORS_ORIGINS"
+        FRONTEND_URL: "$_FRONTEND_URL"
+        BACKEND_URL: "$_BACKEND_URL"
+        BASE_URL: "https://voagdev.techiemaya.com"
+        BASE_URL_FRONTEND_HEADER: "$_FRONTEND_HEADER"
+        BASE_URL_FRONTEND_APIKEY: "$_FRONTEND_APIKEY"
+        DEFAULT_TENANT_ID: "00000000-0000-0000-0000-000000000001"
+        GCP_PROJECT_ID: "$_GCP_PROJECT_ID"
+        GCP_LOCATION: "$_GCP_LOCATION"
+        FOLLOWUP_QUEUE_NAME: "$_FOLLOWUP_QUEUE_NAME"
+        FOLLOWUP_EXECUTION_ENDPOINT: "$_FOLLOWUP_EXECUTION_ENDPOINT"
+        DEFAULT_FOLLOW_UP_AGENT_ID: "$_DEFAULT_FOLLOW_UP_AGENT_ID"
+        APOLLO_WEBHOOK_URL: "$_APOLLO_WEBHOOK_URL"
+        GOOGLE_CLOUD_PROJECT: "$_GCP_PROJECT_ID"
+        CLOUD_TASKS_LOCATION: "$_GCP_LOCATION"
+        CLOUD_TASKS_QUEUE_NAME: "$_CLOUD_TASKS_QUEUE_NAME"
+        CLOUD_RUN_SERVICE_URL: "$_BACKEND_URL"
+        EOF
+        
+        echo "Env vars file created:"
+        cat /workspace/env-vars.yaml
+        echo ""
+        
+        gcloud run deploy $_SERVICE_NAME \
+          --image gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA \
+          --region $_REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 1Gi \
+          --cpu 1 \
+          --min-instances 1 \
+          --max-instances 10 \
+          --concurrency 80 \
+          --timeout 300 \
+          --set-secrets DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,APOLLO_API_KEY=apollo-api-key:latest,UNIPILE_API_KEY=unipile-api-key:latest,UNIPILE_DSN=UNIPILE_DSN:latest,UNIPILE_TOKEN=UNIPILE_TOKEN:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
+          --env-vars-file /workspace/env-vars.yaml \
+          --update-labels branch=$${BRANCH_LOWER},commit-sha=$SHORT_SHA,managed-by=cloud-build
+        
+        echo "========================================"
+        echo "✓ Deployment completed successfully!"
+        echo "✓ Service URL: https://$_SERVICE_NAME-160078175457.$_REGION.run.app"
+        echo "========================================"
+
+# Images to be pushed to Container Registry
 images:
   - 'gcr.io/$PROJECT_ID/lad-backend-develop:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/lad-backend-develop:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lad-backend-develop:$BRANCH_NAME'
   - 'gcr.io/$PROJECT_ID/lad-backend-develop:latest'
 
-# Timeout
-timeout: 1800s
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitutionOption: 'ALLOW_LOOSE'
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
 
-# Substitutions
+# Timeout for the entire build
+timeout: '1200s'
+
+# Substitutions (automatically provided by Cloud Build trigger)
 substitutions:
   _REGION: 'us-central1'
   _SERVICE_NAME: 'lad-backend-develop'
-
-# Trigger configuration (applied in Cloud Console)
-# Trigger on: Push to develop branch
-# Branch: ^develop$
+  _ENV: 'develop'
+  _FRONTEND_URL: 'https://lad-frontend-develop-160078175457.us-central1.run.app'
+  _BACKEND_URL: 'https://lad-backend-develop-160078175457.us-central1.run.app'
+  _CORS_ORIGINS: 'https://lad-frontend-develop-160078175457.us-central1.run.app,https://dev.mrlads.com,https://stage.mrlads.com,https://app.mrlads.com,https://www.mrlads.com'
+  _FRONTEND_HEADER: 'settings'
+  _FRONTEND_APIKEY: '_L5cf6UXDkGTcWRaHka9Q13Kmu4k5dxaKEPRH165U8U'
+  _GCP_PROJECT_ID: 'lad-develop'
+  _GCP_LOCATION: 'us-central1'
+  _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls-v2'
+  _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-160078175457.us-central1.run.app/api/deal-pipeline/bookings'
+  _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
+  _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-160078175457.us-central1.run.app/api/webhook/apollo-phone'
+  _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task-dev'
+# Deployment fix: IAM permissions updated for secrets access
