@@ -45,6 +45,11 @@ const authenticateToken = (req, res, next) => {
     return next();
   }
 
+  // Skip auth if already authenticated (e.g., by service-to-service bypass)
+  if (req.user && req.user.tenantId) {
+    return next();
+  }
+
   // Skip auth for public endpoints
   const publicPaths = ['/api/auth/login', '/api/auth/register', '/health', '/api/stripe/webhook'];
   // Also skip auth for feature health endpoints (but NOT /analytics/health)
@@ -81,7 +86,9 @@ const authenticateToken = (req, res, next) => {
     fullPath.includes('/api/apollo-leads/search-employees-from-db') ||
     fullPath.includes('/api/apollo-leads/search-employees') ||
     fullPath.includes('/apollo-leads/search-employees-from-db') ||
-    fullPath.includes('/apollo-leads/search-employees')
+    fullPath.includes('/apollo-leads/search-employees') ||
+    fullPath.includes('/api/personal-whatsapp/') ||
+    fullPath.includes('/personal-whatsapp/')
   )) {
     logger.info('[Auth] Bypassing auth for service-to-service call', {
       path: req.path,
@@ -90,9 +97,9 @@ const authenticateToken = (req, res, next) => {
       tenantId: tenantIdHeader
     });
     // Set tenant context for downstream processing
-    req.user = { 
+    req.user = {
       tenantId: tenantIdHeader,
-      serviceCall: true 
+      serviceCall: true
     };
     return next();
   }

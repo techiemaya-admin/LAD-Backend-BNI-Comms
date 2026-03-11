@@ -302,9 +302,14 @@ class CoreApplication {
           });
         }
         
-        const isEnabled = await this.featureFlagService.isEnabled(organizationId, featureKey, userId);
-        logger.debug(`Feature ${featureKey} enabled: ${isEnabled}`, { organizationId });
-        
+        // Allow all features in development mode
+        const isDevelopment = process.env.NODE_ENV === 'development' || process.env.ALLOW_ALL_FEATURES === 'true';
+        let isEnabled = isDevelopment;
+        if (!isDevelopment) {
+          isEnabled = await this.featureFlagService.isEnabled(organizationId, featureKey, userId);
+        }
+        logger.debug(`Feature ${featureKey} enabled: ${isEnabled}`, { organizationId, isDevelopment });
+
         if (!isEnabled) {
           return res.status(403).json({
             success: false,
