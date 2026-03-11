@@ -9,6 +9,7 @@
  */
 
 const logger = require('../../../core/utils/logger');
+const { sanitizeSchema } = require('../../../core/utils/schemaHelper');
 
 class VoiceCallModel {
   constructor(db) {
@@ -278,16 +279,18 @@ class VoiceCallModel {
   /**
    * Get recent calls for tenant
    * 
+   * @param {string} schema - Schema name
    * @param {string} tenantId - Tenant ID
    * @param {number} limit - Max results
    * @param {Object} filters - Optional filters
    * @returns {Promise<Array>} Call logs
    */
-  async getRecentCalls(tenantId, limit = 50, filters = {}) {
-    return this.getCallLogs(tenantId, filters, limit);
+  async getRecentCalls(schema, tenantId, filters = {}, limit = 50) {
+    return this.getCallLogs(schema, tenantId, filters, limit, 0);
   }
 
   async getCallLogs(schema, tenantId, filters = {}, limit = 50, offset = 0) {
+    const safeSchema = sanitizeSchema(schema);
     const whereClauses = ['tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
@@ -339,23 +342,21 @@ class VoiceCallModel {
         vcl.ended_at,
         vcl.duration_seconds,
         vcl.recording_url,
-        
+        vcl.metadata,
         vcl.cost,
         vcl.currency,
-        
         vcl.campaign_id,
         vcl.campaign_lead_id,
         vcl.campaign_step_id,
         vcl.direction,
-        vcl.metadata,
         l.first_name AS lead_first_name,
         l.last_name AS lead_last_name,
         l.tags AS lead_tags,
         vcbe.batch_id
-      FROM ${schema}.voice_call_logs vcl
-      LEFT JOIN ${schema}.leads l ON l.id = vcl.lead_id AND l.tenant_id = vcl.tenant_id
-      LEFT JOIN ${schema}.voice_agents va ON va.id = vcl.agent_id::bigint AND va.tenant_id = vcl.tenant_id
-      LEFT JOIN ${schema}.voice_call_batch_entries vcbe ON vcbe.call_log_id = vcl.id AND vcbe.is_deleted = false
+      FROM ${safeSchema}.voice_call_logs vcl
+      LEFT JOIN ${safeSchema}.leads l ON l.id = vcl.lead_id AND l.tenant_id = vcl.tenant_id
+      LEFT JOIN ${safeSchema}.voice_agents va ON va.id = vcl.agent_id::bigint AND va.tenant_id = vcl.tenant_id
+      LEFT JOIN ${safeSchema}.voice_call_batch_entries vcbe ON vcbe.call_log_id = vcl.id AND vcbe.is_deleted = false
       WHERE ${whereClauses.map(c => `vcl.${c}`).join(' AND ')}
       ORDER BY vcl.started_at DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -375,6 +376,7 @@ class VoiceCallModel {
    * @returns {Promise<number>} Total count
    */
   async getCallLogsCount(schema, tenantId, filters = {}) {
+    const safeSchema = sanitizeSchema(schema);
     const whereClauses = ['tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
@@ -412,7 +414,7 @@ class VoiceCallModel {
 
     const query = `
       SELECT COUNT(*) as total
-      FROM ${schema}.voice_call_logs vcl
+      FROM ${safeSchema}.voice_call_logs vcl
       WHERE ${whereClauses.map(c => `vcl.${c}`).join(' AND ')}
     `;
 

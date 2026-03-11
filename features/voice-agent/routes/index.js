@@ -7,6 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { 
   VoiceAgentController, 
   CallController, 
@@ -14,7 +15,8 @@ const {
   CallInitiationController,
   LeadTagsController,
   CallCancellationController,
-  CallLogUpdatesController
+  CallLogUpdatesController,
+  UploadGCPController
 } = require('../controllers');
 const VAPIWebhookController = require('../controllers/VAPIWebhookController');
 const SettingsController = require('../controllers/SettingsController');
@@ -34,6 +36,15 @@ const vapiWebhookController = new VAPIWebhookController(pool);
 const callCancellationController = new CallCancellationController(pool);
 const callLogUpdatesController = new CallLogUpdatesController();
 const settingsController = new SettingsController(pool);
+const uploadGCPController = new UploadGCPController();
+
+const batchUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 2,
+    fileSize: parseInt(process.env.GCS_MAX_FILE_SIZE_BYTES || `${25 * 1024 * 1024}`, 10)
+  }
+});
 
 // Tenant middleware - extracts tenant ID from request
 const tenantMiddleware = (req, res, next) => {
@@ -271,6 +282,13 @@ router.put(
  * Health check / test endpoint
  */
 router.get('/test', (req, res) => voiceAgentController.test(req, res));
+
+router.post(
+  '/upload-gcp',
+  tenantMiddleware,
+  uploadGCPController.multerMiddleware(),
+  (req, res) => uploadGCPController.uploadGcp(req, res)
+);
 
 /**
  * GET /all
@@ -547,6 +565,10 @@ router.post(
 router.post(
   '/batch/trigger-batch-call',
   tenantMiddleware,
+  batchUpload.fields([
+    { name: 'excel_file', maxCount: 1 },
+    { name: 'json_file', maxCount: 1 }
+  ]),
   (req, res) => batchCallController.batchInitiateCallsV2(req, res)
 );
 

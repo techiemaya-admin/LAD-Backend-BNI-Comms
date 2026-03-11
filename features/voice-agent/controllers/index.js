@@ -11,6 +11,7 @@ const CallInitiationController = require('./call-controllers/CallInitiationContr
 const LeadTagsController = require('./LeadTagsController');
 const CallCancellationController = require('./CallCancellationController');
 const CallLogUpdatesController = require('./CallLogUpdatesController');
+const UploadGCPController = require('./UploadGCPController');
 
 module.exports = {
   VoiceAgentController,
@@ -19,5 +20,6 @@ module.exports = {
   CallInitiationController,
   LeadTagsController,
   CallCancellationController,
-  CallLogUpdatesController
+  CallLogUpdatesController,
+  UploadGCPController
 };

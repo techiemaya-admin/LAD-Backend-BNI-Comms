@@ -1,5 +1,7 @@
 const axios = require('axios');
 const { VAPIService, BatchService } = require('../../services');
+const gcsLinkStore = require('../../services/GCSLinkStore');
+const GCSUploadService = require('../../services/GCSUploadService');
 let logger;
 try {
   logger = require('../../../../core/utils/logger');
@@ -15,6 +17,7 @@ class BatchCallController {
     this.vapiService = new VAPIService();
     this.db = db;
     this.batchService = new BatchService(db);
+    this.gcsUploadService = new GCSUploadService();
   }
 
   /**
@@ -129,7 +132,7 @@ class BatchCallController {
   async batchInitiateCallsV2(req, res) {
     try {
       const tenantId = req.tenantId || req.user?.tenantId;
-      const userId = req.user?.id;
+      const userId = req.user?.id || req.user?.userId;
 
       logger.info('[BatchCallController] V2 batchInitiateCalls called', {
         tenantId,
@@ -137,18 +140,35 @@ class BatchCallController {
         body: req.body
       });
 
+      const maybeParseJson = (value) => {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (!trimmed) return value;
+        try {
+          return JSON.parse(trimmed);
+        } catch (e) {
+          return value;
+        }
+      };
+
+      const pickSingleFile = (fieldName) => {
+        const list = req.files?.[fieldName];
+        if (!list || !Array.isArray(list) || list.length === 0) return null;
+        return list[0];
+      };
+
       // V2 API payload structure
-      const {
-        voice_id,
-        from_number,
-        added_context,
-        initiated_by,   // UUID string (V2 change)
-        agent_id,
-        llm_provider,
-        llm_model,
-        knowledge_base_store_ids,
-        entries         // Array of batch entries
-      } = req.body;
+      const voice_id = req.body?.voice_id;
+      const from_number = req.body?.from_number;
+      const added_context = req.body?.added_context;
+      const initiated_by = req.body?.initiated_by;
+      const agent_id = req.body?.agent_id;
+      const attachment_link = req.body?.attachment_link;
+      const json_link = req.body?.json_link;
+      const llm_provider = req.body?.llm_provider;
+      const llm_model = req.body?.llm_model;
+      const knowledge_base_store_ids = maybeParseJson(req.body?.knowledge_base_store_ids);
+      const entries = maybeParseJson(req.body?.entries);
 
       // Validate required fields
       if (!voice_id) {
@@ -186,12 +206,59 @@ class BatchCallController {
       }
 
       // Build payload for downstream service
+      const excelFile = pickSingleFile('excel_file');
+      const jsonFile = pickSingleFile('json_file');
+
+      let uploadAttachmentLink = null;
+      let uploadJsonLink = null;
+
+      if (excelFile || jsonFile) {
+        if (!excelFile || !jsonFile) {
+          return res.status(400).json({
+            success: false,
+            error: 'Both excel_file and json_file are required when uploading files in this request'
+          });
+        }
+
+        const [excelUpload, jsonUpload] = await Promise.all([
+          this.gcsUploadService.uploadMulterFile({
+            file: excelFile,
+            tenantId,
+            userId,
+            kind: 'excel'
+          }),
+          this.gcsUploadService.uploadMulterFile({
+            file: jsonFile,
+            tenantId,
+            userId,
+            kind: 'json'
+          })
+        ]);
+
+        uploadAttachmentLink = excelUpload.url;
+        uploadJsonLink = jsonUpload.url;
+
+        // store for compatibility / follow-up calls, but we won't rely on it for this request
+        gcsLinkStore.setLinks({
+          tenantId,
+          userId,
+          attachment_link: uploadAttachmentLink,
+          json_link: uploadJsonLink
+        });
+      }
+
+      const storedLinks = gcsLinkStore.getLinks({ tenantId, userId, consume: true });
+      const resolvedAttachmentLink = attachment_link || uploadAttachmentLink || storedLinks?.attachment_link || null;
+      const resolvedJsonLink = json_link || uploadJsonLink || storedLinks?.json_link || null;
+
       const batchPayload = {
         voice_id,
         from_number: from_number || null,
         added_context: added_context || null,
-        initiated_by: initiated_by || null, // Now supports UUID string
+        initiated_by: initiated_by || userId || null, // Default to authenticated user when not provided
         agent_id: agent_id || 'default',
+        attachment_link: resolvedAttachmentLink,
+        json_link: resolvedJsonLink,
         llm_provider: llm_provider || null,
         llm_model: llm_model || null,
         knowledge_base_store_ids: knowledge_base_store_ids || null,
@@ -234,13 +301,41 @@ class BatchCallController {
           'X-API-Key': process.env.BASE_URL_FRONTEND_APIKEY || ''
         };
 
-        const response = await axios.post(`${baseUrl}/batch/trigger-batch-call`, batchPayload, { headers });
-        
-        return res.json({
-          success: true,
-          result: response.data,
-          message: 'Batch calls initiated successfully via external service'
-        });
+        // If the downstream requires the same JWT, pass it through.
+        // This is also important if BASE_URL accidentally points back to this service.
+        const authHeader = req.headers?.authorization;
+        if (authHeader) {
+          headers.Authorization = authHeader;
+        }
+
+        // Preserve tenant context for services that rely on x-tenant-id.
+        const tenantHeader = req.headers?.['x-tenant-id'];
+        if (tenantHeader) {
+          headers['x-tenant-id'] = tenantHeader;
+        }
+
+        try {
+          const response = await axios.post(`${baseUrl}/batch/trigger-batch-call`, batchPayload, { headers });
+
+          return res.json({
+            success: true,
+            result: response.data,
+            message: 'Batch calls initiated successfully via external service'
+          });
+        } catch (forwardError) {
+          logger.error('[BatchCallController] Forward to external service failed', {
+            error: forwardError.message,
+            status: forwardError.response?.status,
+            data: forwardError.response?.data
+          });
+
+          return res.status(forwardError.response?.status || 502).json({
+            success: false,
+            error: 'Failed to forward batch calls to external service',
+            message: forwardError.response?.data?.message || forwardError.message,
+            details: forwardError.response?.data || null
+          });
+        }
       }
 
     } catch (error) {
