@@ -57,6 +57,33 @@ async function getAccountStatus(req, res) {
 }
 
 /**
+ * GET /accounts
+ * List all active personal WhatsApp sessions for the tenant.
+ * Used by frontend to find active connected session after page refresh.
+ */
+async function listAccounts(req, res) {
+  try {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant context required' });
+    }
+
+    const accounts = personalWhatsappService.listAccountsByTenant(tenantId);
+    return res.json({
+      success: true,
+      accounts: accounts,
+      totalConnected: accounts.filter(a => a.status === 'connected').length,
+    });
+  } catch (error) {
+    logger.error('[PersonalWA:Controller] Error listing accounts', {
+      error: error.message,
+    });
+    return res.status(500).json({ error: 'Failed to list accounts' });
+  }
+}
+
+/**
  * POST /logout
  * Disconnect and logout a personal WhatsApp session.
  */
@@ -107,6 +134,7 @@ async function sendMessage(req, res) {
 module.exports = {
   createAccount,
   getAccountStatus,
+  listAccounts,
   logoutAccount,
   sendMessage,
 };

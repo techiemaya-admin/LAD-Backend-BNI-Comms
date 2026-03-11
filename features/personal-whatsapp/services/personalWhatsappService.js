@@ -44,30 +44,67 @@ async function initiateAccount(tenantId) {
 /**
  * Get account/session status.
  *
+ * IMPORTANT: Session status is checked BOTH in memory AND in Baileys auth directory.
+ * If session is not in memory, we check if credentials are saved to disk (meaning it was connected).
+ * This prevents the QR from showing "disconnected" after a page refresh.
+ *
  * @param {string} tenantId
  * @param {string} accountId - The session ID
  * @returns {object|null}
  */
 function getAccountStatus(tenantId, accountId) {
+  // First, check if session is in memory
   const session = baileysBridge.getSession(accountId);
-  if (!session) return null;
+  if (session) {
+    // Verify tenant owns this session
+    if (session.tenantId !== tenantId) {
+      logger.warn('[PersonalWA] Tenant mismatch on status check', {
+        expected: session.tenantId,
+        got: tenantId,
+      });
+      return null;
+    }
 
-  // Verify tenant owns this session
-  if (session.tenantId !== tenantId) {
-    logger.warn('[PersonalWA] Tenant mismatch on status check', {
-      expected: session.tenantId,
-      got: tenantId,
-    });
-    return null;
+    return {
+      id: session.sessionId,
+      status: session.status,
+      phone_number: session.phoneNumber,
+      connected_at: session.connectedAt,
+      gateway_account_id: session.sessionId,
+    };
   }
 
-  return {
-    id: session.sessionId,
-    status: session.status,
-    phone_number: session.phoneNumber,
-    connected_at: session.connectedAt,
-    gateway_account_id: session.sessionId,
-  };
+  // Session not in memory — check if credentials are saved (persisted from previous connection)
+  // This handles page refresh: session was connected, page refreshed, session out of memory,
+  // but Baileys can restore from saved credentials
+  const path = require('path');
+  const fs = require('fs');
+  const AUTH_DIR = process.env.BAILEYS_AUTH_DIR || path.join(process.cwd(), '.baileys-sessions');
+  const sessionAuthDir = path.join(AUTH_DIR, accountId);
+
+  if (fs.existsSync(sessionAuthDir)) {
+    const filesInDir = fs.readdirSync(sessionAuthDir);
+    if (filesInDir.length > 0) {
+      logger.info('[PersonalWA] Session credentials exist on disk, returning persisted status', {
+        sessionId: accountId,
+        tenantId,
+        credentialFiles: filesInDir.length,
+      });
+
+      // Credentials exist — this session was connected before
+      // Return status as "connected" so frontend knows to use it
+      return {
+        id: accountId,
+        status: 'connected',
+        phone_number: null,
+        connected_at: null,
+        gateway_account_id: accountId,
+      };
+    }
+  }
+
+  // No session in memory and no saved credentials
+  return null;
 }
 
 /**
@@ -89,6 +126,24 @@ async function logout(tenantId, accountId) {
 
   await baileysBridge.logoutSession(accountId);
   logger.info('[PersonalWA] Account logged out', { tenantId, accountId });
+}
+
+/**
+ * List all active personal WhatsApp sessions for a tenant.
+ * Used by frontend to find existing connected sessions after page refresh.
+ *
+ * @param {string} tenantId
+ * @returns {Array<{id, status, phone_number, connected_at, gateway_account_id}>}
+ */
+function listAccountsByTenant(tenantId) {
+  const sessions = baileysBridge.getSessionsByTenant(tenantId);
+  return sessions.map(session => ({
+    id: session.sessionId,
+    status: session.status,
+    phone_number: session.phoneNumber,
+    connected_at: session.connectedAt,
+    gateway_account_id: session.sessionId,
+  }));
 }
 
 /**
@@ -162,6 +217,7 @@ async function handleIncomingMessage(messageData) {
 module.exports = {
   initiateAccount,
   getAccountStatus,
+  listAccountsByTenant,
   logout,
   sendOutgoingMessage,
   handleIncomingMessage,

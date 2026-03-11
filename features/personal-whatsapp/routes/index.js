@@ -16,6 +16,7 @@ const router = express.Router();
 
 // Account management
 router.post('/accounts', controller.createAccount);
+router.get('/accounts', controller.listAccounts); // List all active sessions for tenant
 router.get('/accounts/:id', controller.getAccountStatus);
 
 // Actions
