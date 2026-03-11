@@ -1,0 +1,1184 @@
+/**
+ * LinkedIn Account Service (Social Integration)
+ * LAD Architecture Compliant:
+ * - Business logic only (no SQL)
+ * - Uses logger (no console statements)
+ * - Calls repositories for data access
+ * - Handles Unipile integration
+ */
+
+const linkedInAccountRepo = require('../repositories/LinkedInAccountRepository');
+const logger = require('../../../core/utils/logger');
+const UnipileService = require('./UnipileService');
+const { handleCheckpointResponse } = require('./LinkedInCheckpointHelper');
+const axios = require('axios');
+
+// Try to load Unipile SDK (optional dependency)
+let UnipileClient = null;
+try {
+  UnipileClient = require('unipile-node-sdk').UnipileClient;
+  logger.info('[LinkedInAccountService] Unipile SDK loaded successfully');
+} catch (sdkError) {
+  logger.warn('[LinkedInAccountService] Unipile SDK not available', {
+    error: sdkError.message
+  });
+  logger.warn('[LinkedInAccountService] Install with: npm install unipile-node-sdk');
+}
+
+class LinkedInAccountService {
+  /**
+   * Connect LinkedIn account
+   * @param {Object} req - Request object
+   * @param {Object} params - Connection parameters
+   * @returns {Promise<Object>} Connection result
+   */
+  async connectAccount(req, params) {
+    const { method, email, password, li_at, li_a, user_agent } = params;
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.userId || req.user?.id;
+
+    if (!tenantId || !userId) {
+      throw new Error('Tenant and user context required');
+    }
+
+    logger.info('[LinkedInAccountService] Connecting account', {
+      tenantId,
+      userId,
+      method
+    });
+
+    // Call Unipile API to create account
+    let unipileResult;
+    try {
+      unipileResult = await this._connectAccountToUnipile({
+        method,
+        email,
+        password,
+        li_at,
+        li_a,
+        user_agent
+      });
+    } catch (unipileError) {
+      logger.error('[LinkedInAccountService] Unipile connection failed', {
+        error: unipileError.message,
+        tenantId,
+        userId
+      });
+      throw new Error(`Failed to connect to LinkedIn: ${unipileError.message}`);
+    }
+
+    // Log full Unipile response for debugging
+    logger.info('[LinkedInAccountService] Unipile connection response received', {
+      unipileResponseKeys: Object.keys(unipileResult),
+      unipileResponseObject: unipileResult.object,
+      unipileResponseStatus: unipileResult.status,
+      hasCheckpoint: !!unipileResult.checkpoint,
+      responseString: JSON.stringify(unipileResult)
+    });
+    
+    // Extract account ID from various possible fields
+    const unipileAccountId = unipileResult.account_id || unipileResult.id || unipileResult._id || unipileResult.accountId;
+    
+    logger.info('[LinkedInAccountService] Extracted account ID from Unipile response', {
+      unipileAccountId,
+      source: unipileResult.account_id ? 'account_id' : unipileResult.id ? 'id' : unipileResult._id ? '_id' : 'accountId'
+    });
+    
+    // Check if checkpoint required (checkpoint response has object === 'Checkpoint')
+    if (unipileResult.object === 'Checkpoint' && unipileResult.checkpoint) {
+      logger.warn('[LinkedInAccountService] Checkpoint required', {
+        accountId: unipileAccountId,
+        checkpointType: unipileResult.checkpoint?.type
+      });
+      
+      // Extract checkpoint info with proper structure for frontend
+      const checkpointType = unipileResult.checkpoint.type || 'IN_APP_VALIDATION';
+      const hasCodeField = !!unipileResult.checkpoint.code;
+      const hasChallengeField = !!unipileResult.checkpoint.challenge;
+      const isOTP = hasCodeField || hasChallengeField || checkpointType === 'OTP' || checkpointType === 'SMS' || checkpointType === 'EMAIL';
+      const isYesNo = !isOTP && (checkpointType === 'IN_APP_VALIDATION' || checkpointType === 'YES_NO');
+      
+      const checkpointInfo = {
+        type: checkpointType,
+        required: true,
+        is_yes_no: isYesNo,
+        is_otp: isOTP,
+        message: unipileResult.checkpoint.message || unipileResult.checkpoint.description || null,
+        sent_to: unipileResult.checkpoint.sent_to || unipileResult.checkpoint.sentTo || null
+      };
+      
+      // Save account with checkpoint status
+      const accountData = {
+        tenant_id: tenantId,
+        user_id: userId,
+        provider: 'unipile',
+        provider_account_id: unipileAccountId,
+        account_name: unipileResult.profile_name || unipileResult.profileName || email,
+        status: 'checkpoint',
+        metadata: {
+          checkpoint: checkpointInfo,
+          checkpoint_required_at: new Date().toISOString(),
+          email: unipileResult.email || email
+        }
+      };
+      
+      let savedAccount;
+      try {
+        logger.info('[LinkedInAccountService] Saving checkpoint account to database', {
+          accountDataKeys: Object.keys(accountData),
+          accountData: JSON.stringify(accountData)
+        });
+        savedAccount = await linkedInAccountRepo.create(req, accountData);
+        logger.info('[LinkedInAccountService] Checkpoint account saved successfully', {
+          accountId: savedAccount.id,
+          savedAccountKeys: Object.keys(savedAccount),
+          savedAccount: JSON.stringify(savedAccount),
+          providerAccountId: unipileAccountId,
+          tenantId,
+          userId
+        });
+      } catch (dbError) {
+        logger.error('[LinkedInAccountService] Failed to save checkpoint account to database', {
+          error: dbError.message,
+          stack: dbError.stack,
+          providerAccountId: unipileAccountId,
+          tenantId,
+          userId,
+          code: dbError.code,
+          constraint: dbError.constraint
+        });
+        // Re-throw with a more user-friendly message
+        throw new Error(`Failed to save account to database: ${dbError.message}`);
+      }
+      
+      return {
+        success: true,
+        checkpoint_required: true,
+        account_id: unipileAccountId,
+        database_account_id: savedAccount.id, // Return database ID for frontend
+        checkpoint: checkpointInfo,
+        email: unipileResult.email || email,
+        profileName: unipileResult.profile_name || unipileResult.profileName || email?.split('@')[0]
+      };
+    }
+
+    if (!unipileAccountId) {
+      throw new Error('Account ID not found in Unipile response');
+    }
+
+    // Save successful connection
+    const accountData = {
+      tenant_id: tenantId,
+      user_id: userId,
+      provider: 'unipile',
+      provider_account_id: unipileAccountId,
+      account_name: unipileResult.profile_name || unipileResult.profileName || unipileResult.name || email,
+      session_cookies: unipileResult.cookies ? JSON.stringify(unipileResult.cookies) : null,
+      access_token: unipileResult.access_token,
+      refresh_token: unipileResult.refresh_token,
+      token_expires_at: unipileResult.token_expires_at,
+      status: 'active',
+      default_daily_limit: 100,
+      default_hourly_limit: 10,
+      metadata: {
+        profile_url: unipileResult.profile_url || unipileResult.profileUrl,
+        connected_via: method,
+        email: unipileResult.email || email
+      }
+    };
+
+    let savedAccount;
+    try {
+      savedAccount = await linkedInAccountRepo.create(req, accountData);
+      logger.info('[LinkedInAccountService] Account connected successfully', {
+        accountId: savedAccount.id,
+        providerAccountId: savedAccount.provider_account_id,
+        tenantId,
+        userId
+      });
+    } catch (dbError) {
+      logger.error('[LinkedInAccountService] Failed to save connected account to database', {
+        error: dbError.message,
+        stack: dbError.stack,
+        providerAccountId: unipileAccountId,
+        tenantId,
+        userId,
+        code: dbError.code,
+        constraint: dbError.constraint
+      });
+      // Re-throw with a more user-friendly message
+      throw new Error(`Failed to save account to database: ${dbError.message}`);
+    }
+
+    return {
+      success: true,
+      account: savedAccount
+    };
+  }
+
+  /**
+   * Get user's LinkedIn accounts
+   * @param {Object} req - Request object
+   * @param {string} userId - User ID (optional, defaults to req.user.userId)
+   * @returns {Promise<Array>} User's accounts
+   */
+  async getUserAccounts(req, userId = null) {
+    const tenantId = req.user?.tenantId;
+    const effectiveUserId = userId || req.user?.userId || req.user?.id;
+
+    if (!tenantId || !effectiveUserId) {
+      throw new Error('Tenant and user context required');
+    }
+
+    const accounts = await linkedInAccountRepo.findByUser(req, effectiveUserId, tenantId);
+
+    logger.info('[LinkedInAccountService] Retrieved user accounts', {
+      tenantId,
+      userId: effectiveUserId,
+      count: accounts.length
+    });
+
+    return accounts;
+  }
+
+  /**
+   * Get all tenant accounts (admin only)
+   * @param {Object} req - Request object
+   * @returns {Promise<Array>} Tenant's accounts
+   */
+  async getTenantAccounts(req) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    // Check admin permission
+    if (!this._isAdmin(req)) {
+      throw new Error('Admin permission required');
+    }
+
+    const accounts = await linkedInAccountRepo.findByTenant(req, tenantId);
+
+    logger.info('[LinkedInAccountService] Retrieved tenant accounts', {
+      tenantId,
+      count: accounts.length
+    });
+
+    return accounts;
+  }
+
+  /**
+   * Disconnect LinkedIn account
+   * @param {Object} req - Request object
+   * @param {string} accountId - Account ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async disconnectAccount(req, accountId) {
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.userId || req.user?.id;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    // Get account to verify ownership
+    const account = await linkedInAccountRepo.findById(req, accountId, tenantId);
+    
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    // Verify user owns this account (unless admin)
+    if (account.user_id !== userId && !this._isAdmin(req)) {
+      throw new Error('Permission denied');
+    }
+
+    // Revoke in Unipile
+    try {
+      const unipileService = new UnipileService();
+      await unipileService.disconnectAccount(account.provider_account_id);
+    } catch (unipileError) {
+      logger.warn('[LinkedInAccountService] Failed to revoke in Unipile', {
+        error: unipileError.message,
+        accountId,
+        providerAccountId: account.provider_account_id
+      });
+      // Continue with soft delete even if Unipile fails
+    }
+
+    // Soft delete in our database
+    const deleted = await linkedInAccountRepo.softDelete(req, accountId, tenantId);
+
+    logger.info('[LinkedInAccountService] Account disconnected', {
+      accountId,
+      tenantId,
+      userId
+    });
+
+    return deleted;
+  }
+
+  /**
+   * Update account status
+   * @param {Object} req - Request object
+   * @param {string} accountId - Account ID
+   * @param {string} status - New status
+   * @returns {Promise<Object>} Updated account
+   */
+  async updateAccountStatus(req, accountId, status) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    const validStatuses = ['active', 'expired', 'revoked', 'error', 'checkpoint'];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    const updated = await linkedInAccountRepo.updateStatus(req, accountId, tenantId, status);
+
+    logger.info('[LinkedInAccountService] Account status updated', {
+      accountId,
+      status,
+      tenantId
+    });
+
+    return updated;
+  }
+
+  /**
+   * Verify OTP for checkpoint
+   * @param {Object} req - Request object
+   * @param {string} accountId - Account ID (can be database UUID or unipile_account_id)
+   * @param {string} otp - OTP code
+   * @returns {Promise<Object>} Verification result
+   */
+  async verifyOTP(req, accountId, otp) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    if (!accountId || typeof accountId !== 'string') {
+      throw new Error('Account ID is required and must be a string');
+    }
+
+    if (!otp || typeof otp !== 'string') {
+      throw new Error('OTP is required and must be a string');
+    }
+
+    // accountId can be either database UUID or unipile_account_id
+    // Try to find by database ID first, then by unipile_account_id
+    let account = null;
+    let unipileAccountId = null;
+
+    // Check if accountId is a UUID (database ID)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+    
+    if (isUUID) {
+      // Try to find by database UUID
+      account = await linkedInAccountRepo.findById(req, accountId, tenantId);
+      if (account) {
+        unipileAccountId = account.provider_account_id;
+      }
+    } else {
+      // accountId is not a UUID, so it must be a Unipile account ID
+      // Try direct lookup by provider_account_id (Unipile ID)
+      account = await linkedInAccountRepo.findByProviderAccountId(req, accountId, tenantId);
+      if (account) {
+        unipileAccountId = account.provider_account_id;
+        logger.info('[LinkedInAccountService] Account found by Unipile ID', {
+          databaseId: account.id,
+          unipileAccountId,
+          tenantId
+        });
+      } else {
+        // If still not found, use accountId as unipile_account_id directly
+        // This allows Unipile verification to proceed even if DB lookup fails
+        unipileAccountId = accountId;
+        logger.warn('[LinkedInAccountService] Account not found by Unipile ID, proceeding with Unipile verification only', {
+          unipileAccountId,
+          tenantId
+        });
+      }
+    }
+
+    if (!account && isUUID) {
+      throw new Error('Account not found');
+    }
+
+    if (!unipileAccountId) {
+      throw new Error('Unipile account ID not found');
+    }
+
+    // Call Unipile to verify OTP
+    try {
+      const otpVerifyResponse = await this._verifyOTPToUnipile(unipileAccountId, otp);
+      
+      logger.info('[LinkedInAccountService] OTP verified in Unipile - Response from Unipile', {
+        responseKeys: otpVerifyResponse ? Object.keys(otpVerifyResponse) : [],
+        responseStatus: otpVerifyResponse?.status,
+        responseObject: otpVerifyResponse?.object,
+        responseString: JSON.stringify(otpVerifyResponse)
+      });
+      
+      logger.info('[LinkedInAccountService] OTP verified in Unipile', {
+        accountId,
+        unipileAccountId,
+        accountFound: !!account,
+        accountDatabaseId: account?.id,
+        tenantId
+      });
+      
+      // Update account status to active if we found the account in our database
+      if (account) {
+        logger.info('[LinkedInAccountService] Updating account status to active', {
+          databaseId: account.id,
+          tenantId,
+          currentStatus: account.status
+        });
+        
+        const updatedAccount = await linkedInAccountRepo.updateStatus(req, account.id, tenantId, 'active');
+        
+        logger.info('[LinkedInAccountService] Account status updated successfully', {
+          databaseId: account.id,
+          newStatus: updatedAccount?.status,
+          tenantId
+        });
+        
+        // Also try to update account with any additional data from Unipile response
+        // (e.g., new tokens, session data, etc.)
+        if (otpVerifyResponse && (otpVerifyResponse.session_cookies || otpVerifyResponse.access_token || otpVerifyResponse.refresh_token)) {
+          logger.info('[LinkedInAccountService] Updating account with Unipile response data after OTP', {
+            hasSessionCookies: !!otpVerifyResponse.session_cookies,
+            hasAccessToken: !!otpVerifyResponse.access_token,
+            hasRefreshToken: !!otpVerifyResponse.refresh_token,
+            databaseId: account.id
+          });
+          try {
+            const enrichedAccount = await linkedInAccountRepo.updateWithUnipileResponse(
+              req,
+              account.id,
+              tenantId,
+              {
+                session_cookies: otpVerifyResponse.session_cookies,
+                access_token: otpVerifyResponse.access_token,
+                refresh_token: otpVerifyResponse.refresh_token,
+                token_expires_at: otpVerifyResponse.token_expires_at,
+                status: 'active'
+              }
+            );
+            logger.info('[LinkedInAccountService] Account enriched with Unipile response data', {
+              databaseId: account.id,
+              enrichedAccountKeys: Object.keys(enrichedAccount || {})
+            });
+          } catch (enrichError) {
+            logger.warn('[LinkedInAccountService] Failed to enrich account with Unipile response data', {
+              error: enrichError.message,
+              databaseId: account.id
+            });
+            // Not a fatal error - account status is already updated
+          }
+        }
+      } else {
+        logger.warn('[LinkedInAccountService] Account not found in database for status update', {
+          accountId,
+          unipileAccountId,
+          isUUID,
+          tenantId
+        });
+      }
+      
+      logger.info('[LinkedInAccountService] OTP verified successfully', {
+        accountId,
+        unipileAccountId,
+        tenantId,
+        accountUpdated: !!account
+      });
+      
+      return { success: true };
+    } catch (error) {
+      logger.error('[LinkedInAccountService] OTP verification failed', {
+        error: error.message,
+        stack: error.stack,
+        accountId,
+        unipileAccountId,
+        tenantId,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
+      });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        const errorMsg = error.response.data?.detail || error.response.data?.error || error.response.data?.message || error.response.statusText;
+        throw new Error(`OTP verification failed: ${error.response.status} - ${errorMsg}`);
+      }
+      
+      throw new Error(`OTP verification failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Connect account to Unipile (private helper method)
+   * @private
+   * @param {Object} params - Connection parameters
+   * @returns {Promise<Object>} Unipile account response
+   */
+  async _connectAccountToUnipile(params) {
+    const { method, email, password, li_at, li_a, user_agent } = params;
+    const unipileService = new UnipileService();
+
+    if (!unipileService.isConfigured()) {
+      logger.error('[LinkedInAccountService] Unipile not configured', {
+        dsnPresent: !!unipileService.dsn,
+        tokenPresent: !!unipileService.token,
+        dsnValue: unipileService.dsn ? unipileService.dsn.substring(0, 20) + '...' : 'undefined',
+        envDsn: process.env.UNIPILE_DSN ? 'present' : 'undefined',
+        envToken: process.env.UNIPILE_TOKEN ? 'present' : 'undefined'
+      });
+      throw new Error('Unipile is not configured');
+    }
+
+    if (!method || (method !== 'credentials' && method !== 'cookies')) {
+      throw new Error('Invalid method. Must be "credentials" or "cookies"');
+    }
+
+    // Get base URL and prepare SDK base URL (SDK expects URL without /api/v1)
+    const baseUrl = unipileService.getBaseUrl();
+    let sdkBaseUrl = baseUrl;
+    if (sdkBaseUrl.endsWith('/api/v1')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1$/, '');
+    } else if (sdkBaseUrl.endsWith('/api/v1/')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1\/$/, '');
+    }
+
+    logger.info('[LinkedInAccountService] Using Unipile SDK for connection', {
+      sdkBaseUrl: sdkBaseUrl.substring(0, 50) + '...' // Don't log full URL
+    });
+
+    // Try SDK first (preferred method)
+    if (UnipileClient) {
+      try {
+        const token = (unipileService.token || process.env.UNIPILE_TOKEN || '').trim();
+        
+        if (!token) {
+          throw new Error('UNIPILE_TOKEN is not configured');
+        }
+        
+        logger.debug('[LinkedInAccountService] Initializing Unipile SDK');
+        const unipile = new UnipileClient(sdkBaseUrl, token);
+        
+        if (method === 'credentials') {
+          if (!email || !password) {
+            throw new Error('Email and password are required for credentials method');
+          }
+
+          logger.info('[LinkedInAccountService] Connecting via SDK with credentials');
+          const account = await unipile.account.connectLinkedin({
+            username: email,
+            password: password
+          });
+
+          // Check if response is a checkpoint (OTP/2FA required)
+          if (account && account.object === 'Checkpoint' && account.checkpoint) {
+            return await handleCheckpointResponse(account, unipile, email);
+          }
+
+          logger.info('[LinkedInAccountService] SDK connection successful');
+          return account;
+        } else if (method === 'cookies') {
+          if (!li_at) {
+            throw new Error('li_at cookie is required for cookies method');
+          }
+
+          logger.info('[LinkedInAccountService] Connecting via SDK with cookies', {
+            hasLiAt: !!li_at,
+            liAtLength: li_at?.length,
+            liAtPrefix: li_at?.substring(0, 20) + '...',
+            hasLiA: !!li_a,
+            hasUserAgent: !!user_agent
+          });
+          
+          // Use the dedicated connectLinkedinWithCookie method for cookie auth
+          // Note: user_agent should match the browser the cookie was extracted from
+          const cookiePayload = {
+            access_token: li_at,
+            premium_token: li_a || undefined,
+            user_agent: user_agent || undefined
+          };
+          
+          logger.info('[LinkedInAccountService] SDK cookie payload', {
+            payloadKeys: Object.keys(cookiePayload).filter(k => cookiePayload[k] !== undefined)
+          });
+          
+          const account = await unipile.account.connectLinkedinWithCookie(cookiePayload);
+
+          // Check if response is a checkpoint (OTP/2FA required)
+          if (account && account.object === 'Checkpoint' && account.checkpoint) {
+            return await handleCheckpointResponse(account, unipile, account.email);
+          }
+
+          logger.info('[LinkedInAccountService] SDK cookie connection successful');
+          return account;
+        }
+      } catch (sdkError) {
+        // Extract meaningful error message from SDK error
+        let errorMessage = sdkError.message || '';
+        
+        // Try to get more details from the error object
+        if (!errorMessage && sdkError.response?.data) {
+          if (typeof sdkError.response.data === 'string') {
+            errorMessage = sdkError.response.data;
+          } else if (sdkError.response.data.error) {
+            errorMessage = sdkError.response.data.error;
+          } else if (sdkError.response.data.message) {
+            errorMessage = sdkError.response.data.message;
+          } else if (sdkError.response.data.detail) {
+            errorMessage = sdkError.response.data.detail;
+          } else {
+            errorMessage = JSON.stringify(sdkError.response.data);
+          }
+        }
+        
+        // If still no message, check for common error patterns
+        if (!errorMessage) {
+          if (sdkError.status === 401 || sdkError.response?.status === 401) {
+            errorMessage = 'Invalid credentials or LinkedIn requires verification';
+          } else if (sdkError.status === 429 || sdkError.response?.status === 429) {
+            errorMessage = 'Too many attempts. Please wait and try again later';
+          } else if (sdkError.code === 'ENOTFOUND' || sdkError.code === 'ETIMEDOUT') {
+            errorMessage = 'Unable to connect to LinkedIn service. Please check your internet connection';
+          } else {
+            errorMessage = 'LinkedIn connection failed. Please check your credentials and try again';
+          }
+        }
+        
+        logger.error('[LinkedInAccountService] SDK connection failed', {
+          error: errorMessage,
+          originalError: sdkError.message,
+          stack: sdkError.stack,
+          response: sdkError.response?.data,
+          status: sdkError.response?.status,
+          statusText: sdkError.response?.statusText,
+          code: sdkError.code
+        });
+        
+        // Don't throw - fall through to HTTP API fallback
+        logger.info('[LinkedInAccountService] SDK failed, trying HTTP API fallback');
+      }
+    }
+    
+    // HTTP API fallback (used when SDK fails or not available)
+    logger.info('[LinkedInAccountService] Using HTTP API for connection');
+    const headers = unipileService.getAuthHeaders();
+
+    let payload = {};
+    if (method === 'credentials') {
+      // Unipile API requires provider field for credentials method
+      payload = {
+        provider: 'LINKEDIN',
+        username: email,
+        password: password
+      };
+    } else if (method === 'cookies') {
+      // For cookies method, use access_token and premium_token fields
+      payload = { 
+        provider: 'LINKEDIN',
+        access_token: li_at,
+        premium_token: li_a || undefined
+      };
+      if (user_agent) {
+        payload.user_agent = user_agent;
+      }
+    }
+
+    try {
+      logger.info('[LinkedInAccountService] Calling Unipile HTTP API', {
+        url: `${baseUrl}/accounts`,
+        method: payload.username ? 'credentials' : 'cookies'
+      });
+      
+      const response = await axios.post(
+        `${baseUrl}/accounts`,
+        payload,
+        { headers, timeout: 60000 }
+      );
+      
+      logger.info('[LinkedInAccountService] HTTP API connection successful', {
+        hasAccountId: !!response.data?.account_id,
+        responseKeys: Object.keys(response.data || {})
+      });
+
+      return response.data;
+    } catch (apiError) {
+      // Extract detailed error message
+      let errorMsg = apiError.message || 'Connection failed';
+      
+      if (apiError.response?.data) {
+        const data = apiError.response.data;
+        if (data.error) errorMsg = data.error;
+        else if (data.message) errorMsg = data.message;
+        else if (data.detail) errorMsg = data.detail;
+        else if (typeof data === 'string') errorMsg = data;
+      }
+      
+      // Handle specific status codes
+      if (apiError.response?.status === 401) {
+        errorMsg = 'Invalid LinkedIn credentials. Please check your email and password.';
+      } else if (apiError.response?.status === 403) {
+        errorMsg = 'LinkedIn access denied. Your account may require verification.';
+      } else if (apiError.response?.status === 429) {
+        errorMsg = 'Too many connection attempts. Please wait a few minutes and try again.';
+      } else if (apiError.response?.status === 404) {
+        errorMsg = 'Unipile service endpoint not found. Please check configuration.';
+      }
+      
+      logger.error('[LinkedInAccountService] HTTP API connection failed', {
+        error: errorMsg,
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        responseData: apiError.response?.data,
+        url: `${baseUrl}/accounts`
+      });
+      
+      throw new Error(errorMsg);
+    }
+  }
+
+  /**
+   * Verify OTP with Unipile (private helper method)
+   * @private
+   * @param {string} unipileAccountId - Unipile account ID
+   * @param {string} otp - OTP code
+   * @returns {Promise<Object>} Verification response
+   */
+  async _verifyOTPToUnipile(unipileAccountId, otp) {
+    const unipileService = new UnipileService();
+
+    if (!unipileService.isConfigured()) {
+      throw new Error('Unipile is not configured');
+    }
+
+    const baseUrl = unipileService.getBaseUrl();
+    let sdkBaseUrl = baseUrl;
+    if (sdkBaseUrl.endsWith('/api/v1')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1$/, '');
+    } else if (sdkBaseUrl.endsWith('/api/v1/')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1\/$/, '');
+    }
+
+    const token = (unipileService.token || process.env.UNIPILE_TOKEN || '').trim();
+
+    if (!token) {
+      throw new Error('UNIPILE_TOKEN is not configured');
+    }
+
+    // Try SDK first (if available)
+    if (UnipileClient) {
+      try {
+        const unipile = new UnipileClient(sdkBaseUrl, token);
+
+        if (unipile.account && typeof unipile.account.solveCodeCheckpoint === 'function') {
+          logger.info('[LinkedInAccountService] Using SDK solveCodeCheckpoint()', {
+            accountId: unipileAccountId,
+            sdkBaseUrl
+          });
+          const verificationResponse = await unipile.account.solveCodeCheckpoint({
+            provider: 'LINKEDIN',
+            account_id: unipileAccountId,
+            code: otp
+          });
+          logger.info('[LinkedInAccountService] SDK solveCodeCheckpoint returned', {
+            responseKeys: Object.keys(verificationResponse || {}),
+            responseStatus: verificationResponse?.status,
+            responseObject: verificationResponse?.object,
+            responseString: JSON.stringify(verificationResponse)
+          });
+          logger.info('[LinkedInAccountService] OTP verified successfully via Unipile SDK');
+          return verificationResponse;
+        } else {
+          logger.warn('[LinkedInAccountService] SDK solveCodeCheckpoint method not available on account object', {
+            hasAccount: !!unipile.account,
+            accountMethods: unipile.account ? Object.keys(unipile.account) : []
+          });
+        }
+      } catch (sdkError) {
+        // Extract error details - SDK errors might have different structures
+        // Check for body property which seems to exist based on errorKeys
+        const errorBody = sdkError.body || (typeof sdkError.body === 'string' ? JSON.parse(sdkError.body) : null);
+        
+        const errorDetails = {
+          message: sdkError.message,
+          name: sdkError.name,
+          stack: sdkError.stack,
+          response: sdkError.response?.data,
+          status: sdkError.response?.status,
+          statusText: sdkError.response?.statusText,
+          code: sdkError.code,
+          // Check for common error properties
+          detail: sdkError.detail,
+          error: sdkError.error,
+          // Check body property
+          body: errorBody,
+          bodyString: typeof sdkError.body === 'string' ? sdkError.body : JSON.stringify(sdkError.body),
+          // Stringify the whole error to see all properties
+          errorString: sdkError.toString(),
+          errorKeys: Object.keys(sdkError)
+        };
+        
+        logger.error('[LinkedInAccountService] SDK solveCodeCheckpoint failed', errorDetails);
+        
+        // Construct a meaningful error message
+        let errorMsg = 'Unipile SDK solveCodeCheckpoint failed';
+        if (errorBody) {
+          // Try to extract error message from body
+          const bodyError = errorBody.detail || errorBody.error || errorBody.message || (typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody));
+          errorMsg += `: ${bodyError}`;
+        } else if (sdkError.message) {
+          errorMsg += `: ${sdkError.message}`;
+        } else if (sdkError.response?.data) {
+          const data = sdkError.response.data;
+          errorMsg += `: ${data.detail || data.error || data.message || JSON.stringify(data)}`;
+        } else if (sdkError.response?.statusText) {
+          errorMsg += `: ${sdkError.response.status} ${sdkError.response.statusText}`;
+        } else {
+          errorMsg += `: ${sdkError.toString()}`;
+        }
+        
+        throw new Error(errorMsg);
+      }
+    }
+
+    // If SDK is not available, throw an error (HTTP API doesn't support checkpoint solving)
+    throw new Error('Unipile SDK is required for OTP verification. The HTTP API endpoint for solving checkpoints is not available. Please install unipile-node-sdk: npm install unipile-node-sdk');
+  }
+
+  /**
+   * Solve checkpoint (Yes/No validation)
+   * @param {Object} req - Request object
+   * @param {string} accountId - Account ID (database UUID)
+   * @param {string} answer - Answer ('YES' or 'NO')
+   * @param {string} checkpointType - Checkpoint type (default: 'IN_APP_VALIDATION')
+   * @returns {Promise<Object>} Solve result
+   */
+  async solveCheckpoint(req, accountId, answer, checkpointType = 'IN_APP_VALIDATION') {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    if (!answer || (answer !== 'YES' && answer !== 'NO')) {
+      throw new Error('Answer must be YES or NO');
+    }
+
+    // accountId can be either database UUID or unipile_account_id
+    let account = null;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+    
+    if (isUUID) {
+      // Try to find by database UUID
+      account = await linkedInAccountRepo.findById(req, accountId, tenantId);
+    } else {
+      // Try to find by Unipile account ID
+      account = await linkedInAccountRepo.findByProviderAccountId(req, accountId, tenantId);
+      logger.info('[LinkedInAccountService] Account found by Unipile ID for checkpoint', {
+        databaseId: account?.id,
+        unipileAccountId: accountId,
+        tenantId
+      });
+    }
+    
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    if (!account.provider_account_id) {
+      throw new Error('Account missing provider_account_id');
+    }
+
+    // Get checkpoint type from account metadata if not provided
+    if (checkpointType === 'IN_APP_VALIDATION' && account.metadata?.checkpoint?.type) {
+      checkpointType = account.metadata.checkpoint.type;
+    }
+
+    // Call Unipile to solve checkpoint
+    try {
+      logger.info('[LinkedInAccountService] Solving checkpoint in Unipile', {
+        accountId,
+        providerAccountId: account.provider_account_id,
+        answer,
+        checkpointType
+      });
+      
+      const solveCheckpointResponse = await this._solveCheckpointToUnipile(account.provider_account_id, answer, checkpointType);
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved in Unipile - Response from Unipile', {
+        responseKeys: solveCheckpointResponse ? Object.keys(solveCheckpointResponse) : [],
+        responseStatus: solveCheckpointResponse?.status,
+        responseObject: solveCheckpointResponse?.object,
+        responseString: JSON.stringify(solveCheckpointResponse)
+      });
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved in Unipile', {
+        accountId,
+        providerAccountId: account.provider_account_id
+      });
+      
+      // Update account status to active
+      logger.info('[LinkedInAccountService] Updating account status to active after checkpoint solve', {
+        databaseId: account.id,
+        tenantId,
+        currentStatus: account.status
+      });
+      
+      const updatedAccount = await linkedInAccountRepo.updateStatus(req, account.id, tenantId, 'active');
+      
+      logger.info('[LinkedInAccountService] Checkpoint account status updated successfully', {
+        databaseId: account.id,
+        newStatus: updatedAccount?.status,
+        tenantId
+      });
+      
+      // Also try to update account with any additional data from Unipile response
+      // (e.g., new tokens, session data, etc.)
+      if (solveCheckpointResponse && (solveCheckpointResponse.session_cookies || solveCheckpointResponse.access_token || solveCheckpointResponse.refresh_token)) {
+        logger.info('[LinkedInAccountService] Updating account with Unipile response data after checkpoint solve', {
+          hasSessionCookies: !!solveCheckpointResponse.session_cookies,
+          hasAccessToken: !!solveCheckpointResponse.access_token,
+          hasRefreshToken: !!solveCheckpointResponse.refresh_token,
+          databaseId: account.id
+        });
+        try {
+          const enrichedAccount = await linkedInAccountRepo.updateWithUnipileResponse(
+            req,
+            account.id,
+            tenantId,
+            {
+              session_cookies: solveCheckpointResponse.session_cookies,
+              access_token: solveCheckpointResponse.access_token,
+              refresh_token: solveCheckpointResponse.refresh_token,
+              token_expires_at: solveCheckpointResponse.token_expires_at,
+              status: 'active'
+            }
+          );
+          logger.info('[LinkedInAccountService] Account enriched with Unipile response data', {
+            databaseId: account.id,
+            enrichedAccountKeys: Object.keys(enrichedAccount || {})
+          });
+        } catch (enrichError) {
+          logger.warn('[LinkedInAccountService] Failed to enrich account with Unipile response data', {
+            error: enrichError.message,
+            databaseId: account.id
+          });
+          // Not a fatal error - account status is already updated
+        }
+      }
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved successfully', {
+        accountId,
+        providerAccountId: account.provider_account_id,
+        answer,
+        checkpointType,
+        tenantId,
+        statusUpdated: updatedAccount?.status === 'active'
+      });
+      
+      return { success: true };
+    } catch (error) {
+      logger.error('[LinkedInAccountService] Checkpoint solve failed', {
+        error: error.message,
+        stack: error.stack,
+        accountId,
+        providerAccountId: account.provider_account_id,
+        answer,
+        checkpointType,
+        tenantId,
+        responseData: error.response?.data
+      });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        throw new Error(`Checkpoint solve failed: ${error.response.status} ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+      }
+      
+      throw new Error(`Checkpoint solve failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get checkpoint status for an account
+   * @param {Object} req - Request object
+   * @param {string} unipileAccountId - Unipile account ID
+   * @returns {Promise<Object>} Checkpoint status
+   */
+  async getCheckpointStatus(req, unipileAccountId) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new Error('Tenant context required');
+    }
+
+    if (!unipileAccountId) {
+      throw new Error('Account ID is required');
+    }
+
+    try {
+      // Get account details from Unipile
+      const unipileService = new UnipileService();
+      const accountDetails = await unipileService.getAccountInfo(unipileAccountId);
+      
+      if (!accountDetails) {
+        throw new Error('Account not found in Unipile');
+      }
+
+      // Check if account is still in checkpoint state
+      // Handle both object === 'Checkpoint' format and nested checkpoint object
+      const isCheckpoint = (accountDetails?.object === 'Checkpoint' && accountDetails?.checkpoint) ||
+                          (accountDetails?.checkpoint && accountDetails.checkpoint.required);
+      const isConnected = accountDetails?.state === 'connected' || 
+                         accountDetails?.status === 'connected' ||
+                         accountDetails?.object === 'Account';
+      
+      logger.info('[LinkedInAccountService] Checkpoint status retrieved', {
+        unipileAccountId,
+        isCheckpoint,
+        isConnected,
+        accountObject: accountDetails?.object,
+        tenantId
+      });
+
+      return {
+        success: true,
+        connected: isConnected && !isCheckpoint,
+        status: isConnected ? 'connected' : (isCheckpoint ? 'checkpoint' : 'disconnected'),
+        checkpoint: accountDetails?.checkpoint || null
+      };
+    } catch (error) {
+      logger.error('[LinkedInAccountService] Error getting checkpoint status', {
+        error: error.message,
+        stack: error.stack,
+        unipileAccountId,
+        tenantId,
+        responseData: error.response?.data
+      });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        throw new Error(`Failed to get checkpoint status: ${error.response.status} ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+      }
+      
+      throw new Error(`Failed to get checkpoint status: ${error.message}`);
+    }
+  }
+
+  /**
+   * Solve checkpoint with Unipile (private helper method)
+   * @private
+   * @param {string} unipileAccountId - Unipile account ID
+   * @param {string} answer - Answer ('YES' or 'NO')
+   * @param {string} checkpointType - Checkpoint type
+   * @returns {Promise<Object>} Solve response
+   */
+  async _solveCheckpointToUnipile(unipileAccountId, answer, checkpointType) {
+    const unipileService = new UnipileService();
+
+    if (!unipileService.isConfigured()) {
+      throw new Error('Unipile is not configured');
+    }
+
+    const baseUrl = unipileService.getBaseUrl();
+    let sdkBaseUrl = baseUrl;
+    if (sdkBaseUrl.endsWith('/api/v1')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1$/, '');
+    } else if (sdkBaseUrl.endsWith('/api/v1/')) {
+      sdkBaseUrl = sdkBaseUrl.replace(/\/api\/v1\/$/, '');
+    }
+
+    const token = (unipileService.token || process.env.UNIPILE_TOKEN || '').trim();
+
+    if (!token) {
+      throw new Error('UNIPILE_TOKEN is not configured');
+    }
+
+    // Try SDK first (if available)
+    if (UnipileClient) {
+      try {
+        const unipile = new UnipileClient(sdkBaseUrl, token);
+
+        if (unipile.account && typeof unipile.account.solveCheckpoint === 'function') {
+          logger.info('[LinkedInAccountService] Using SDK solveCheckpoint()');
+          const solveResponse = await unipile.account.solveCheckpoint({
+            account_id: unipileAccountId,
+            type: checkpointType,
+            answer: answer
+          });
+          logger.info('[LinkedInAccountService] SDK solveCheckpoint returned', {
+            responseKeys: Object.keys(solveResponse || {}),
+            responseStatus: solveResponse?.status,
+            responseObject: solveResponse?.object,
+            responseString: JSON.stringify(solveResponse)
+          });
+          logger.info('[LinkedInAccountService] Checkpoint solved successfully via SDK');
+          return solveResponse;
+        }
+      } catch (sdkError) {
+        logger.warn('[LinkedInAccountService] SDK solveCheckpoint failed, falling back to HTTP API', {
+          error: sdkError.message
+        });
+        // Fall through to HTTP API fallback
+      }
+    }
+
+    // Fallback to HTTP API
+    try {
+      logger.info('[LinkedInAccountService] Using HTTP API fallback for solve checkpoint');
+      const headers = unipileService.getAuthHeaders();
+      const response = await axios.post(
+        `${baseUrl}/accounts/${unipileAccountId}/solve-checkpoint`,
+        {
+          type: checkpointType,
+          answer: answer
+        },
+        { headers, timeout: 30000 }
+      );
+      
+      logger.info('[LinkedInAccountService] Checkpoint solved successfully via HTTP API');
+      return response.data;
+    } catch (error) {
+      logger.error('[LinkedInAccountService] Error solving checkpoint', {
+        error: error.message,
+        stack: error.stack,
+        accountId: unipileAccountId,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status
+      });
+      
+      // Re-throw with more context if it's an axios error
+      if (error.response) {
+        const errorMsg = error.response.data?.detail || error.response.data?.error || error.response.data?.message || error.response.statusText;
+        throw new Error(`Unipile API error: ${error.response.status} - ${errorMsg}`);
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user is admin
+   * @private
+   */
+  _isAdmin(req) {
+    const capabilities = req.user?.capabilities || [];
+    return capabilities.includes('admin') || 
+           capabilities.includes('tenant.admin') ||
+           req.user?.role === 'admin' ||
+           req.user?.role === 'owner';
+  }
+}
+
+module.exports = new LinkedInAccountService();

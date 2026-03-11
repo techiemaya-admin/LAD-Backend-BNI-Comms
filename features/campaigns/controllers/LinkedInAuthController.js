@@ -1,0 +1,373 @@
+/**
+ * LinkedIn Auth Controller
+ * Handles OAuth, connection, and checkpoint operations
+ */
+
+const { getSchema } = require('../../../core/utils/schemaHelper');
+const linkedInService = require('../services/LinkedInIntegrationService');
+const linkedInAccountStorage = require('../services/LinkedInAccountStorageService');
+class LinkedInAuthController {
+  /**
+   * Start LinkedIn OAuth flow
+   * GET /api/campaigns/linkedin/auth/start
+   */
+  static async startAuth(req, res) {
+    try {
+      const userId = req.user.userId || req.user.user_id;
+      const redirectUri = req.query.redirect_uri || 
+                        req.body.redirect_uri || 
+                        process.env.LINKEDIN_REDIRECT_URI || 
+                        (process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/settings/linkedin/callback` : null);
+      if (!redirectUri) {
+        return res.status(400).json({
+          success: false,
+          error: 'Redirect URI must be provided via redirect_uri parameter, LINKEDIN_REDIRECT_URI, or FRONTEND_URL must be set'
+        });
+      }
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: 'User ID is required'
+        });
+      }
+      const authUrl = await linkedInService.startLinkedInConnection(userId, redirectUri);
+      res.json({
+        success: true,
+        authUrl: authUrl,
+        message: 'Redirect user to authUrl to complete LinkedIn connection'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to start LinkedIn authentication'
+      });
+    }
+  }
+  /**
+   * Handle LinkedIn OAuth callback
+   * GET /api/campaigns/linkedin/auth/callback
+   */
+  static async handleCallback(req, res) {
+    try {
+      const { code, state } = req.query;
+      const redirectUri = req.query.redirect_uri || 
+                        process.env.LINKEDIN_REDIRECT_URI || 
+                        (process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/settings/linkedin/callback` : null);
+      if (!redirectUri) {
+        return res.status(400).json({
+          success: false,
+          error: 'Redirect URI must be provided via redirect_uri parameter, LINKEDIN_REDIRECT_URI, or FRONTEND_URL must be set'
+        });
+      }
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          error: 'Authorization code is required'
+        });
+      }
+      const userId = state || req.user?.userId || req.user?.user_id;
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: 'User ID is required'
+        });
+      }
+      const result = await linkedInService.handleLinkedInCallback(userId, code, redirectUri);
+      // Redirect to frontend success page
+      const frontendUrl = process.env.FRONTEND_URL;
+      if (!frontendUrl) {
+        return res.status(500).json({
+          success: false,
+          error: 'FRONTEND_URL must be set for redirect'
+        });
+      }
+      const successUrl = `${frontendUrl}/settings?linkedin=connected&accountId=${result.account.unipile_account_id}`;
+      res.redirect(successUrl);
+    } catch (error) {
+      const frontendUrl = process.env.FRONTEND_URL;
+      if (!frontendUrl) {
+        return res.status(500).json({
+          success: false,
+          error: 'FRONTEND_URL must be set for redirect'
+        });
+      }
+      const errorUrl = `${frontendUrl}/settings?linkedin=error&message=${encodeURIComponent(error.message)}`;
+      res.redirect(errorUrl);
+    }
+  }
+  /**
+   * Connect account manually
+   * POST /api/campaigns/linkedin/connect
+   */
+  static async connect(req, res) {
+    const logger = require('../../../core/utils/logger');
+    try {
+      // Use tenantId per TDD (linkedin_accounts table uses tenant_id)
+      const tenantId = req.user.tenantId || req.user.userId || req.user.user_id;
+      const { method, email, password, li_at, li_a, user_agent } = req.body;
+      
+      logger.info('[LinkedInAuthController] Connect request', { 
+        method, 
+        tenantId: tenantId?.substring(0, 8),
+        hasEmail: !!email,
+        hasPassword: !!password,
+        hasLiAt: !!li_at
+      });
+      
+      if (!method || (method !== 'credentials' && method !== 'cookies')) {
+        logger.warn('[LinkedInAuthController] Invalid method', { method });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid method. Must be "credentials" or "cookies"'
+        });
+      }
+      if (method === 'credentials' && (!email || !password)) {
+        logger.warn('[LinkedInAuthController] Missing credentials');
+        return res.status(400).json({
+          success: false,
+          error: 'Email and password are required for credentials method'
+        });
+      }
+      if (method === 'cookies' && (!li_at && !li_a)) {
+        logger.warn('[LinkedInAuthController] Missing cookies');
+        return res.status(400).json({
+          success: false,
+          error: 'li_at or li_a cookie is required for cookies method'
+        });
+      }
+      
+      logger.info('[LinkedInAuthController] Calling connectAccount service');
+      let result;
+      try {
+        result = await linkedInService.connectAccount({
+          method,
+          email,
+          password,
+          li_at,
+          li_a,
+          user_agent
+        });
+        logger.info('[LinkedInAuthController] connectAccount returned', { 
+          hasResult: !!result,
+          isCheckpoint: result?.object === 'Checkpoint'
+        });
+      } catch (error) {
+        logger.error('[LinkedInAuthController] connectAccount failed', { 
+          error: error.message || 'Unknown error',
+          errorString: String(error),
+          errorName: error.name,
+          status: error.response?.status,
+          responseData: error.response?.data,
+          stack: error.stack?.substring(0, 500)
+        });
+        
+        // Handle Unipile API errors gracefully
+        const errorMessage = error.message || String(error) || 'Failed to connect LinkedIn account';
+        
+        // Remove any Unipile branding from error messages
+        const cleanError = errorMessage.replace(/unipile/gi, 'service').replace(/Unipile/g, 'Service');
+        
+        // Check if it's the 404 error we're handling
+        if (cleanError.includes('not supported by this') || 
+            cleanError.includes('404') ||
+            (error.response && error.response.status === 404)) {
+          return res.status(501).json({
+            success: false,
+            error: 'LinkedIn connection via credentials is not supported',
+            message: 'The LinkedIn credential-based connection endpoint is not available. Please use one of the following alternatives:',
+            alternatives: [
+              {
+                method: 'OAuth',
+                description: 'Use LinkedIn OAuth flow for secure connection',
+                endpoint: '/api/campaigns/linkedin/auth/start'
+              },
+              {
+                method: 'Dashboard',
+                description: 'Connect your LinkedIn account through the provider dashboard',
+                action: 'Visit the provider dashboard to connect LinkedIn accounts'
+              }
+            ],
+            details: cleanError
+          });
+        }
+        // Handle other errors
+        return res.status(error.response?.status || 500).json({
+          success: false,
+          error: cleanError,
+          details: error.response?.data || cleanError
+        });
+      }
+      // Check if result is a checkpoint (OTP/2FA required)
+      if (result && result.object === 'Checkpoint' && result.checkpoint) {
+        const accountId = result.account_id || result.id || result._id;
+        const tenantId = req.user.tenantId || req.user.userId || req.user.user_id;
+        // Extract profile info from result
+        const profileName = result.profileName || result.profile_name || 
+                           (result.email ? result.email.split('@')[0] : 'LinkedIn User');
+        const profileUrl = result.profileUrl || result.profile_url || null;
+        const accountEmail = result.email || email || null;
+        // Return checkpoint response (matching pluto_campaigns format)
+        return res.json({
+          success: true,
+          checkpoint: result.checkpoint,
+          account_id: accountId,
+          profileName: profileName,
+          profileUrl: profileUrl,
+          email: accountEmail,
+          unipileAccount: {
+            id: accountId,
+            state: 'checkpoint',
+            lastChecked: new Date().toISOString()
+          }
+        });
+      }
+      // If connection successful, save to database
+      // SDK response might have account_id, id, _id, or accountId
+      const unipileAccountId = result.account_id || result.id || result._id || result.accountId;
+      if (unipileAccountId) {
+        // SDK response might already contain account details, try to use them first
+        let accountDetails = result;
+        // If SDK response doesn't have profile info, fetch it
+        if (!accountDetails.profile_name && !accountDetails.profile_url && !accountDetails.name) {
+          try {
+            accountDetails = await linkedInService.getAccountDetails(unipileAccountId);
+          } catch (detailError) {
+            // Use the connection response as fallback
+            accountDetails = result;
+          }
+        }
+        const schema = getSchema(req);
+        // Use tenantId for TDD schema (${schema}.linkedin_accounts uses tenant_id)
+        const tenantId = req.user.tenantId || req.user.userId || req.user.user_id;
+        if (tenantId) {
+          // Use the extractLinkedInProfileUrl function from LinkedInOAuthService
+          // First try to extract from account details, then from connection result
+          let profileUrl = null;
+          // Try account details first (most reliable)
+          if (accountDetails) {
+            profileUrl = linkedInService.extractLinkedInProfileUrl(accountDetails);
+          }
+          // If not found, try the connection result
+          if (!profileUrl && result) {
+            profileUrl = linkedInService.extractLinkedInProfileUrl(result);
+          }
+          // Extract profile information from account details or result
+          const profileName = accountDetails?.profile_name || 
+                             accountDetails?.name || 
+                             accountDetails?.profile?.name || 
+                             result?.profile_name ||
+                             result?.name ||
+                             (result?.email ? result.email.split('@')[0] : 'LinkedIn User');
+          const email = accountDetails?.email || 
+                      accountDetails?.profile?.email || 
+                      result?.email ||
+                      null;
+          // Save to database
+          const credentials = {
+            unipile_account_id: unipileAccountId,
+            profile_name: profileName,
+            profile_url: profileUrl,
+            email: email,
+            connected_at: new Date().toISOString()
+          };
+          
+          const userId = req.user.userId || req.user.user_id;
+          
+          logger.info('[LinkedInAuthController] Saving account to database', {
+            userId: userId?.substring(0, 8),
+            tenantId: tenantId?.substring(0, 8),
+            unipileAccountId: unipileAccountId?.substring(0, 8)
+          });
+          
+          // Use service to save account (handles database operations)
+          const savedAccount = await linkedInAccountStorage.saveLinkedInAccount(userId, tenantId, credentials);
+          
+          logger.info('[LinkedInAuthController] Account saved successfully', {
+            accountId: savedAccount?.id?.substring(0, 8),
+            accountName: savedAccount?.account_name
+          });
+        }
+      } else {
+        logger.warn('[LinkedInAuthController] No unipileAccountId in result', { 
+          hasResult: !!result,
+          resultKeys: result ? Object.keys(result) : []
+        });
+      }
+      
+      logger.info('[LinkedInAuthController] Returning success response');
+      
+      res.json({
+        success: true,
+        message: 'Account connected successfully',
+        result
+      });
+    } catch (error) {
+      logger.error('[LinkedInAuthController] Connect failed', { 
+        error: error.message || 'Unknown error',
+        errorString: String(error),
+        errorName: error.name,
+        stack: error.stack?.substring(0, 500)
+      });
+      
+      // Clean error message - remove Unipile branding
+      const cleanError = (error.message || String(error) || 'Failed to connect account. Please check your credentials and try again.')
+        .replace(/unipile/gi, 'service')
+        .replace(/Unipile/g, 'Service');
+      
+      res.status(500).json({
+        success: false,
+        error: cleanError
+      });
+    }
+  }
+  /**
+   * Reconnect account
+   * POST /api/campaigns/linkedin/reconnect
+   */
+  static async reconnect(req, res) {
+    try {
+      const userId = req.user.userId || req.user.user_id;
+      const { account_id } = req.body;
+      // Get account ID
+      let unipileAccountId = account_id;
+      if (!unipileAccountId && userId) {
+        const accounts = await linkedInService.getUserLinkedInAccounts(userId);
+        if (accounts.length > 0) {
+          unipileAccountId = accounts[0].unipile_account_id;
+        }
+      }
+      if (!unipileAccountId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Account ID is required'
+        });
+      }
+      const result = await linkedInService.reconnectAccount(unipileAccountId);
+      res.json({
+        success: true,
+        message: 'Account reconnected successfully',
+        result
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to reconnect account'
+      });
+    }
+  }
+  // Checkpoint methods moved to LinkedInCheckpointController.js
+  // Import and delegate:
+  static async solveCheckpoint(req, res) {
+    const LinkedInCheckpointController = require('./LinkedInCheckpointController');
+    return LinkedInCheckpointController.solveCheckpoint(req, res);
+  }
+  static async verifyOTP(req, res) {
+    const LinkedInCheckpointController = require('./LinkedInCheckpointController');
+    return LinkedInCheckpointController.verifyOTP(req, res);
+  }
+  static async getCheckpointStatus(req, res) {
+    const LinkedInCheckpointController = require('./LinkedInCheckpointController');
+    return LinkedInCheckpointController.getCheckpointStatus(req, res);
+  }
+}
+module.exports = LinkedInAuthController;

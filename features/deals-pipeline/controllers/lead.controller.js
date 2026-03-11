@@ -1,0 +1,293 @@
+/**
+ * Lead Controller - LAD Architecture Compliant
+ * Handles HTTP requests for lead CRUD operations
+ * Routes → Controllers → Services → Models
+ */
+
+const leadService = require('../services/lead.service');
+
+// Try core paths first, fallback to local shared
+// Use core utils in LAD architecture
+const { getTenantContext } = require('../../../core/utils/schemaHelper');
+const logger = require('../../../core/utils/logger');
+
+/**
+ * List all leads
+ * GET /api/deals-pipeline/leads
+ */
+exports.list = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const { stage, status, search, page, limit } = req.query;
+    
+    const pagination = {
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 50
+    };
+
+    const result = await leadService.list(tenant_id, schema, { stage, status, search }, pagination);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error listing leads', error, { path: req.path });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch leads', details: error.message });
+  }
+};
+
+/**
+ * Get a single lead by ID
+ * GET /api/deals-pipeline/leads/:id
+ */
+exports.get = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const lead = await leadService.getById(req.params.id, tenant_id, schema);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.json(lead);
+  } catch (error) {
+    logger.error('Error getting lead', error, { leadId: req.params.id });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch lead', details: error.message });
+  }
+};
+
+/**
+ * Create a new lead
+ * POST /api/deals-pipeline/leads
+ */
+exports.create = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const lead = await leadService.create(req.body, tenant_id, schema);
+    res.status(201).json(lead);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      sqlState: error.sqlState
+    } : error;
+    
+    logger.error('Error creating lead', { 
+      error: errorMessage,
+      details: errorDetails,
+      body: req.body 
+    });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    // Return database constraint errors with more detail
+    if (error.code === '23502' || error.code === '23503') {
+      return res.status(400).json({ 
+        error: 'Invalid lead data', 
+        details: error.message 
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to create lead', details: errorMessage });
+  }
+};
+
+/**
+ * Update a lead
+ * PUT /api/deals-pipeline/leads/:id
+ */
+exports.update = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const lead = await leadService.update(req.params.id, tenant_id, req.body, schema);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.json(lead);
+  } catch (error) {
+    logger.error('Error updating lead', error, { leadId: req.params.id });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to update lead', details: error.message });
+  }
+};
+
+/**
+ * Add a comment to lead raw_data
+ * POST /api/deals-pipeline/leads/:id/comments
+ */
+exports.addComment = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+
+    const text = req.body?.text;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+
+    const userId = req.user?.id || req.user?.userId || null;
+    const comment = {
+      text: text.trim(),
+      created_at: new Date().toISOString(),
+      created_by: userId
+    };
+
+    const lead = await leadService.addComment(req.params.id, tenant_id, comment, schema);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    res.status(201).json(lead);
+  } catch (error) {
+    logger.error('Error adding lead comment', error, { leadId: req.params.id });
+
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    res.status(500).json({ error: 'Failed to add comment', details: error.message });
+  }
+};
+
+/**
+ * Get comments for a lead
+ * GET /api/deals-pipeline/leads/:id/comments
+ */
+exports.getComments = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+
+    const comments = await leadService.getComments(req.params.id, tenant_id, schema);
+    if (!comments) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    res.json({ comments });
+  } catch (error) {
+    logger.error('Error getting lead comments', error, { leadId: req.params.id });
+
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    res.status(500).json({ error: 'Failed to fetch comments', details: error.message });
+  }
+};
+
+/**
+ * Get tags for a lead
+ * GET /api/deals-pipeline/leads/:id/tags
+ */
+exports.getTags = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+
+    const tags = await leadService.getTags(req.params.id, tenant_id, schema);
+    if (!tags) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    res.json({ tags });
+  } catch (error) {
+    logger.error('Error getting lead tags', error, { leadId: req.params.id });
+
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    res.status(500).json({ error: 'Failed to fetch tags', details: error.message });
+  }
+};
+
+/**
+ * Update tags for a lead
+ * PUT /api/deals-pipeline/leads/:id/tags
+ */
+exports.updateTags = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+
+    const tags = req.body?.tags;
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: 'tags must be an array' });
+    }
+
+    const lead = await leadService.updateTags(req.params.id, tenant_id, tags, schema);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    res.json(lead);
+  } catch (error) {
+    logger.error('Error updating lead tags', error, { leadId: req.params.id });
+
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+
+    res.status(500).json({ error: 'Failed to update tags', details: error.message });
+  }
+};
+
+/**
+ * Delete a lead
+ * DELETE /api/deals-pipeline/leads/:id
+ */
+exports.remove = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    await leadService.remove(req.params.id, tenant_id, schema);
+    res.status(204).send();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      code: error.code,
+      detail: error.detail
+    } : error;
+    
+    logger.error('Error deleting lead', { 
+      error: errorMessage,
+      details: errorDetails,
+      leadId: req.params.id
+    });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to delete lead', details: errorMessage });
+  }
+};
+
+/**
+ * Get lead statistics
+ * GET /api/deals-pipeline/leads/stats
+ */
+exports.stats = async (req, res) => {
+  try {
+    const { tenant_id, schema } = getTenantContext(req);
+    const stats = await leadService.getStats(tenant_id, schema);
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting stats', error, { path: req.path });
+    
+    if (error.code === 'TENANT_CONTEXT_MISSING') {
+      return res.status(403).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch lead stats', details: error.message });
+  }
+};
