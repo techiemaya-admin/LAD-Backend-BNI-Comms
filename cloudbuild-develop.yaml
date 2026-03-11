@@ -140,3 +140,4 @@ substitutions:
 # Retry with secrets in correct project
 # All secret permissions granted
 # fix: grant stripe-webhook-secret permissions
+# force rebuild with all permissions
