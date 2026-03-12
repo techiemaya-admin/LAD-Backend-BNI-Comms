@@ -81,7 +81,9 @@ const authenticateToken = (req, res, next) => {
     fullPath.includes('/api/apollo-leads/search-employees-from-db') ||
     fullPath.includes('/api/apollo-leads/search-employees') ||
     fullPath.includes('/apollo-leads/search-employees-from-db') ||
-    fullPath.includes('/apollo-leads/search-employees')
+    fullPath.includes('/apollo-leads/search-employees') ||
+    fullPath.includes('/api/personal-whatsapp/') ||
+    fullPath.includes('/personal-whatsapp/')
   )) {
     logger.info('[Auth] Bypassing auth for service-to-service call', {
       path: req.path,
