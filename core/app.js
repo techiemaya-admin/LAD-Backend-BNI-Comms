@@ -69,6 +69,7 @@ class CoreApplication {
       'https://app.mrlads.com',
       'https://dev.mrlads.com',
       'https://stage.mrlads.com',
+      'https://web.mrlads.com',
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
