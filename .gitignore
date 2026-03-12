@@ -48,6 +48,10 @@ pnpm-debug.log*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+
+# WhatsApp session files (transient, auto-generated)
+.baileys-sessions/
+*.baileys*
 Thumbs.db
 Desktop.ini
 
