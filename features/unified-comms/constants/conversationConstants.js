@@ -1,0 +1,105 @@
+/**
+ * conversationConstants.js
+ * Enum definitions and static values for conversations feature
+ */
+
+const CONVERSATION_CHANNELS = {
+  LINKEDIN: 'linkedin',
+  WHATSAPP: 'whatsapp',
+  EMAIL: 'email',
+  INSTAGRAM: 'instagram',
+  VOICE: 'voice',
+};
+
+const CONVERSATION_STATUS = {
+  OPEN: 'open',
+  CLOSED: 'closed',
+  ARCHIVED: 'archived',
+  PENDING: 'pending',
+};
+
+const SENDER_TYPES = {
+  LEAD: 'lead',
+  AI: 'ai',
+  USER: 'user',
+  SYSTEM: 'system',
+};
+
+const PARTICIPANT_TYPES = {
+  LEAD: 'lead',
+  USER: 'user',
+  AI: 'ai',
+};
+
+const MESSAGE_TYPES = {
+  TEXT: 'text',
+  VOICE: 'voice',
+  ATTACHMENT: 'attachment',
+  IMAGE: 'image',
+  VIDEO: 'video',
+};
+
+const SENTIMENT_TYPES = {
+  POSITIVE: 'positive',
+  NEGATIVE: 'negative',
+  NEUTRAL: 'neutral',
+  MIXED: 'mixed',
+};
+
+const API_CAPABILITIES = {
+  VIEW_CONVERSATIONS: 'conversations.view',
+  MANAGE_CONVERSATIONS: 'conversations.manage',
+  REPLY_CONVERSATIONS: 'conversations.reply',
+};
+
+const REQUIRED_CAPABILITIES = {
+  GET_THREADS: API_CAPABILITIES.VIEW_CONVERSATIONS,
+  GET_THREAD: API_CAPABILITIES.VIEW_CONVERSATIONS,
+  GET_MESSAGES: API_CAPABILITIES.VIEW_CONVERSATIONS,
+  SEND_MESSAGE: API_CAPABILITIES.MANAGE_CONVERSATIONS,
+  UPDATE_STATUS: API_CAPABILITIES.MANAGE_CONVERSATIONS,
+  ADD_PARTICIPANT: API_CAPABILITIES.MANAGE_CONVERSATIONS,
+  INGEST_WEBHOOK: 'webhook.ingest',
+};
+
+const PAGINATION_DEFAULTS = {
+  LIMIT: 20,
+  MAX_LIMIT: 100,
+  OFFSET: 0,
+};
+
+const MESSAGE_PREVIEW_LENGTH = 200;
+
+const WEBHOOK_SIGNATURE_HEADERS = {
+  LINKEDIN: 'x-linkedin-signature',
+  WHATSAPP: 'x-hub-signature-256',
+  EMAIL: 'x-webhook-signature',
+  INSTAGRAM: 'x-hub-signature-256',
+  VOICE: 'x-signature',
+};
+
+const ERROR_CODES = {
+  TENANT_REQUIRED: 'TENANT_REQUIRED',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  DUPLICATE_MESSAGE: 'DUPLICATE_MESSAGE',
+  DATABASE_ERROR: 'DATABASE_ERROR',
+  WEBHOOK_INVALID: 'WEBHOOK_INVALID',
+};
+
+module.exports = {
+  CONVERSATION_CHANNELS,
+  CONVERSATION_STATUS,
+  SENDER_TYPES,
+  PARTICIPANT_TYPES,
+  MESSAGE_TYPES,
+  SENTIMENT_TYPES,
+  API_CAPABILITIES,
+  REQUIRED_CAPABILITIES,
+  PAGINATION_DEFAULTS,
+  MESSAGE_PREVIEW_LENGTH,
+  WEBHOOK_SIGNATURE_HEADERS,
+  ERROR_CODES,
+};

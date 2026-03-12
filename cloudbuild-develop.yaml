@@ -74,6 +74,7 @@ steps:
         CLOUD_TASKS_LOCATION: "$_GCP_LOCATION"
         CLOUD_TASKS_QUEUE_NAME: "$_CLOUD_TASKS_QUEUE_NAME"
         CLOUD_RUN_SERVICE_URL: "$_BACKEND_URL"
+        SALES_NAVIGATOR_PROVIDER_ID: "b-sdXjTfSSyGfBvq0IJfGw"
         EOF
         
         echo "Env vars file created:"
@@ -97,7 +98,7 @@ steps:
         
         echo "========================================"
         echo "✓ Deployment completed successfully!"
-        echo "✓ Service URL: https://$_SERVICE_NAME-741719885039.$_REGION.run.app"
+        echo "✓ Service URL: https://$_SERVICE_NAME-160078175457.$_REGION.run.app"
         echo "========================================"
 
 # Images to be pushed to Container Registry
@@ -122,15 +123,15 @@ substitutions:
   _REGION: 'us-central1'
   _SERVICE_NAME: 'lad-backend-develop'
   _ENV: 'develop'
-  _FRONTEND_URL: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app'
-  _BACKEND_URL: 'https://lad-backend-develop-741719885039.us-central1.run.app'
-  _CORS_ORIGINS: 'https://lad-frontend-develop-m33ggxz7iq-uc.a.run.app,https://lad-frontend-develop-741719885039.us-central1.run.app,https://dev.mrlads.com,https://stage.mrlads.com,https://app.mrlads.com,https://www.mrlads.com'
+  _FRONTEND_URL: 'https://lad-frontend-develop-160078175457.us-central1.run.app'
+  _BACKEND_URL: 'https://lad-backend-develop-160078175457.us-central1.run.app'
+  _CORS_ORIGINS: 'https://lad-frontend-develop-160078175457.us-central1.run.app,https://dev.mrlads.com,https://stage.mrlads.com,https://app.mrlads.com,https://www.mrlads.com'
   _FRONTEND_HEADER: 'settings'
   _FRONTEND_APIKEY: '_L5cf6UXDkGTcWRaHka9Q13Kmu4k5dxaKEPRH165U8U'
-  _GCP_PROJECT_ID: 'salesmaya-pluto'
+  _GCP_PROJECT_ID: 'lad-develop'
   _GCP_LOCATION: 'us-central1'
   _FOLLOWUP_QUEUE_NAME: 'follow-up-voag-calls-v2'
-  _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-741719885039.us-central1.run.app/api/deal-pipeline/bookings'
+  _FOLLOWUP_EXECUTION_ENDPOINT: 'https://lad-backend-develop-160078175457.us-central1.run.app/api/deal-pipeline/bookings'
   _DEFAULT_FOLLOW_UP_AGENT_ID: '24'
-  _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-741719885039.us-central1.run.app/api/webhook/apollo-phone'
+  _APOLLO_WEBHOOK_URL: 'https://apollo-phone-service-160078175457.us-central1.run.app/api/webhook/apollo-phone'
   _CLOUD_TASKS_QUEUE_NAME: 'campaign-scheduler-task-dev'
